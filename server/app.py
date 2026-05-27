@@ -32,7 +32,6 @@ from flask_socketio import SocketIO, join_room
 from server import auth
 from server import base as toady_base
 from server.persistence import read_json, write_json, read_frontmatter, ensure_within, atomic_write
-from server.workspace_manager import WorkspaceManager, projects_root
 from server.pty_driver import PtyDriver, PtyDriverError
 from server.sandboxes import SandboxService, SandboxServiceError, browse_roots_from_env
 from server.toady_validation import ValidationError, validate_slug
@@ -83,6 +82,36 @@ _TEXTUAL_APPLICATION_MIME_PREFIXES = (
     "application/x-sh",
     "application/x-shellscript",
 )
+
+
+class ToadyStateManager:
+    """Minimal state-directory holder for the Toady sandbox UI."""
+
+    def __init__(self, global_dir=None):
+        self._global_dir = os.path.abspath(os.path.expanduser(global_dir or os.environ.get("TOADY_HOME", "~/.toady")))
+        os.makedirs(self._global_dir, exist_ok=True)
+
+    @property
+    def global_dir(self):
+        return self._global_dir
+
+    def all_workspaces(self):
+        return []
+
+    def list_projects(self, **_kwargs):
+        return []
+
+    def list_visible_projects(self, **_kwargs):
+        return []
+
+    def get(self, _workspace_id):
+        return None
+
+    def get_or_activate(self, _workspace_id):
+        return None
+
+    def get_bp_dir(self, workspace_id):
+        raise KeyError(f"Unknown workspace: {workspace_id}")
 
 
 def _origin_host(origin):
@@ -276,11 +305,16 @@ def create_app(
     startup_workspace_name = (os.environ.get("TOADY_WORKSPACE_NAME") or os.environ.get("BULLPEN_WORKSPACE_NAME") or "").strip() or None
     start_without_project = bool(start_without_project) or os.environ.get("TOADY_START_WITHOUT_PROJECT", os.environ.get("BULLPEN_START_WITHOUT_PROJECT", "")) == "1"
 
-    # Initialize workspace manager and register startup projects only for the
-    # legacy Bullpen workspace surface. Toady mode uses sandbox manifests and
-    # workspace roots, so persisted project registry entries must not activate
-    # or create `.bullpen` directories on startup.
-    manager = WorkspaceManager(global_dir=global_dir)
+    # Initialize the legacy workspace manager only for the Bullpen workspace
+    # surface. Toady mode uses sandbox manifests and workspace roots, so
+    # persisted project registry entries must not activate or create `.bullpen`
+    # directories on startup.
+    if start_without_project:
+        manager = ToadyStateManager(global_dir=global_dir)
+    else:
+        from server.workspace_manager import WorkspaceManager
+
+        manager = WorkspaceManager(global_dir=global_dir)
     startup_id = None
     if not start_without_project:
         startup_id = manager.register_project(workspace, name=startup_workspace_name)
@@ -1528,6 +1562,8 @@ def create_app(
 
         join_room("authenticated")
         if not start_without_project:
+            from server.workspace_manager import projects_root
+
             socketio.emit("project:settings", {"projectsRoot": projects_root() or ""}, to=request.sid)
             ws = manager.get_or_activate(startup_id)
             if ws:

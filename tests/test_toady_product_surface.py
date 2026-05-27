@@ -131,6 +131,7 @@ legacy_modules = [
     "server.teams",
     "server.worker_types",
     "server.worktrees",
+    "server.workspace_manager",
     "server.init",
 ]
 print(json.dumps([name for name in legacy_modules if name in sys.modules]))
