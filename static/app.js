@@ -951,11 +951,17 @@ createApp({
           <div class="base-banner" :data-state="baseStatus.state" v-if="!baseStatus.prepared">
             <div>
               <strong>{{ baseStatus.message || 'Microsandbox base is not prepared.' }}</strong>
-              <span>Prepare the base before starting sandboxes.</span>
+              <span v-if="baseStatus.error">{{ baseStatus.error }}</span>
+              <span v-else>Prepare the base before starting sandboxes.</span>
             </div>
-            <button class="tool-button" type="button" :disabled="basePreparing" @click="requestBasePrepare(false)">
-              <i data-lucide="hammer"></i><span>Prepare</span>
-            </button>
+            <span class="base-banner-actions">
+              <button v-if="baseStatus.state === 'error'" class="tool-button" type="button" @click="openBaseLogs">
+                <i data-lucide="scroll-text"></i><span>Logs</span>
+              </button>
+              <button class="tool-button" type="button" :disabled="basePreparing" @click="requestBasePrepare(false)">
+                <i data-lucide="hammer"></i><span>Prepare</span>
+              </button>
+            </span>
           </div>
           <div class="base-log" v-if="baseLogs.length">
             <div v-for="(line, index) in baseLogs" :key="index">{{ line }}</div>
@@ -1113,7 +1119,12 @@ createApp({
                 </span>
               </div>
             </div>
-            <div v-else class="port-empty">No published ports</div>
+            <div v-else class="port-empty">
+              <span>No published ports</span>
+              <button class="tool-button" type="button" :disabled="busy" @click="publishPort(selected)">
+                <i data-lucide="radio-tower"></i><span>Publish :{{ portForm.guest_port }}</span>
+              </button>
+            </div>
           </section>
 
           <div class="terminal-surface">
@@ -1152,7 +1163,10 @@ createApp({
               <button v-if="selected.last_status === 'running'" class="primary-button" type="button" :disabled="busy" @click="openTerminal(selected)">
                 <i data-lucide="terminal"></i><span>Open Terminal</span>
               </button>
-              <span v-else>Start the sandbox to open a terminal</span>
+              <span v-else>{{ selected.last_status === 'configured' ? 'Sandbox is configured.' : 'Sandbox is stopped.' }}</span>
+              <button v-if="selected.last_status !== 'running'" class="tool-button" type="button" :disabled="!canStartSelected" @click="runSandboxAction('sandbox:start', selected, 'Start requested.')">
+                <i data-lucide="play"></i><span>Start</span>
+              </button>
             </div>
           </div>
 
@@ -1164,8 +1178,13 @@ createApp({
         </section>
 
         <section class="detail empty-detail" v-else>
-          <div class="terminal-surface">
-            <div class="terminal-placeholder"><span>No sandbox selected</span></div>
+          <div class="empty-state">
+            <i data-lucide="box"></i>
+            <h2>No Sandboxes</h2>
+            <p>Workspace root required</p>
+            <button class="primary-button" type="button" :disabled="!baseStatus.prepared" @click="browseWorkspace(form.workspace_root)">
+              <i data-lucide="folder-open"></i><span>Workspace Root</span>
+            </button>
           </div>
         </section>
       </main>

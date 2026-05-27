@@ -113,3 +113,15 @@ def test_toady_shell_has_theme_toggle_assets():
     assert "toggleTheme" in app_js
     assert ':data-lucide="theme ===' in app_js
     assert 'html[data-theme="light"]' in css
+
+
+def test_toady_shell_has_clear_empty_and_error_states():
+    app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+    css = (ROOT / "static" / "style.css").read_text(encoding="utf-8")
+
+    assert "baseStatus.error" in app_js
+    assert "No Sandboxes" in app_js
+    assert "Workspace Root" in app_js
+    assert "Publish :{{ portForm.guest_port }}" in app_js
+    assert ".empty-state" in css
+    assert ".base-banner-actions" in css
