@@ -359,6 +359,13 @@ createApp({
       refreshIcons();
     }
 
+    async function loadWorkspaceDefaults() {
+      if (form.workspace_root.trim()) return;
+      const response = await call('workspace:browse');
+      const browse = response.browse || {};
+      form.workspace_root = browse.path || browse.roots?.[0]?.path || '';
+    }
+
     async function createSandbox() {
       if (!form.name.trim() || !form.workspace_root.trim()) {
         setToast('Name and workspace root are required.', 'error');
@@ -670,7 +677,7 @@ createApp({
     socket.on('connect', async () => {
       connected.value = true;
       try {
-        await Promise.all([loadBaseStatus(), loadSandboxes()]);
+        await Promise.all([loadBaseStatus(), loadSandboxes(), loadWorkspaceDefaults()]);
         await loadTerminalSessions();
       } catch (error) {
         setToast(error.message, 'error');
