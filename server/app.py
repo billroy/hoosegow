@@ -28,6 +28,7 @@ from flask import (
 from flask_socketio import SocketIO, join_room
 
 from server import auth
+from server import base as toady_base
 from server.events import register_events
 from server.init import init_workspace
 from server.persistence import read_json, write_json, read_frontmatter, ensure_within, atomic_write
@@ -1227,6 +1228,20 @@ def create_app(
     @socketio.on("sandbox:list")
     def toady_socket_list_sandboxes(_payload=None):
         return {"ok": True, "sandboxes": _sandbox_service().list()}
+
+    @socketio.on("base:status")
+    def toady_socket_base_status(_payload=None):
+        import asyncio
+
+        status = asyncio.run(toady_base.base_status())
+        return {"ok": True, "base": status}
+
+    @socketio.on("base:prepare")
+    def toady_socket_base_prepare(_payload=None):
+        return {
+            "ok": False,
+            "error": "Base preparation from the web UI is not wired yet. Run: python3 toady.py --prepare-base",
+        }
 
     @socketio.on("sandbox:create")
     def toady_socket_create_sandbox(payload):

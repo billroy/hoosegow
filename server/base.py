@@ -14,6 +14,44 @@ from server.microsandbox_runtime import (
 from server.sandbox_bootstrap import run_sandbox_shell
 
 
+async def base_status(base: str = "toady-microsandbox-local") -> dict[str, Any]:
+    """Return prepared-base availability without creating sandboxes."""
+    try:
+        runtime = MicrosandboxRuntime()
+        await runtime.ensure_installed()
+        snapshot = await runtime.get_prepared_base(base)
+        if snapshot is None:
+            return {
+                "name": base,
+                "prepared": False,
+                "state": "missing",
+                "message": f"Prepared Microsandbox base '{base}' was not found.",
+            }
+        path = getattr(snapshot, "path", None)
+        if path is None:
+            open_snapshot = getattr(snapshot, "open", None)
+            if callable(open_snapshot):
+                opened = open_snapshot()
+                if hasattr(opened, "__await__"):
+                    opened = await opened
+                path = getattr(opened, "path", None)
+        return {
+            "name": base,
+            "prepared": True,
+            "state": "ready",
+            "path": str(path) if path else "",
+            "message": f"Prepared Microsandbox base '{base}' is available.",
+        }
+    except Exception as exc:
+        return {
+            "name": base,
+            "prepared": False,
+            "state": "error",
+            "error": str(exc),
+            "message": "Could not inspect Microsandbox base status.",
+        }
+
+
 def codex_cli_integrity_command() -> str:
     return r'''
 command -v bwrap >/dev/null

@@ -23,6 +23,12 @@ createApp({
     const busy = ref(false);
     const selectedSlug = ref('');
     const sandboxes = reactive([]);
+    const baseStatus = reactive({
+      prepared: false,
+      state: 'checking',
+      name: 'toady-microsandbox-local',
+      message: 'Checking Microsandbox base...',
+    });
     const form = reactive({
       name: '',
       workspace_root: '',
@@ -33,6 +39,7 @@ createApp({
 
     const selected = computed(() => sandboxes.find((sandbox) => sandbox.slug === selectedSlug.value) || sandboxes[0] || null);
     const sortedSandboxes = computed(() => [...sandboxes].sort((a, b) => a.slug.localeCompare(b.slug)));
+    const canStartSelected = computed(() => Boolean(selected.value && baseStatus.prepared && !busy.value));
 
     function setToast(message, tone = 'info') {
       toast.message = message;
@@ -79,6 +86,12 @@ createApp({
       replaceSandboxes(response.sandboxes);
     }
 
+    async function loadBaseStatus() {
+      const response = await call('base:status');
+      Object.assign(baseStatus, response.base || {});
+      refreshIcons();
+    }
+
     async function createSandbox() {
       if (!form.name.trim() || !form.workspace_root.trim()) {
         setToast('Name and workspace are required.', 'error');
@@ -106,6 +119,10 @@ createApp({
 
     async function runSandboxAction(event, sandbox, successMessage) {
       if (!sandbox) return;
+      if (event === 'sandbox:start' && !baseStatus.prepared) {
+        setToast(baseStatus.message || 'Prepare the Microsandbox base before starting sandboxes.', 'error');
+        return;
+      }
       busy.value = true;
       try {
         await call(event, { id: sandbox.slug });
@@ -134,10 +151,18 @@ createApp({
       }
     }
 
+    async function requestBasePrepare() {
+      try {
+        await call('base:prepare');
+      } catch (error) {
+        setToast(error.message, 'error');
+      }
+    }
+
     socket.on('connect', async () => {
       connected.value = true;
       try {
-        await loadSandboxes();
+        await Promise.all([loadBaseStatus(), loadSandboxes()]);
       } catch (error) {
         setToast(error.message, 'error');
       }
@@ -163,13 +188,17 @@ createApp({
 
     return {
       basename,
+      baseStatus,
       busy,
+      canStartSelected,
       connected,
       createSandbox,
       destroySandbox,
       form,
       formatDate,
+      loadBaseStatus,
       loadSandboxes,
+      requestBasePrepare,
       runSandboxAction,
       selected,
       selectedSlug,
@@ -188,6 +217,10 @@ createApp({
           </div>
         </div>
         <div class="topbar-actions">
+          <span class="base-chip" :data-state="baseStatus.state">
+            <i data-lucide="box"></i>
+            {{ baseStatus.prepared ? 'Base ready' : 'Base missing' }}
+          </span>
           <span class="connection" :class="{ online: connected }">
             <span class="dot"></span>{{ connected ? 'Connected' : 'Offline' }}
           </span>
@@ -222,6 +255,15 @@ createApp({
 
       <main class="workspace">
         <section class="create-band">
+          <div class="base-banner" :data-state="baseStatus.state" v-if="!baseStatus.prepared">
+            <div>
+              <strong>{{ baseStatus.message || 'Microsandbox base is not prepared.' }}</strong>
+              <span>Prepare the base before starting sandboxes.</span>
+            </div>
+            <button class="tool-button" type="button" @click="requestBasePrepare">
+              <i data-lucide="hammer"></i><span>Prepare</span>
+            </button>
+          </div>
           <form class="create-form" @submit.prevent="createSandbox">
             <label>
               <span>Name</span>
@@ -253,7 +295,7 @@ createApp({
               <p>{{ selected.canonical_workspace_path }}</p>
             </div>
             <div class="detail-actions">
-              <button class="tool-button" type="button" :disabled="busy" @click="runSandboxAction('sandbox:start', selected, 'Start requested.')">
+              <button class="tool-button" type="button" :disabled="!canStartSelected" @click="runSandboxAction('sandbox:start', selected, 'Start requested.')">
                 <i data-lucide="play"></i><span>Start</span>
               </button>
               <button class="tool-button" type="button" :disabled="busy" @click="runSandboxAction('sandbox:stop', selected, 'Stopped.')">

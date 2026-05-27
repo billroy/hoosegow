@@ -118,6 +118,28 @@ button:disabled {
   font-size: 13px;
 }
 
+.base-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid #614c28;
+  border-radius: 8px;
+  color: #f2d394;
+  font-size: 13px;
+}
+
+.base-chip[data-state="ready"] {
+  border-color: #3d7251;
+  color: #c3f4d3;
+}
+
+.base-chip svg {
+  width: 15px;
+  height: 15px;
+}
+
 .connection.online {
   color: #c3f4d3;
   border-color: #385b45;
@@ -313,6 +335,38 @@ button:disabled {
   padding: 18px 20px 14px;
   border-bottom: 1px solid var(--line);
   background: #15191e;
+}
+
+.base-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid #614c28;
+  border-radius: 8px;
+  background: #211a10;
+}
+
+.base-banner strong,
+.base-banner span {
+  display: block;
+}
+
+.base-banner strong {
+  font-size: 14px;
+}
+
+.base-banner span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.base-banner[data-state="error"] {
+  border-color: #714044;
+  background: #24151a;
 }
 
 .create-form {
@@ -549,7 +603,8 @@ input:focus {
   }
 
   .brand p,
-  .connection {
+  .connection,
+  .base-chip {
     display: none;
   }
 
