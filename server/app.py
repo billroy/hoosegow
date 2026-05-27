@@ -869,7 +869,16 @@ def create_app(
             return None, (jsonify({"error": "Unknown workspace"}), 404)
         return ws, None
 
-    @app.route("/api/commits")
+    def legacy_route(*args, **kwargs):
+        if not start_without_project:
+            return app.route(*args, **kwargs)
+
+        def decorator(func):
+            return func
+
+        return decorator
+
+    @legacy_route("/api/commits")
     @auth.require_auth
     def get_commits():
         """Return git log entries for the active workspace."""
@@ -929,7 +938,7 @@ def create_app(
 
         return jsonify({"commits": commits, "has_more": has_more, "total": total})
 
-    @app.route("/api/commits/<commit_hash>/diff")
+    @legacy_route("/api/commits/<commit_hash>/diff")
     @auth.require_auth
     def get_commit_diff(commit_hash):
         """Return the patch for a specific commit in the active workspace."""
@@ -951,7 +960,7 @@ def create_app(
             return jsonify({"error": "Commit not found"}), 404
         return jsonify({"hash": commit_hash, "diff": result.stdout})
 
-    @app.route("/api/files")
+    @legacy_route("/api/files")
     @auth.require_auth
     def file_tree():
         """Return workspace file tree."""
@@ -962,7 +971,7 @@ def create_app(
         tree = build_file_tree(ws_path)
         return jsonify(tree)
 
-    @app.route("/api/files/<path:filepath>")
+    @legacy_route("/api/files/<path:filepath>")
     @auth.require_auth
     def file_content(filepath):
         """Return file content."""
@@ -1001,7 +1010,7 @@ def create_app(
         except Exception:
             abort(500)
 
-    @app.route("/api/files/<path:filepath>", methods=["PUT"])
+    @legacy_route("/api/files/<path:filepath>", methods=["PUT"])
     @auth.require_auth
     def file_write(filepath):
         """Write file content."""
@@ -1033,7 +1042,7 @@ def create_app(
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
-    @app.route("/api/worker/transfer", methods=["POST"])
+    @legacy_route("/api/worker/transfer", methods=["POST"])
     @auth.require_auth
     def worker_transfer():
         """Copy or move a worker between workspaces."""
@@ -1281,7 +1290,7 @@ def create_app(
         state["workspaceId"] = ws.id
         socketio.emit("state:init", state, to=ws.id)
 
-    @app.route("/api/export/workspace")
+    @legacy_route("/api/export/workspace")
     @auth.require_auth
     def export_workspace():
         ws, error = _workspace_from_id(_workspace_id_from_args())
@@ -1295,7 +1304,7 @@ def create_app(
             download_name=export_name,
         )
 
-    @app.route("/api/export/all")
+    @legacy_route("/api/export/all")
     @auth.require_auth
     def export_all():
         export_name = f"bullpen-all-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.zip"
@@ -1306,7 +1315,7 @@ def create_app(
             download_name=export_name,
         )
 
-    @app.route("/api/export/workers")
+    @legacy_route("/api/export/workers")
     @auth.require_auth
     def export_workers():
         ws, error = _workspace_from_id(_workspace_id_from_args())
@@ -1320,7 +1329,7 @@ def create_app(
             download_name=export_name,
         )
 
-    @app.route("/api/export/worker")
+    @legacy_route("/api/export/worker")
     @auth.require_auth
     def export_worker():
         ws, error = _workspace_from_id(_workspace_id_from_args())
@@ -1342,7 +1351,7 @@ def create_app(
             download_name=export_name,
         )
 
-    @app.route("/api/service/preview", methods=["POST"])
+    @legacy_route("/api/service/preview", methods=["POST"])
     @auth.require_auth
     def service_preview():
         from server.worker_types import get_worker_type, normalize_layout, normalize_worker_slot
@@ -1397,7 +1406,7 @@ def create_app(
             "warnings": preview["warnings"],
         })
 
-    @app.route("/api/import/workspace", methods=["POST"])
+    @legacy_route("/api/import/workspace", methods=["POST"])
     @auth.require_auth
     def import_workspace():
         ws_id = _workspace_id_from_args()
@@ -1423,7 +1432,7 @@ def create_app(
             return jsonify({"error": str(e)}), 500
         return jsonify({"ok": True, "imported": 1, "workspaceId": ws_id})
 
-    @app.route("/api/import/workers", methods=["POST"])
+    @legacy_route("/api/import/workers", methods=["POST"])
     @auth.require_auth
     def import_workers():
         ws_id = _workspace_id_from_args()
@@ -1449,7 +1458,7 @@ def create_app(
             return jsonify({"error": str(e)}), 500
         return jsonify({"ok": True, "imported": 1, "workspaceId": ws_id})
 
-    @app.route("/api/import/all", methods=["POST"])
+    @legacy_route("/api/import/all", methods=["POST"])
     @auth.require_auth
     def import_all():
         upload = request.files.get("file")

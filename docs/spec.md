@@ -546,12 +546,12 @@ sandbox:status     { id, status, terminal_status? }      server -> client
 sandbox:error      { id, error }                         server -> client
 sandbox:destroyed  { id }                                server -> client
 
-terminal:list      {}                                    client -> server ack
-terminal:open      { sandbox_id, cols, rows }            client -> server ack
-terminal:join      { term_id }                           client -> server
-terminal:input     { term_id, data }                     client -> server
-terminal:resize    { term_id, cols, rows }               client -> server
-terminal:close     { term_id }                           client -> server ack
+sandbox:terminal:list   { sandbox_id? }                  client -> server ack
+sandbox:terminal:open   { sandbox_id, cols, rows }       client -> server ack
+sandbox:terminal:join   { terminal_id }                  client -> server ack
+sandbox:terminal:input  { terminal_id, data }            client -> server
+sandbox:terminal:resize { terminal_id, cols, rows }      client -> server
+sandbox:terminal:close  { terminal_id }                  client -> server ack
 terminal:replay    { term_id, data, truncated }          server -> client
 terminal:output    { term_id, data }                     server -> client
 terminal:exit      { term_id, exit_code }                server -> client

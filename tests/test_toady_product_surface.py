@@ -29,6 +29,24 @@ def test_toady_mode_hides_legacy_product_rest_apis(tmp_path):
     assert client.post("/api/service/preview").status_code == 404
 
 
+def test_toady_mode_does_not_register_legacy_product_rest_routes(tmp_path):
+    app = create_app(
+        str(tmp_path),
+        no_browser=True,
+        global_dir=str(tmp_path / "state"),
+        start_without_project=True,
+    )
+
+    rules = {rule.rule for rule in app.url_map.iter_rules()}
+
+    assert "/api/commits" not in rules
+    assert "/api/files" not in rules
+    assert "/api/worker/transfer" not in rules
+    assert "/api/export/workspace" not in rules
+    assert "/api/import/workspace" not in rules
+    assert "/api/service/preview" not in rules
+
+
 def test_toady_mode_hides_legacy_product_static_assets(tmp_path):
     app = create_app(
         str(tmp_path),
