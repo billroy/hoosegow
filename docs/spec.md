@@ -28,43 +28,43 @@
 
 ## 2. User Stories
 
-1. **Isolate an agent session.** "I want to run `claude` against
-   `~/code/my-app` without giving it access to `~/.ssh` or the rest of my
-   home directory."
-2. **Multiple concurrent sandboxes.** "I want one sandbox per project I'm
-   actively working on, and I want to switch between them in a single browser
-   tab."
+1. **Isolate an agent session.** "I want to run `claude` inside a sandbox
+   mounted at my normal work root, without giving it access to `~/.ssh` or the
+   rest of my home directory."
+2. **Multiple concurrent sandboxes.** "I want several sandboxes sharing the
+   same work root, and I want to switch between them in a single browser tab."
 3. **Many terminals per sandbox.** "I want terminals for the dev server, the
    agent, git, tests, logs, and scratch commands, all in the same sandbox."
 4. **Browser reattach.** "If I close my browser but leave Toady running, my
    sandboxes and terminals keep running. When I reopen Toady I can reattach."
 5. **Tear down cleanly.** "When I'm done, one click destroys the sandbox and
-   its scratch storage; the project directory on the host is untouched."
+   its scratch storage; the host workspace root is untouched."
 
 ## 3. Core Concepts
 
 | Concept | Definition |
 |---|---|
-| **Workspace root** | A canonical host directory mounted read-write into a sandbox as `/workspace/<slug>`. The user picks this when creating a sandbox. |
+| **Workspace root** | A canonical host directory mounted read-write into a sandbox as `/workspace`. This is usually a shared parent directory containing many projects, matching Bullpen Monitor's workspace-root picker, not a single project directory. |
 | **Sandbox** | A named Microsandbox microVM with the Toady base image (Python, Node, git, gh, ripgrep, Claude/Codex/Gemini/opencode CLIs). Has persistent `/home/agent` storage. |
 | **Terminal** | A PTY session running inside a sandbox, bridged to a browser xterm.js tab over Socket.IO. |
 | **PTY controller** | A small in-sandbox process (`toady-ptyd`) that owns PTYs and exposes a token-protected HTTP control/data API to the host Toady server through a Microsandbox-published localhost port. |
 | **Base image** | Reusable Microsandbox snapshot, prepared once on first run. Mirrors Bullpen's `deploy-sandbox.py --prepare-base` flow. |
 
-A sandbox has 0..N terminals. A workspace root may be referenced by at most one
-running sandbox by default; explicit shared-workspace mode permits concurrent
-mounts after typed confirmation.
+A sandbox has 0..N terminals. Multiple sandboxes may mount the same workspace
+root concurrently; this is expected to be the common local configuration.
 
 ## 4. User Experience
 
 1. Start the server: `python3 toady.py`. Browser opens at
    `http://localhost:5858`.
 2. Click **New Sandbox**. Pick a workspace root using the server-side directory
-   picker or type a path. Give the sandbox a name. Click Create.
+   picker or type a path. This should feel like Bullpen Monitor's workspace
+   root selection: choose the top-level work tree that contains projects, not a
+   specific project. Give the sandbox a name. Click Create.
 3. The sandbox appears in the left pane with a status pill (`preparing`,
    `running`, `stopped`, `error`) and any published dev-server URLs.
 4. Click **New Terminal** on a sandbox card. A new xterm.js tab opens, already
-   `cd`'d into `/workspace/<slug>`.
+   `cd`'d into `/workspace`.
 5. Type `claude` (or `codex`, `gemini`, `opencode`) and work normally.
 
 There is no step 6.
@@ -99,9 +99,10 @@ before the app shell. If auth is disabled, there is no login screen.
 
 - **Create**: name (slug-validated, unique across Toady-known and pre-existing
   Microsandbox instances), workspace root (canonicalized, allowed, existing
-  directory, readable and writable), optional vCPU/RAM caps, optional
-  shared-workspace confirmation. Toady spins up a Microsandbox instance using
-  the Toady base, mounts the workspace root at `/workspace/<slug>`, mounts a
+  directory, readable and writable), optional vCPU/RAM caps. Shared workspace
+  roots are allowed by default and should not trigger a confirmation. Toady
+  spins up a Microsandbox instance using the Toady base, mounts the workspace
+  root at `/workspace`, mounts a
   per-sandbox persistent home at `/home/agent`, applies the Bullpen-derived
   host FD, guest FD, network, user, CA, IPv6, and CLI bootstrap workarounds in
   §5.9, and reports `running` when a standard Microsandbox exec health check
@@ -368,14 +369,16 @@ Toady's value proposition is isolation, so this section is load-bearing.
 - **Adversary**: a misbehaving or actively malicious agent process running in a
   sandbox. Assumes the agent is not a kernel-exploit-grade adversary.
 - **Assets to protect**: host filesystem outside the chosen workspace root,
-  shell credentials, browser cookies, ssh keys, other projects, and host kernel.
+  shell credentials, browser cookies, ssh keys, unrelated work outside the
+  mounted root, and host kernel.
 
 ### Controls
 
 1. **Microsandbox microVM isolation**: kernel boundary between agent and host.
 2. **Filesystem scoping**: the only host directory mounted into a sandbox is
-   the user-selected workspace root. `~/.ssh`, `~/.aws`, sibling projects, and
-   other host paths are not mounted.
+   the user-selected workspace root. Projects inside that root are intentionally
+   visible to the sandbox; `~/.ssh`, `~/.aws`, and other host paths outside the
+   root are not mounted.
 3. **No host shell**: Toady deliberately does not expose a host-side terminal.
    Every terminal runs inside a sandbox.
 4. **Bullpen-style optional auth with network-bind guard**:
@@ -533,8 +536,7 @@ this matches the Bullpen architecture better than REST-first CRUD.
 
 ```
 sandbox:list       {}                                    client -> server ack
-sandbox:create     { name, workspace_root, vcpus?, memory_mib?,
-                      allow_shared_workspace? }          client -> server ack
+sandbox:create     { name, workspace_root, vcpus?, memory_mib? } client -> server ack
 sandbox:get        { id }                                client -> server ack
 sandbox:start      { id }                                client -> server ack
 sandbox:stop       { id }                                client -> server ack
@@ -750,12 +752,14 @@ Tasks:
 - Implement base status and base preparation over Socket.IO, streaming
   `base:log` events to all authenticated tabs.
 - Implement server-side workspace picker over Socket.IO, rooted at configured
-  browse roots.
+  browse roots, with the UX copied from Bullpen Monitor's workspace-root
+  selection model.
 - Implement left pane sandbox cards, New Sandbox modal, base-prep first-run
   view, status pills, resource readouts, and destroy confirmation.
 - Implement slug collision checks against Toady manifests and foreign
   Microsandbox instances.
-- Implement explicit shared-workspace typed confirmation.
+- Treat shared workspace roots as normal. Do not block or warn when multiple
+  sandboxes use the same root.
 
 Verification gate:
 

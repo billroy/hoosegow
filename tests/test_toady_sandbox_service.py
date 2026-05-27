@@ -73,7 +73,7 @@ def test_sandbox_service_prevents_duplicate_slug(tmp_path):
         service.create_manifest({"name": "demo", "workspace_root": str(workspace)})
 
 
-def test_sandbox_service_requires_confirmation_for_running_shared_workspace(tmp_path, monkeypatch):
+def test_sandbox_service_allows_running_shared_workspace(tmp_path, monkeypatch):
     monkeypatch.setattr("server.sandboxes.host_port_in_use", lambda _port: False)
     workspace = tmp_path / "project"
     workspace.mkdir()
@@ -87,15 +87,13 @@ def test_sandbox_service_requires_confirmation_for_running_shared_workspace(tmp_
     manifest.last_status = "running"
     service.store.save(manifest)
 
-    with pytest.raises(SandboxServiceError, match="Workspace is already used"):
-        service.create_manifest({"name": "second", "workspace_root": str(workspace)})
-
-    confirmed = service.create_manifest({
+    shared = service.create_manifest({
         "name": "second",
         "workspace_root": str(workspace),
-        "allow_shared_workspace": True,
     })
-    assert confirmed["slug"] == "second"
+
+    assert shared["slug"] == "second"
+    assert shared["canonical_workspace_path"] == str(workspace.resolve())
 
 
 def test_sandbox_service_browses_allowed_workspace_roots(tmp_path):

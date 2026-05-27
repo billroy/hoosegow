@@ -340,9 +340,9 @@ createApp({
       refreshIcons();
     }
 
-    async function createSandbox(options = {}) {
+    async function createSandbox() {
       if (!form.name.trim() || !form.workspace_root.trim()) {
-        setToast('Name and workspace are required.', 'error');
+        setToast('Name and workspace root are required.', 'error');
         return;
       }
       if (!baseStatus.prepared) {
@@ -358,7 +358,6 @@ createApp({
           workspace_root: form.workspace_root.trim(),
           vcpus: Number(form.vcpus) || 4,
           memory_mib: Number(form.memory_mib) || 4096,
-          allow_shared_workspace: Boolean(options.allowSharedWorkspace),
         });
         selectedSlug.value = response.sandbox.slug;
         workflowSlug = response.sandbox.slug;
@@ -372,17 +371,9 @@ createApp({
         await openTerminal(started.sandbox, { manageBusy: false, manageAction: false });
         setToast(`Created ${response.sandbox.slug} and opened a terminal.`, 'success');
       } catch (error) {
-        if (
-          !options.allowSharedWorkspace
-          && error.message.includes('Workspace is already used by running sandbox')
-          && window.confirm(`${error.message}\n\nShare this workspace anyway?`)
-        ) {
-          await createSandbox({ allowSharedWorkspace: true });
-          return;
-        }
         setToast(error.message, 'error');
       } finally {
-        if (!options.allowSharedWorkspace) busy.value = false;
+        busy.value = false;
         clearAction(workflowSlug);
       }
     }
@@ -855,10 +846,10 @@ createApp({
               <input v-model="form.name" autocomplete="off" placeholder="project-demo">
             </label>
             <label class="path-input">
-              <span>Workspace</span>
+              <span>Workspace root</span>
               <span class="path-control">
-                <input v-model="form.workspace_root" autocomplete="off" placeholder="/Users/bill/aistuff/toady">
-                <button class="icon-button" type="button" title="Browse workspaces" @click="browseWorkspace(form.workspace_root)">
+                <input v-model="form.workspace_root" autocomplete="off" placeholder="/Users/bill/aistuff">
+                <button class="icon-button" type="button" title="Browse workspace roots" @click="browseWorkspace(form.workspace_root)">
                   <i data-lucide="folder-open"></i>
                 </button>
               </span>
@@ -888,7 +879,7 @@ createApp({
               <div>
                 <strong>{{ picker.path || 'Workspace roots' }}</strong>
                 <span v-if="picker.truncated">First 500 directories shown</span>
-                <span v-else>Select a directory for the sandbox workspace.</span>
+                <span v-else>Select the top-level work tree to mount at /workspace.</span>
               </div>
               <button class="icon-button" type="button" title="Close picker" @click="picker.open = false">
                 <i data-lucide="x"></i>
