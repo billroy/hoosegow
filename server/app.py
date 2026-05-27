@@ -458,6 +458,15 @@ def create_app(
     # These paths must load without a session so the login page can be
     # rendered and styled before the user authenticates.
     PUBLIC_STATIC_FILES = {"login.html", "style.css", "favicon.ico"}
+    LEGACY_PRODUCT_STATIC_FILES = {
+        "audio.js",
+        "commands.js",
+        "event-sounds.js",
+        "gridGeometry.js",
+        "shell_worker_examples.json",
+        "utils.js",
+    }
+    LEGACY_PRODUCT_STATIC_PREFIXES = ("components/",)
     LEGACY_PRODUCT_API_PREFIXES = (
         "/api/commits",
         "/api/files",
@@ -488,9 +497,15 @@ def create_app(
         return redirect(url_for("login"))
 
     @app.before_request
-    def _gate_legacy_product_apis():
+    def _gate_legacy_product_surface():
         if not app.config.get("start_without_project"):
             return None
+        if request.endpoint == "static":
+            filename = (request.view_args or {}).get("filename", "")
+            if filename in LEGACY_PRODUCT_STATIC_FILES or filename.startswith(LEGACY_PRODUCT_STATIC_PREFIXES):
+                abort(404)
+            if filename.startswith("manager/") and not filename.startswith("manager/vendor/"):
+                abort(404)
         if request.path.startswith(LEGACY_PRODUCT_API_PREFIXES):
             abort(404)
         return None
