@@ -428,9 +428,17 @@ createApp({
 
     function portStatusText(mapping) {
       if (!mapping) return '';
-      if (mapping.status === 'pending_restart') return 'after restart';
-      if (mapping.status === 'remove_on_restart') return 'removing on restart';
+      if (mapping.status === 'pending_restart') return 'activates on restart';
+      if (mapping.status === 'remove_on_restart') return 'active until restart';
       return mapping.status || 'active';
+    }
+
+    function portIsLive(mapping, sandbox = selected.value) {
+      return Boolean(
+        mapping
+        && sandbox?.last_status === 'running'
+        && (mapping.status === 'active' || mapping.status === 'remove_on_restart')
+      );
     }
 
     async function publishPort(sandbox) {
@@ -635,6 +643,7 @@ createApp({
       copyPortUrl,
       openPort,
       portForm,
+      portIsLive,
       portStatusText,
       portUrl,
       publishPort,
@@ -805,7 +814,7 @@ createApp({
                   <small>:{{ mapping.host_port }} -> :{{ mapping.guest_port }} / {{ portStatusText(mapping) }}</small>
                 </span>
                 <span class="port-actions">
-                  <button class="icon-button" type="button" title="Open port" :disabled="mapping.status !== 'active'" @click="openPort(mapping)">
+                  <button class="icon-button" type="button" title="Open port" :disabled="!portIsLive(mapping, selected)" @click="openPort(mapping)">
                     <i data-lucide="external-link"></i>
                   </button>
                   <button class="icon-button" type="button" title="Copy URL" @click="copyPortUrl(mapping)">
