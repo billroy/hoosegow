@@ -1,0 +1,844 @@
+# Toady: Functional Specification
+
+> "Toad in a hole for agents." A small, single-binary web app that runs CLI
+> coding agents (Claude, Codex, Gemini, opencode, ...) inside Microsandbox
+> microVMs and gives the user PTY-backed web terminals into each sandbox.
+
+## 1. Goals and Non-Goals
+
+### Goals
+- Keep agents off the host filesystem and kernel by default.
+- Provide a frictionless "click -> sandbox -> terminal" experience for one
+  user on one machine.
+- Vendor/port Bullpen's proven Microsandbox provisioning, base-image
+  preparation, dirty runtime workarounds, and xterm.js/Socket.IO terminal stack
+  where they fit.
+- Ship as a single Python entry point (`toady.py`) with a CDN-loaded Vue 3
+  frontend (no build step).
+
+### Non-Goals
+- Multi-tenant hosting. Toady is a local developer tool, even when bound to a
+  non-loopback interface.
+- Tickets, kanban, workers, profiles, stats, commits, scheduling, MCP,
+  auto-PR. Those are explicitly cut from Bullpen.
+- Remote hosted deployment. No Sprite / Droplet / Docker production story in
+  v1.
+- Agent orchestration. Toady does not invoke agents itself; the user types
+  `claude` / `codex` / etc. into a terminal inside a sandbox.
+
+## 2. User Stories
+
+1. **Isolate an agent session.** "I want to run `claude` against
+   `~/code/my-app` without giving it access to `~/.ssh` or the rest of my
+   home directory."
+2. **Multiple concurrent sandboxes.** "I want one sandbox per project I'm
+   actively working on, and I want to switch between them in a single browser
+   tab."
+3. **Many terminals per sandbox.** "I want terminals for the dev server, the
+   agent, git, tests, logs, and scratch commands, all in the same sandbox."
+4. **Browser reattach.** "If I close my browser but leave Toady running, my
+   sandboxes and terminals keep running. When I reopen Toady I can reattach."
+5. **Tear down cleanly.** "When I'm done, one click destroys the sandbox and
+   its scratch storage; the project directory on the host is untouched."
+
+## 3. Core Concepts
+
+| Concept | Definition |
+|---|---|
+| **Workspace root** | A canonical host directory mounted read-write into a sandbox as `/workspace/<slug>`. The user picks this when creating a sandbox. |
+| **Sandbox** | A named Microsandbox microVM with the Toady base image (Python, Node, git, gh, ripgrep, Claude/Codex/Gemini/opencode CLIs). Has persistent `/home/agent` storage. |
+| **Terminal** | A PTY session running inside a sandbox, bridged to a browser xterm.js tab over Socket.IO. |
+| **PTY controller** | A small in-sandbox process (`toady-ptyd`) that owns PTYs and exposes a local control/data API to the host Toady server. |
+| **Base image** | Reusable Microsandbox snapshot, prepared once on first run. Mirrors Bullpen's `deploy-sandbox.py --prepare-base` flow. |
+
+A sandbox has 0..N terminals. A workspace root may be referenced by at most one
+running sandbox by default; explicit shared-workspace mode permits concurrent
+mounts after typed confirmation.
+
+## 4. User Experience
+
+1. Start the server: `python3 toady.py`. Browser opens at
+   `http://localhost:5858`.
+2. Click **New Sandbox**. Pick a workspace root using the server-side directory
+   picker or type a path. Give the sandbox a name. Click Create.
+3. The sandbox appears in the left pane with a status pill (`preparing`,
+   `running`, `stopped`, `error`) and any published dev-server URLs.
+4. Click **New Terminal** on a sandbox card. A new xterm.js tab opens, already
+   `cd`'d into `/workspace/<slug>`.
+5. Type `claude` (or `codex`, `gemini`, `opencode`) and work normally.
+
+There is no step 6.
+
+### UI Layout
+
+- **Left pane**: list of sandboxes. Each card shows name, workspace path,
+  status, resource caps, terminal count, published ports, and an action menu
+  (New Terminal, Publish Port, Stop, Start, Destroy, Open Files).
+- **Main pane**: tab strip across the top, one tab per open terminal. Tabs are
+  color-tagged by sandbox. A `+` button on each sandbox card or in the tab
+  strip opens a new terminal for that sandbox.
+- **Top bar**: app title, light/dark toggle, host indicator
+  (`localhost` / actual bind), aggregate resource usage, base-image status,
+  and "rebuild base" action.
+- **Optional Files panel** (stretch): read-only browser of files under the
+  sandbox's mounted workspace, scoped to that sandbox.
+
+### Empty / First-Run State
+
+If the Toady base image is not yet prepared, the UI shows a single full-pane
+card: "Prepare base image (~5-10 min, one-time)" with a button that streams
+preparation logs to a built-in terminal-style view. No sandbox actions are
+available until preparation succeeds.
+
+If auth is enabled, unauthenticated users see the Bullpen-style login page
+before the app shell. If auth is disabled, there is no login screen.
+
+## 5. Functional Requirements
+
+### 5.1 Sandbox Lifecycle
+
+- **Create**: name (slug-validated, unique across Toady-known and pre-existing
+  Microsandbox instances), workspace root (canonicalized, allowed, existing
+  directory, readable and writable), optional vCPU/RAM caps, optional
+  shared-workspace confirmation. Toady spins up a Microsandbox instance using
+  the Toady base, mounts the workspace root at `/workspace/<slug>`, mounts a
+  per-sandbox persistent home at `/home/agent`, applies the Bullpen-derived
+  host FD, guest FD, network, user, CA, IPv6, and CLI bootstrap workarounds in
+  §5.9, and reports `running` when a standard Microsandbox exec health check
+  returns within 5 seconds. Terminal attach health is reported separately.
+- **Stop**: graceful shutdown. Terminals attached to the sandbox are terminated
+  with a "sandbox stopped" banner in xterm.
+- **Start**: bring a stopped sandbox back up using the same workspace, home,
+  resource caps, and persisted port mappings. Revalidate the workspace path
+  before start.
+- **Destroy**: stop + delete sandbox + delete its persistent home after a
+  confirm dialog that lists what will be deleted. Host workspace dir is never
+  deleted.
+- **Rename**: out of scope for v1. Slug is immutable post-create.
+
+### 5.2 Terminals
+
+- **Open**: backend asks the sandbox's PTY controller to allocate a PTY running
+  the agent shell (default `/bin/bash -l`; per-sandbox shell choice deferred
+  post-v1). Frontend opens an xterm.js instance bridged through the host Toady
+  server over Socket.IO.
+- **PTY driver contract**: the driver must support raw byte input/output,
+  UTF-8 and control-code fidelity, resize, exit status, EOF propagation,
+  signal or close-based teardown, foreground-process detection where available,
+  and reconnect to a still-running PTY within the same Toady server process.
+- **PTY controller architecture**: v1 assumes a required in-sandbox
+  `toady-ptyd` process. The controller binds only to sandbox-local loopback or a
+  Unix socket under `/var/lib/toady`, never directly to the host/LAN, and the
+  host Toady server is the only browser-facing web endpoint. The early PTY
+  spike may prove that Microsandbox's SDK can simplify the controller, but the
+  implementation plan defaults to the controller so terminal work is not
+  blocked on SDK optimism.
+- **Resize**: forward cols/rows on browser viewport changes.
+- **Close**: confirm if a foreground process is detected (best-effort: child
+  of PTY leader is not the shell); otherwise close PTY and remove tab.
+- **Browser disconnect**: keep PTYs alive for a configurable grace period
+  (default 60 seconds) so tab refresh does not kill an in-flight agent. After
+  the grace period, close idle PTYs. PTYs with foreground processes remain
+  alive until explicit close, sandbox stop, or server exit.
+- **Reattach**: when the browser reconnects to the same running Toady server,
+  the frontend calls `GET /api/terminals` to discover active PTYs, then joins
+  each terminal room by ID and receives bounded replay.
+- **Per-sandbox limit**: configurable; default 32 terminals per sandbox. v1
+  must be tested with 32 simultaneously open terminals in one sandbox.
+- **Output buffering**: server-side ring buffer per PTY with both line and byte
+  caps (default 10,000 lines and 5 MiB). On overflow, drop oldest output and
+  prepend a single truncation marker to the next replay.
+
+### 5.3 Persistence
+
+Toady state lives under `~/.toady/`:
+
+```
+~/.toady/
+  .env                   # auth users, secret key, production/session settings
+  config.json            # global settings (port, theme, base image name, ...)
+  sandboxes/
+    <slug>.json          # sandbox manifest: slug, name, workspace path,
+                         #   home path, resource caps, ports, created-at,
+                         #   last-status, Microsandbox instance ID
+    <slug>/home/         # bind-mounted into sandbox as /home/agent
+  base/                  # Microsandbox base snapshot artifacts (if any)
+  logs/
+    server.log
+    sandbox-<slug>.log
+```
+
+Sandboxes and sandbox homes persist across Toady server restarts. Terminals do
+not. A Toady server exit terminates PTY sessions owned by that server; the
+sandbox disk/home state remains. On server boot, Toady reconciles
+`sandboxes/*.json` against Microsandbox's view of running VMs and updates
+statuses accordingly. Manifests are written atomically (temp + rename).
+
+### 5.4 Configuration
+
+Single CLI: `toady.py`.
+
+| Flag | Default | Description |
+|---|---|---|
+| `--port` | `5858` | UI port. |
+| `--host` | `127.0.0.1` | Bind address. Non-loopback binds require auth. |
+| `--home` | `~/.toady` | State directory. |
+| `--no-browser` | off | Do not auto-open. |
+| `--prepare-base` | off | Build the base snapshot and exit. |
+| `--rebuild-base` | off | Force a base rebuild. |
+| `--base-image` | `node:22-bookworm` | OCI source for base prep. |
+| `--vcpus` | `4` | Default per-sandbox vCPU cap. |
+| `--memory-mib` | `4096` | Default per-sandbox RAM cap. |
+| `--max-sandboxes` | `8` | Host-wide running-sandbox admission cap. |
+| `--max-total-vcpus` | detected cores | Host-wide admitted vCPU cap. |
+| `--max-total-memory-mib` | 75% host RAM | Host-wide admitted RAM cap. |
+| `--terminal-limit` | `32` | Default per-sandbox terminal cap. |
+| `--port-pool` | `3000-3099` | Host-published dev-server port pool. |
+| `--workspace-root` | `$HOME` and cwd | Repeatable canonical browse root for the picker. |
+| `--host-nofile` | `12000` | Target host `RLIMIT_NOFILE` before creating Microsandbox runtimes. |
+| `--guest-nofile` | `65536` | Target in-sandbox `agent` user `RLIMIT_NOFILE`. |
+| `--network-max-connections` | `8192` | Microsandbox network max concurrent guest connections. |
+| `--shutdown-sandboxes-on-exit` | off | Stop sandboxes when Toady exits. |
+| `--set-password [USERNAME]` | off | Bullpen-style interactive set/update of login user(s), then exit. Repeatable. |
+| `--delete-user USERNAME` | off | Delete configured login user(s), then exit. Repeatable. |
+| `--bootstrap-credentials` | off | Create credentials from `TOADY_BOOTSTRAP_USER` (default `admin`) and `TOADY_BOOTSTRAP_PASSWORD`, then exit. |
+
+There are no subcommands and no deployment modes. Environment variables:
+
+- `TOADY_PRODUCTION=1`: trust forwarded proxy headers and mark session cookies
+  `Secure` for TLS deployments.
+- `TOADY_ALLOWED_ORIGINS`: comma-separated extra allowed Socket.IO origins.
+- `TOADY_SESSION_DAYS`: persistent login duration, bounded to 1-365 days.
+- `TOADY_BOOTSTRAP_FORCE=1`: overwrite existing bootstrapped credentials.
+
+### 5.5 Base Image
+
+- Built once via a direct port of Bullpen's `deploy-sandbox.py` base-prep
+  logic, not a greenfield rewrite. Contents: Python 3, Node 22, bash,
+  bubblewrap, ca-certificates, curl, gh, git, iproute2, jq, Python venv
+  support, ripgrep, strace, `claude`, `codex`, `gemini`, and `opencode` CLIs.
+  Agent CLIs are not pre-authenticated; the user authenticates inside the
+  running sandbox.
+- Base prep uses Bullpen's prepare-sandbox -> local snapshot -> validation
+  sequence:
+  1. create a temporary Microsandbox from the OCI source image;
+  2. install OS packages with `DEBIAN_FRONTEND=noninteractive` and
+     `--no-install-recommends`;
+  3. install Python dependencies into `/opt/toady-venv`;
+  4. install npm CLIs with audit/fund/progress disabled and dev deps omitted;
+  5. write `/opt/toady-microsandbox-base-versions.txt`;
+  6. stop the prepare sandbox, create the local snapshot, then boot a fresh
+     validation sandbox from the snapshot and verify every required CLI.
+- Codex validation must keep Bullpen's architecture-specific package integrity
+  check for `@openai/codex-linux-arm64` / `@openai/codex-linux-x64`, because a
+  `codex --version` alone is not enough to prove the packaged native binary is
+  present.
+- Toady detects base image absence and offers preparation through the UI as
+  well as `--prepare-base`.
+- Acceptance target: base prep <=10 minutes and base artifacts <=4 GiB on the
+  representative dev machine. The first implementation milestone includes a
+  measurement script that records the actual values.
+- First terminal in a fresh sandbox prints a short one-time banner with
+  suggested auth commands: `claude`, `codex login`, `gemini auth`, `opencode`,
+  and `gh auth login`. The banner is informational only.
+
+### 5.6 Network and Dev-Server Ports
+
+- **Outbound** from sandboxes is allowed by default; agents need it. A
+  per-sandbox egress allow-list is deferred post-v1.
+- **Inbound** dev-server publishing is explicit. The user clicks **Publish
+  Port**, enters an internal TCP port (for example 3000, 5173, 8000), and Toady
+  allocates a host port from `--port-pool`.
+- A sandbox may have multiple published TCP ports. Port mappings persist in the
+  sandbox manifest and are restored on sandbox start if the host port is free.
+  If the host port is occupied, Toady marks the mapping `conflict` and offers
+  "reassign".
+- Published ports are bound to the same interface as Toady itself. A
+  loopback-bound Toady cannot accidentally publish a sandbox port to the LAN.
+- Sandbox cards show each mapping as `http://<host>:<host_port> -> :<guest_port>`
+  with copy/open actions. Toady does not auto-detect framework ports in v1.
+
+### 5.7 Sandbox Naming and Collisions
+
+- Slugs are `[a-z0-9][a-z0-9-]{0,30}`.
+- Before creating a Microsandbox VM, Toady lists existing Microsandbox
+  instances on the host. If the slug collides with an instance Toady does not
+  own (for example a Bullpen instance from a sibling tool), creation is refused
+  with an actionable error.
+- Sandbox manifests record the Microsandbox instance ID so subsequent
+  starts/stops target the correct VM even if names are reused later.
+
+### 5.8 Resource Admission
+
+- Per-sandbox vCPU/RAM caps default from CLI flags and can be overridden in the
+  New Sandbox modal.
+- Host-wide admission checks run before create/start. If admitting a sandbox
+  would exceed `--max-sandboxes`, `--max-total-vcpus`, or
+  `--max-total-memory-mib`, Toady refuses the operation with a clear error and
+  a list of currently running sandboxes.
+- These are planning/admission limits, not a hard anti-DoS guarantee. Runtime
+  enforcement remains Microsandbox's vCPU/RAM cap.
+
+### 5.9 Bullpen Microsandbox Deployment Inheritance
+
+Toady should reuse or port the maximum practical amount of Bullpen's
+`deploy-sandbox.py` architecture. The implementation should carve out reusable
+modules from Bullpen where possible and preserve the operational workarounds
+unless a Toady-specific test proves they are unnecessary.
+
+Required inherited pieces:
+
+- **Microsandbox SDK adapter**: keep Bullpen's `MicrosandboxRuntime` pattern
+  that imports the SDK lazily, verifies expected symbols, supports sync or async
+  SDK return values, can call `microsandbox.install()` when available, and
+  normalizes `Sandbox.get/create/remove/stop`, `Snapshot`, `Volume`, `Network`,
+  `Image.oci`, `AttachOptions`, `ExecOptions`, `Stdin`, and event classes.
+- **Prepared snapshot plumbing**: use Bullpen's base existence lookup,
+  snapshot-path extraction, prepare-sandbox creation, validation-sandbox
+  creation, snapshot creation, and cleanup pattern.
+- **Supported-host gate**: fail early unless the host is Apple Silicon macOS or
+  Linux with KVM, matching Bullpen's Microsandbox assumptions.
+- **Host FD mitigation**: call the Bullpen-derived `ensure_host_nofile()`
+  before final sandbox creation. Default target is 12000. If the soft limit
+  cannot be raised, warn loudly; do not silently continue as if capacity is
+  normal.
+- **Guest FD mitigation**: write `/etc/security/limits.d/toady-fd.conf` for the
+  `agent` user with soft/hard `nofile=65536`, then verify via
+  `su -s /bin/bash agent -c 'ulimit -Sn; ulimit -Hn'`. This preserves Bullpen's
+  fix for FD pressure surfacing as misleading TLS, DNS, and filesystem errors.
+- **Network cap mitigation**: set `Network.max_connections` to
+  `--network-max-connections` (default 8192) instead of accepting the SDK
+  default. If the installed SDK does not expose `max_connections`, fail with an
+  actionable Microsandbox upgrade error.
+- **Runtime user creation**: create an `agent` user/group inside the sandbox
+  with UID/GID from the invoking host user where practical, matching Bullpen's
+  group-collision handling. Prepare `/workspace`, `/home/agent/logs`,
+  `/home/agent/bin`, `/home/agent/.codex`, and `/var/lib/toady`; validate
+  write access after ownership changes.
+- **Small create-time env**: keep Bullpen's pattern of passing only minimal
+  env (`HOME`, `USER`, `LOGNAME`) to `Sandbox.create`, then exporting the full
+  runtime env inside exec/attach commands. This avoids SDK/runtime env bloat.
+- **Command helpers**: port Bullpen's `run_sandbox_shell`,
+  `run_configured_sandbox_shell`, `run_as_<user>`, output normalization, labeled
+  error wrapping, and secret redaction. Toady logs must redact bootstrap
+  passwords and common provider tokens.
+- **CA environment**: set `SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt`,
+  `SSL_CERT_DIR=/etc/ssl/certs`, `NODE_EXTRA_CA_CERTS` to the system bundle,
+  and `BUN_OPTIONS=--use-system-ca` for agent auth and verification commands.
+- **Claude IPv6 mitigation**: apply Bullpen's scoped guest IPv6 disablement
+  before Claude auth/verification, and for v1 apply it during sandbox bootstrap
+  so terminal-launched Claude uses IPv4. This exists because Microsandbox guest
+  IPv6 has produced TLS EOFs that Claude reports as certificate failures.
+- **Codex file-auth setup**: initialize `/home/agent/.codex/config.toml` with
+  `cli_auth_credentials_store = "file"`, clear stale Codex tmp/lock state
+  copied from Bullpen's flow, and verify the real Codex binary path. Toady does
+  not serialize all Codex invocations in v1, but it should keep the file-backed
+  auth setting.
+- **Localhost callback bridge helper**: keep Bullpen's URL detection and
+  sandbox-local callback delivery helper available for future provider-login
+  flows. Toady's terminal-first UX may make this less visible, but the helper
+  should be ported rather than rediscovered.
+- **PTY controller launch point**: extend Bullpen's sandbox bootstrap flow to
+  install and start `toady-ptyd` inside each sandbox after runtime directories,
+  FD limits, network caps, CA env, IPv6 mitigation, and Codex config are in
+  place.
+- **Health and detach checks**: use Bullpen-style wait loops for HTTP health
+  where applicable, and verify a sandbox is still running after detach/start.
+- **Port diagnostics**: keep Bullpen's host-port-in-use and `lsof` owner
+  diagnostic pattern for port-pool conflicts so errors tell the user what is
+  listening.
+
+Bullpen's Node front proxy is not required for Toady v1 because Toady itself is
+the host web server, but its useful constraints still apply to any future
+in-sandbox proxy: cache static assets, keep upstream connections short-lived,
+strip hop-by-hop headers, and handle WebSocket upgrades explicitly.
+
+## 6. Security Model
+
+Toady's value proposition is isolation, so this section is load-bearing.
+
+### Threat Model
+
+- **Adversary**: a misbehaving or actively malicious agent process running in a
+  sandbox. Assumes the agent is not a kernel-exploit-grade adversary.
+- **Assets to protect**: host filesystem outside the chosen workspace root,
+  shell credentials, browser cookies, ssh keys, other projects, and host kernel.
+
+### Controls
+
+1. **Microsandbox microVM isolation**: kernel boundary between agent and host.
+2. **Filesystem scoping**: the only host directory mounted into a sandbox is
+   the user-selected workspace root. `~/.ssh`, `~/.aws`, sibling projects, and
+   other host paths are not mounted.
+3. **No host shell**: Toady deliberately does not expose a host-side terminal.
+   Every terminal runs inside a sandbox.
+4. **Bullpen-style optional auth with network-bind guard**:
+   - Credentials are configured explicitly via `--set-password` or
+     `--bootstrap-credentials`. If no credentials exist, auth is disabled and
+     local loopback use has no login screen.
+   - If `--host` is not loopback (`127.0.0.1`, `localhost`, `::1`), Toady
+     refuses to start unless auth credentials already exist.
+   - Auth supports multiple local users, stored as password hashes in
+     `~/.toady/.env` mode 0600. This is not multi-tenancy; all authenticated
+     users control the same local Toady instance.
+   - Browser sessions are cookie-based, HTTP-only, SameSite=Lax, persistent by
+     default for 30 days, and backed by a stable secret key in `~/.toady/.env`.
+   - Login has CSRF protection, session fixation protection, and in-process
+     per-IP/per-user throttling.
+   - For non-localhost use, TLS is expected in front of Toady (Caddy, nginx,
+     Cloudflare Tunnel, etc.). `TOADY_PRODUCTION=1` enables secure cookies and
+     forwarded-proxy handling.
+5. **Socket.IO origin/auth checks**: WebSocket upgrades require an authenticated
+   session when auth is enabled and must come from loopback, same-origin,
+   forwarded same-origin, or `TOADY_ALLOWED_ORIGINS`.
+6. **CSRF checks**: state-changing REST calls require same-origin plus an
+   authenticated session when auth is enabled. Login/logout use CSRF tokens.
+7. **Canonical workspace-root validation**:
+   - All picker and free-text paths are expanded and resolved with `realpath`.
+   - Paths must be descendants of one configured browse root from
+     `--workspace-root`.
+   - Symlink escapes outside browse roots are rejected.
+   - Hard-reject `/`, `/etc`, `/var`, `/usr`, `/bin`, `/sbin`, `/boot`,
+     `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config`, `~/.toady`, and any ancestor
+     of `~/.toady`.
+   - Warn and require typed confirmation for `$HOME` itself and for paths whose
+     ancestors contain sensitive directories.
+   - Revalidate on sandbox create and start.
+8. **Process boundary on host**: the Toady server runs as the invoking user. No
+   setuid, no root requirement from Toady itself.
+9. **Agent auth tokens stay inside the sandbox** as a consequence of the
+   sandbox model. Toady neither reads nor writes agent auth files.
+10. **No arbitrary host command execution endpoints**: HTTP/WS API accepts only
+    sandbox CRUD, terminal CRUD, PTY forwarding, directory listing rooted at
+    allowed paths, dev-port mapping, and base-image prep.
+
+### Things Explicitly Not Secured in v1
+
+- Resource exhaustion inside a sandbox beyond Microsandbox's CPU/RAM caps.
+- Side-channel attacks across sandboxes on the same host.
+- Network egress filtering. An agent in a sandbox can talk to the open internet.
+- Plain HTTP on untrusted networks. Remote exposure must put TLS in front.
+
+## 7. Architecture
+
+```
+toady.py                  # CLI entry, arg parsing, browser launch
+server/
+  app.py                  # Flask + Flask-SocketIO factory, routes
+  auth.py                 # Bullpen-style password/session middleware
+  microsandbox_runtime.py # Ported Bullpen SDK adapter + base snapshot helpers
+  sandboxes.py            # Sandbox lifecycle, Microsandbox bindings
+  sandbox_bootstrap.py    # Ported deploy-sandbox runtime setup workarounds
+  pty_driver.py           # PTY-inside-VM driver interface + implementation
+  terminals.py            # PTY session manager, Socket.IO bridge, replay
+  base.py                 # Base-image preparation + status detection
+  persistence.py          # Atomic writes for ~/.toady state
+  validation.py           # Path / slug / port / resource validation
+  picker.py               # Server-side directory listing for picker
+static/
+  index.html              # CDN: Vue 3, Socket.IO client, xterm.js
+  login.html              # Public only when auth is enabled
+  app.js                  # Top-level Vue app, sandbox + tab state
+  components/
+    SandboxList.vue
+    TerminalTab.vue
+    NewSandboxModal.vue
+    PublishPortModal.vue
+    BasePrepView.vue
+  style.css
+guest/
+  toady-ptyd.py           # In-sandbox PTY controller installed in base image
+```
+
+- **Backend**: Flask + Flask-SocketIO (threading async mode), borrowed from
+  Bullpen's known-good setup.
+- **Transport**: Socket.IO for terminal I/O and sandbox status events; REST for
+  sandbox, terminal, picker, base, and port CRUD.
+- **Frontend**: Vue 3 from CDN. No npm. xterm.js from CDN with SRI.
+- **Sandboxing**: Microsandbox Python SDK.
+
+### Relationship to Bullpen
+
+Toady is not a slimmed-down Bullpen; it is a different product that shares
+specific subsystems. Bullpen's usage model is "drive an agent by ticket";
+Toady's is "work with the agent in a terminal." Concretely:
+
+- **Reused, largely unchanged**: base-image preparation pipeline,
+  Microsandbox SDK adapter, host/guest FD fixes, network cap fixes, runtime
+  user setup, CA/IPv6/Codex auth workarounds, port diagnostics, and sandbox
+  command helpers from `deploy-sandbox.py`.
+- **Reused, adapted**: Flask/Socket.IO setup, local auth model, CDN Vue shape,
+  and xterm.js terminal bridge.
+- **New**: a PTY that runs inside the sandbox VM rather than on the host.
+- **Removed wholesale**: tickets, workers, kanban, stats, commits, MCP, the
+  Manager/host-orchestration model. None of this has a Toady analog.
+
+### Implementation Strategy
+
+Implementation starts from a short PTY-controller spike, then Bullpen
+excavation. It does not start from an empty tree. The goal is to preserve
+Bullpen's infrastructure scars and delete Bullpen's product model.
+
+After the P-1 PTY controller spike, copy the Bullpen tree into Toady, then make
+small, test-backed cuts:
+
+- Keep first: `server/auth.py`, the relevant Flask/Socket.IO app bootstrap,
+  Socket.IO origin policy, login page, terminal UI component, terminal
+  validation, static Vue/CDN shape, deploy-sandbox Microsandbox runtime code,
+  base-prep code, runtime workarounds, and deploy tests.
+- Excavate or split first: `deploy-sandbox.py` into `microsandbox_runtime.py`,
+  `sandbox_bootstrap.py`, and `base.py`; `server/terminal.py` into a generic
+  terminal manager plus an inside-VM PTY driver seam.
+- Delete early: tickets/tasks, workers, service workers, MCP, profiles, model
+  catalog, commits, stats, kanban, teams, transfers, worktrees, prompt
+  hardening, and Bullpen-specific CLI subcommands.
+- Replace with Toady concepts: sandbox registry, sandbox manifests, workspace
+  picker, resource admission, dev-port publishing, terminal tabs scoped to
+  sandboxes.
+
+The rule of thumb is: infrastructure survives until a Toady test proves it can
+be removed; product features die unless the Toady spec names them.
+
+## 8. API Sketch
+
+REST:
+
+```
+GET    /health
+GET    /login
+GET    /login/csrf
+POST   /login
+POST   /logout
+
+GET    /api/sandboxes
+POST   /api/sandboxes
+       { name, workspace_root, vcpus?, memory_mib?, allow_shared_workspace? }
+GET    /api/sandboxes/:id
+POST   /api/sandboxes/:id/start
+POST   /api/sandboxes/:id/stop
+DELETE /api/sandboxes/:id?purge=true
+
+GET    /api/terminals
+POST   /api/sandboxes/:id/terminals
+       { cols, rows }
+DELETE /api/terminals/:id
+
+GET    /api/sandboxes/:id/ports
+POST   /api/sandboxes/:id/ports
+       { guest_port, host_port? }
+DELETE /api/sandboxes/:id/ports/:host_port
+
+GET    /api/base/status
+POST   /api/base/prepare
+GET    /api/picker?path=<abs-path>
+```
+
+Socket.IO events:
+
+```
+sandbox:status     { id, status, terminal_status? }
+terminal:join      { term_id }                           client -> server
+terminal:input     { term_id, data }                     client -> server
+terminal:resize    { term_id, cols, rows }               client -> server
+terminal:close     { term_id }                           client -> server
+terminal:replay    { term_id, data, truncated }          server -> client
+terminal:output    { term_id, data }                     server -> client
+terminal:exit      { term_id, exit_code }                server -> client
+base:log           { line }                              server -> client
+```
+
+## 9. Observability
+
+- `~/.toady/logs/server.log`: structured JSON-lines server log with request IDs
+  and sandbox IDs.
+- `~/.toady/logs/sandbox-<slug>.log`: per-sandbox Microsandbox lifecycle events
+  (create, start, stop, exit code, errors).
+- Log rotation: size-based, 10 MiB x 5 files per log.
+- No telemetry, no crash reporting, no external network calls from the Toady
+  process itself except those required for base-image preparation.
+- Logs must not include PTY payloads, passwords, session cookies, auth tokens,
+  full directory-picker listings, or agent credential file contents. Debug mode
+  may log additional structural metadata but never secrets or PTY text.
+
+## 10. Testability
+
+- **Unit tests** for path validation, slug validation, port-pool allocation,
+  resource admission, persistence, manifest reconciliation, auth, and terminal
+  session-manager state.
+- **Integration tests (host-only)**: fake Microsandbox driver using local
+  subprocesses in temp dirs. CI can run end-to-end flows without a microVM.
+- **Real Microsandbox tests**: tagged suite gated on Microsandbox availability.
+- **PTY tests**: byte-level fidelity for input/output, UTF-8, control codes,
+  resize, EOF, exit status, replay truncation, and 32-terminal concurrency.
+- **Auth tests**: no-login loopback when no credentials exist; refusal to start
+  on non-loopback without credentials; login/logout; throttling; CSRF; secure
+  cookies in `TOADY_PRODUCTION=1`; Socket.IO auth/origin rejection.
+- **Browser smoke tests**: prepare/fake base -> create sandbox -> open terminal
+  -> run `echo hello` -> publish a port -> tear down.
+
+## 11. Detailed Implementation Plan
+
+### P-1 - PTY Controller Spike (0.5-1 day, do first)
+
+Objective: prove the required in-sandbox PTY controller shape before the
+Bullpen excavation begins.
+
+Decision: Toady v1 defaults to an in-sandbox `toady-ptyd` process. The host
+server remains the only browser-facing web server. The spike exists to settle
+protocol details and to check whether Microsandbox's `attach()` / `exec_stream()`
+can simplify the controller, not to postpone the controller decision.
+
+Tasks:
+
+- Build the smallest `toady-ptyd` proof outside the app tree: open a PTY with
+  `forkpty`, run `/bin/bash -l`, stream bytes over a Unix socket or
+  sandbox-local loopback HTTP/WebSocket endpoint, resize, close, and report
+  exit status.
+- Launch it inside a throwaway Microsandbox using Bullpen's runtime helpers
+  where possible.
+- From the host, connect through the available Microsandbox control path and
+  prove `echo hello`, resize, EOF, and teardown.
+- Probe SDK `attach()` / `exec_stream()` only as a possible simplifier. If the
+  SDK cannot provide the full contract cleanly, continue with `toady-ptyd`.
+
+Verification gate:
+
+- A local proof opens `/bin/bash -l` inside a sandbox, sends `echo hello`,
+  receives exact PTY bytes, resizes, exits, and reports status.
+- The selected data path is documented in `docs/pty-controller-spike.md`.
+
+### P0 - Bullpen Excavation Baseline (0.5-1 day)
+
+Objective: create a Toady codebase by copying Bullpen and proving the copied
+baseline still runs before any cuts.
+
+Tasks:
+
+- Copy Bullpen source into the Toady repo as ordinary files. Do not use
+  `git subtree` for v1; preserve provenance through `docs/bullpen-excavation.md`
+  entries that record original Bullpen paths and notable commits/workarounds.
+- Rename executable entrypoint to `toady.py`, state root to `~/.toady`, env
+  prefixes to `TOADY_`, user-facing strings to Toady, and app port to 5858.
+- Keep Bullpen's `requirements.txt`, Flask/Socket.IO setup, static CDN shape,
+  login page, auth tests, Socket.IO CORS tests, terminal tests, and
+  deploy-sandbox tests initially.
+- Add an explicit `docs/bullpen-excavation.md` map listing copied files,
+  original Bullpen paths, retained subsystems, deleted subsystems, renamed
+  environment variables, and known dirty workarounds retained from
+  `deploy-sandbox.py`.
+
+Verification gate:
+
+- `python3 -m py_compile toady.py server/*.py`
+- Auth tests still pass after `BULLPEN_` -> `TOADY_` renaming.
+- App starts on `127.0.0.1:5858`, `/health` returns 200, and login behavior
+  matches Bullpen's optional-auth model.
+
+### P1 - Remove Bullpen Product Surface (1-2 days)
+
+Objective: delete ticket/worker product code while keeping the server alive.
+
+Tasks:
+
+- Remove CLI subcommands for `mcp`, `mcp-token`, and `ticket`; keep only server
+  startup, auth management, base-image flags, and sandbox flags.
+- Remove backend modules for tasks, workers, service workers, MCP, profiles,
+  model catalog, commits, stats, teams, transfers, worktrees, scheduler, and
+  Bullpen manager orchestration.
+- Remove frontend tabs/components for Kanban, tickets, workers, commits, stats,
+  files, live-agent chat, and worker focus.
+- Keep and simplify shared UI pieces: top bar, left pane shell, toast
+  container, terminal tab, login page, style variables, Socket.IO connection
+  lifecycle.
+- Replace Bullpen's initial state payload with a minimal Toady app-state
+  payload: auth/user status, base status, sandbox list, active terminals.
+
+Verification gate:
+
+- No imports of deleted Bullpen modules.
+- App still starts, serves static assets, connects Socket.IO, and shows an
+  empty Toady shell.
+- Remaining tests are either passing or intentionally moved to
+  `tests/bullpen_archived/` for reference.
+
+### P2 - Extract Microsandbox Infrastructure (1-2 days)
+
+Objective: turn `deploy-sandbox.py` from a Bullpen deploy script into Toady's
+runtime substrate.
+
+Tasks:
+
+- Split copied `deploy-sandbox.py` into:
+  - `server/microsandbox_runtime.py`: SDK adapter, sync/async normalization,
+    snapshot lookup, create/remove/stop/get, port diagnostics, supported-host
+    detection.
+  - `server/sandbox_bootstrap.py`: `agent` user creation, FD limits, network
+    caps, CA env, Claude IPv6 mitigation, Codex file-auth setup, mount checks.
+  - `server/base.py`: prepare sandbox, OS package install, Python venv install,
+    npm CLI install, version manifest, snapshot creation, validation sandbox.
+- Rename Bullpen paths/users/env vars to Toady equivalents:
+  `/home/bullpen` -> `/home/agent`, `/var/lib/bullpen` -> `/var/lib/toady`,
+  `/opt/bullpen-venv` -> `/opt/toady-venv`.
+- Preserve defaults: host nofile 12000, guest nofile 65536,
+  network max connections 8192, source image `node:22-bookworm`.
+- Keep deploy-time secret redaction and labeled sandbox command errors.
+- Keep the localhost callback bridge helper even if not exposed in the v1 UI.
+
+Verification gate:
+
+- Ported deploy/base tests pass against fake SDK objects.
+- `--prepare-base` reaches the expected Microsandbox SDK calls in fake-driver
+  tests.
+- Codex integrity command, Claude IPv6 mitigation, FD-limit setup, and
+  network-cap mutation are unit-covered.
+
+### P3 - Toady Persistence and Validation (1 day)
+
+Objective: replace Bullpen workspace state with Toady sandbox manifests.
+
+Tasks:
+
+- Implement atomic `~/.toady/config.json` and `sandboxes/<slug>.json` writes.
+- Implement sandbox manifest schema: slug, display name, workspace path,
+  canonical workspace path, home path, resource caps, published ports,
+  created-at, last-status, Microsandbox instance ID.
+- Implement startup reconciliation against Microsandbox instances.
+- Implement slug validation, canonical workspace path validation, browse-root
+  validation, symlink escape rejection, blocklist/typed-confirm warnings,
+  port-pool validation, and resource admission.
+- Keep Bullpen's validation style and tests where directly reusable.
+
+Verification gate:
+
+- Unit tests cover manifest atomicity, reconciliation states, slug collisions,
+  path edge cases, resource-admission failures, and port conflicts.
+
+### P4 - Sandbox Lifecycle API and UI (2-3 days)
+
+Objective: create/start/stop/destroy sandboxes without terminals.
+
+Tasks:
+
+- Implement REST routes for sandbox list/create/get/start/stop/destroy.
+- Implement base status and base prepare routes, streaming `base:log` over
+  Socket.IO.
+- Implement server-side picker route rooted at configured browse roots.
+- Implement left pane sandbox cards, New Sandbox modal, base-prep first-run
+  view, status pills, resource readouts, and destroy confirmation.
+- Implement slug collision checks against Toady manifests and foreign
+  Microsandbox instances.
+- Implement explicit shared-workspace typed confirmation.
+
+Verification gate:
+
+- Fake-driver browser smoke: base ready -> create sandbox -> stop -> start ->
+  destroy.
+- Host-only integration tests do not require real Microsandbox.
+
+### P5 - Dev-Port Publishing (1 day)
+
+Objective: expose sandbox dev servers through explicit port mappings.
+
+Tasks:
+
+- Implement persisted mappings `{guest_port, host_port, status}`.
+- Allocate host ports from `--port-pool`; report `conflict` if occupied.
+- Restore mappings on start when possible; offer reassign when not.
+- Add Publish Port modal and mapping chips with open/copy/delete actions.
+- Use Bullpen-style `lsof` diagnostics in API errors.
+
+Verification gate:
+
+- Unit tests cover allocation, conflict, restore, delete, and reassign.
+- Fake-driver test confirms mapping state survives stop/start.
+
+### P6 - PTY Controller Integration (2-3 days)
+
+Objective: turn the P-1 proof into the production terminal driver.
+
+Tasks:
+
+- Add `guest/toady-ptyd.py` to the base image and start it during sandbox
+  bootstrap.
+- Implement `server/pty_driver.py` as the host-side client for `toady-ptyd`.
+- Define controller operations: create PTY, join/read stream, write bytes,
+  resize, close, query foreground state, query status, and shutdown.
+- Add controller authentication/authorization at the transport layer using a
+  per-sandbox secret stored in the sandbox manifest and injected at bootstrap.
+- Record the controller contract in tests before wiring the browser UI.
+
+Verification gate:
+
+- Real Microsandbox terminal smoke runs `echo hello` through `toady-ptyd`.
+- Controller refuses connections without the per-sandbox secret.
+- PTY survives browser disconnect while the Toady server remains running.
+
+### P7 - Terminal Manager and Browser Reattach (2-4 days)
+
+Objective: adapt Bullpen's terminal stack from host PTYs to inside-VM PTYs.
+
+Tasks:
+
+- Keep Bullpen's `TerminalManager` threading, locking, event naming patterns,
+  cleanup-at-exit, resize validation, and xterm.js component shape.
+- Replace `pty.openpty()` / `subprocess.Popen()` with `PtyDriver.open()` for
+  inside-sandbox sessions.
+- Add per-PTY ring buffers with line and byte caps.
+- Add `GET /api/terminals` discovery and `terminal:join` replay.
+- Implement browser-disconnect grace period and foreground-process close
+  confirmation where the driver can report foreground state.
+- Raise per-sandbox terminal limit to 32 and remove owner-SID-only ownership so
+  reconnecting browsers can rediscover terminals.
+
+Verification gate:
+
+- Fake-driver terminal tests cover open/input/output/resize/close/replay.
+- Real Microsandbox terminal smoke runs `echo hello`.
+- 32 terminals can be opened in one sandbox without server errors.
+
+### P8 - Polish and Release Hardening (2-3 days)
+
+Objective: make the first release usable and documented.
+
+Tasks:
+
+- Add theme toggle, toasts, logs viewer, base rebuild UI, first-terminal agent
+  auth banner, and clear empty/error states.
+- Write README, `docs/security.md`, and `docs/bullpen-excavation.md`.
+- Measure base prep time and artifact size opportunistically; record results
+  but do not block early implementation on the 10 minute / 4 GiB target.
+- Run tagged real-Microsandbox integration tests on the target dev machine.
+- Cut `0.1.0`.
+
+Verification gate:
+
+- Browser smoke covers prepare/create/terminal/port/destroy.
+- Real-Microsandbox suite passes or has documented host prerequisite skips.
+- No unresolved `Bullpen` user-facing strings remain except attribution/docs.
+
+### Post-v1
+- Optional Files panel.
+- Per-sandbox network egress allow-list.
+- Per-sandbox shell choice (zsh, fish).
+- Snapshot / clone sandbox.
+- "Offline" toggle.
+- Sandbox rename.
+
+## 12. Issues to Resolve
+
+No open product decisions are blocking implementation planning.
+
+Implementation watchpoints:
+
+1. **PTY controller protocol details.** P-1 must confirm Unix socket vs
+   sandbox-local loopback, framing, auth token handling, and how the host Toady
+   server reaches the controller through Microsandbox.
+2. **Base-image budget.** Low priority during excavation. Measure prep time and
+   artifact size before v1; trim or raise the target only if the measured cost
+   is painful.
+3. **License/attribution.** Deferred while private/local. Revisit before public
+   release or distribution.
+
+---
+
+End of spec.
