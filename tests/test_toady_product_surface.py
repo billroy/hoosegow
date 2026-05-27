@@ -58,7 +58,8 @@ def test_toady_mode_hides_legacy_product_static_assets(tmp_path):
 
     assert client.get("/app.js").status_code == 200
     assert client.get("/style.css").status_code == 200
-    assert client.get("/manager/vendor/xterm/xterm.js").status_code == 200
+    assert client.get("/vendor/xterm/xterm.js").status_code == 200
+    assert client.get("/manager/vendor/xterm/xterm.js").status_code == 404
     assert client.get("/components/BullpenTab.js").status_code == 404
     assert client.get("/commands.js").status_code == 404
     assert client.get("/manager/manager.js").status_code == 404

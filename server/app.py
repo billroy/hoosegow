@@ -524,7 +524,7 @@ def create_app(
             filename = (request.view_args or {}).get("filename", "")
             if filename in LEGACY_PRODUCT_STATIC_FILES or filename.startswith(LEGACY_PRODUCT_STATIC_PREFIXES):
                 abort(404)
-            if filename.startswith("manager/") and not filename.startswith("manager/vendor/"):
+            if filename.startswith("manager/"):
                 abort(404)
         if request.path.startswith(LEGACY_PRODUCT_API_PREFIXES):
             abort(404)

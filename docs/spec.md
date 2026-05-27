@@ -445,7 +445,7 @@ server/
   validation.py           # Path / slug / port / resource validation
   picker.py               # Server-side directory listing for picker
 static/
-  index.html              # CDN: Vue 3, Socket.IO client, xterm.js
+  index.html              # CDN Vue/Socket.IO/Lucide plus vendored xterm.js
   login.html              # Public only when auth is enabled
   app.js                  # Top-level Vue app, sandbox + tab state
   components/
@@ -463,7 +463,8 @@ guest/
   Bullpen's known-good setup.
 - **Transport**: Socket.IO for terminal I/O and sandbox status events; REST for
   sandbox, terminal, picker, base, and port CRUD.
-- **Frontend**: Vue 3 from CDN. No npm. xterm.js from CDN with SRI.
+- **Frontend**: Vue 3, Socket.IO client, and Lucide from CDN. No npm build.
+  xterm.js is vendored under `static/vendor/xterm/`.
 - **Sandboxing**: Microsandbox Python SDK.
 - **Host-to-controller bridge**: token-protected HTTP RPC and long-poll event
   reads from host Toady to `toady-ptyd`, over a Microsandbox-published
