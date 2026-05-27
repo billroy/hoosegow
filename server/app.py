@@ -1553,6 +1553,42 @@ def create_app(
             socketio.emit("sandbox:terminal:error", {"terminal_id": terminal_id, "error": str(exc)}, to=request.sid)
             return _toady_terminal_error_payload(exc)
 
+    @socketio.on("port:list")
+    def toady_socket_list_ports(payload):
+        slug = (payload or {}).get("sandbox_id") or (payload or {}).get("id") or ""
+        try:
+            return {"ok": True, "ports": _sandbox_service().list_ports(slug)}
+        except (SandboxServiceError, ValidationError) as exc:
+            return _sandbox_error_payload(exc)
+
+    @socketio.on("port:publish")
+    def toady_socket_publish_port(payload):
+        payload = payload or {}
+        slug = payload.get("sandbox_id") or payload.get("id") or ""
+        try:
+            mapping = _sandbox_service().publish_port(slug, payload)
+            ports = _sandbox_service().list_ports(slug)
+        except (SandboxServiceError, ValidationError, RuntimeError) as exc:
+            socketio.emit("sandbox:error", {"id": slug, "error": str(exc)}, to=request.sid)
+            return _sandbox_error_payload(exc)
+        _emit_sandboxes_updated()
+        socketio.emit("ports:updated", {"sandbox_id": slug, "ports": ports}, to="authenticated")
+        return {"ok": True, "port": mapping, "ports": ports}
+
+    @socketio.on("port:unpublish")
+    def toady_socket_unpublish_port(payload):
+        payload = payload or {}
+        slug = payload.get("sandbox_id") or payload.get("id") or ""
+        try:
+            mapping = _sandbox_service().unpublish_port(slug, payload)
+            ports = _sandbox_service().list_ports(slug)
+        except (SandboxServiceError, ValidationError, RuntimeError) as exc:
+            socketio.emit("sandbox:error", {"id": slug, "error": str(exc)}, to=request.sid)
+            return _sandbox_error_payload(exc)
+        _emit_sandboxes_updated()
+        socketio.emit("ports:updated", {"sandbox_id": slug, "ports": ports}, to="authenticated")
+        return {"ok": True, "port": mapping, "ports": ports}
+
     register_events(socketio, app)
 
     # Start time-based scheduler for each workspace

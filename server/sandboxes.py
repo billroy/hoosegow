@@ -20,6 +20,7 @@ from server.microsandbox_runtime import (
     ToadySandboxSpec,
     ensure_host_ports_available,
     host_port_in_use,
+    host_port_owner,
 )
 from server.sandbox_bootstrap import (
     build_runtime_env,
@@ -34,7 +35,7 @@ from server.sandbox_bootstrap import (
 )
 from server.sandbox_store import SCHEMA_VERSION, SandboxManifest, SandboxStore
 from server.toady_validation import ValidationError, normalize_browse_roots, validate_slug, validate_workspace_path
-from server.toady_validation import parse_port_pool
+from server.toady_validation import parse_port, parse_port_pool
 
 
 class SandboxServiceError(RuntimeError):
@@ -146,6 +147,80 @@ class SandboxService:
                 return port
         raise SandboxServiceError(f"No free ports in Toady port pool {start}-{end}.")
 
+    def _host_port_reserved(self, port: int) -> bool:
+        for manifest in self.store.list():
+            controller = manifest.controller or {}
+            if int(controller.get("host_port") or 0) == port:
+                return True
+            for mapping in manifest.published_ports:
+                if int(mapping.get("host_port") or 0) == port:
+                    return True
+        return False
+
+    def _ensure_publishable_host_port(self, port: int) -> None:
+        if self._host_port_reserved(port):
+            raise SandboxServiceError(f"Host port {port} is already reserved by Toady.")
+        if host_port_in_use(port):
+            owner = host_port_owner(port)
+            detail = f"\n{owner}" if owner else ""
+            raise SandboxServiceError(f"Host port {port} is already listening.{detail}")
+
+    def list_ports(self, slug: str) -> list[dict[str, Any]]:
+        manifest = self.store.get(validate_slug(slug))
+        if manifest is None:
+            raise SandboxServiceError(f"Unknown sandbox: {slug}")
+        return list(manifest.published_ports or [])
+
+    def publish_port(self, slug: str, payload: dict[str, Any]) -> dict[str, Any]:
+        manifest = self.store.get(validate_slug(slug))
+        if manifest is None:
+            raise SandboxServiceError(f"Unknown sandbox: {slug}")
+        guest_port = parse_port("guest port", payload.get("guest_port") or payload.get("guestPort") or "")
+        host_value = payload.get("host_port") or payload.get("hostPort")
+        host_port = parse_port("host port", host_value) if host_value else self._allocate_port()
+        self._ensure_publishable_host_port(host_port)
+
+        for mapping in manifest.published_ports:
+            if mapping.get("status") == "remove_on_restart":
+                continue
+            if int(mapping.get("guest_port") or 0) == guest_port:
+                raise SandboxServiceError(f"Guest port {guest_port} is already published.")
+            if int(mapping.get("host_port") or 0) == host_port:
+                raise SandboxServiceError(f"Host port {host_port} is already published.")
+
+        status = "pending_restart" if manifest.last_status == "running" else "active"
+        mapping = {
+            "guest_port": guest_port,
+            "host_port": host_port,
+            "status": status,
+        }
+        manifest.published_ports.append(mapping)
+        self.store.save(manifest)
+        return mapping
+
+    def unpublish_port(self, slug: str, payload: dict[str, Any]) -> dict[str, Any]:
+        manifest = self.store.get(validate_slug(slug))
+        if manifest is None:
+            raise SandboxServiceError(f"Unknown sandbox: {slug}")
+        host_port = parse_port("host port", payload.get("host_port") or payload.get("hostPort") or "")
+        kept = []
+        removed: dict[str, Any] | None = None
+        for mapping in manifest.published_ports:
+            if int(mapping.get("host_port") or 0) != host_port:
+                kept.append(mapping)
+                continue
+            removed = dict(mapping)
+            if manifest.last_status == "running" and mapping.get("status") == "active":
+                updated = dict(mapping)
+                updated["status"] = "remove_on_restart"
+                kept.append(updated)
+                removed = updated
+        if removed is None:
+            raise SandboxServiceError(f"Host port {host_port} is not published.")
+        manifest.published_ports = kept
+        self.store.save(manifest)
+        return removed
+
     async def start(self, slug: str) -> dict[str, Any]:
         manifest = self.store.get(validate_slug(slug))
         if manifest is None:
@@ -158,7 +233,12 @@ class SandboxService:
         if not host_port:
             raise SandboxServiceError("Sandbox controller host port allocation is not implemented yet.")
         ports = {int(host_port): guest_port}
-        for mapping in manifest.published_ports:
+        active_mappings = [
+            mapping
+            for mapping in manifest.published_ports
+            if mapping.get("status") != "remove_on_restart"
+        ]
+        for mapping in active_mappings:
             ports[int(mapping["host_port"])] = int(mapping["guest_port"])
         ensure_host_ports_available(list(ports))
 
@@ -195,6 +275,10 @@ class SandboxService:
 
         manifest.last_status = "running"
         manifest.microsandbox_id = manifest.slug
+        manifest.published_ports = [
+            {**mapping, "status": "active"}
+            for mapping in active_mappings
+        ]
         manifest.updated_at = time.time()
         return self.store.save(manifest).to_dict()
 

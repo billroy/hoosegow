@@ -36,6 +36,10 @@ createApp({
       vcpus: 4,
       memory_mib: 4096,
     });
+    const portForm = reactive({
+      guest_port: 3000,
+      host_port: '',
+    });
     const toast = reactive({ message: '', tone: 'info' });
     const activeTerminal = reactive({
       id: '',
@@ -322,6 +326,79 @@ createApp({
       refreshIcons();
     }
 
+    function portUrl(mapping) {
+      if (!mapping?.host_port) return '';
+      return `http://127.0.0.1:${mapping.host_port}`;
+    }
+
+    function portStatusText(mapping) {
+      if (!mapping) return '';
+      if (mapping.status === 'pending_restart') return 'after restart';
+      if (mapping.status === 'remove_on_restart') return 'removing on restart';
+      return mapping.status || 'active';
+    }
+
+    async function publishPort(sandbox) {
+      if (!sandbox) return;
+      const guestPort = Number(portForm.guest_port);
+      const hostPort = String(portForm.host_port || '').trim();
+      if (!Number.isInteger(guestPort) || guestPort < 1 || guestPort > 65535) {
+        setToast('Guest port must be between 1 and 65535.', 'error');
+        return;
+      }
+      busy.value = true;
+      try {
+        const response = await call('port:publish', {
+          sandbox_id: sandbox.slug,
+          guest_port: guestPort,
+          host_port: hostPort || undefined,
+        });
+        portForm.host_port = '';
+        await loadSandboxes();
+        const restartNote = response.port?.status === 'pending_restart' ? ' Restart the sandbox to activate it.' : '';
+        setToast(`Published :${guestPort}.${restartNote}`, 'success');
+      } catch (error) {
+        setToast(error.message, 'error');
+      } finally {
+        busy.value = false;
+      }
+    }
+
+    async function unpublishPort(sandbox, mapping) {
+      if (!sandbox || !mapping) return;
+      busy.value = true;
+      try {
+        const response = await call('port:unpublish', {
+          sandbox_id: sandbox.slug,
+          host_port: mapping.host_port,
+        });
+        await loadSandboxes();
+        const restartNote = response.port?.status === 'remove_on_restart' ? ' Restart the sandbox to remove the live mapping.' : '';
+        setToast(`Unpublished :${mapping.guest_port}.${restartNote}`, 'success');
+      } catch (error) {
+        setToast(error.message, 'error');
+      } finally {
+        busy.value = false;
+      }
+    }
+
+    async function copyPortUrl(mapping) {
+      const url = portUrl(mapping);
+      if (!url) return;
+      try {
+        await navigator.clipboard.writeText(url);
+        setToast('Port URL copied.', 'success');
+      } catch (_error) {
+        setToast(url, 'info');
+      }
+    }
+
+    function openPort(mapping) {
+      const url = portUrl(mapping);
+      if (!url) return;
+      window.open(url, '_blank', 'noopener');
+    }
+
     async function destroySandbox(sandbox) {
       if (!sandbox) return;
       const confirmed = window.confirm(`Destroy ${sandbox.slug}?`);
@@ -410,6 +487,11 @@ createApp({
       if (payload?.terminal_id !== activeTerminal.id) return;
       closeTerminal({ silent: true, remote: false });
     });
+    socket.on('ports:updated', (payload) => {
+      const sandbox = sandboxes.find((item) => item.slug === payload?.sandbox_id);
+      if (sandbox) sandbox.published_ports = payload.ports || [];
+      refreshIcons();
+    });
     socket.on('base:status', (payload) => {
       Object.assign(baseStatus, payload?.base || {});
       refreshIcons();
@@ -440,6 +522,12 @@ createApp({
       loadBaseStatus,
       loadSandboxes,
       openTerminal,
+      copyPortUrl,
+      openPort,
+      portForm,
+      portStatusText,
+      portUrl,
+      publishPort,
       requestBasePrepare,
       runSandboxAction,
       selected,
@@ -448,6 +536,7 @@ createApp({
       terminalRef,
       terminalVisible,
       toast,
+      unpublishPort,
     };
   },
   template: `
@@ -575,6 +664,48 @@ createApp({
               <strong>:{{ selected.controller?.host_port || '-' }}</strong>
             </div>
           </div>
+
+          <section class="ports-panel">
+            <div class="ports-header">
+              <div>
+                <h3>Published Ports</h3>
+                <p>Expose a sandbox web server through a local host port.</p>
+              </div>
+              <form class="port-form" @submit.prevent="publishPort(selected)">
+                <label>
+                  <span>Guest</span>
+                  <input v-model.number="portForm.guest_port" type="number" min="1" max="65535">
+                </label>
+                <label>
+                  <span>Host</span>
+                  <input v-model="portForm.host_port" inputmode="numeric" placeholder="auto">
+                </label>
+                <button class="tool-button" type="submit" :disabled="busy">
+                  <i data-lucide="radio-tower"></i><span>Publish</span>
+                </button>
+              </form>
+            </div>
+            <div v-if="selected.published_ports?.length" class="port-list">
+              <div v-for="mapping in selected.published_ports" :key="mapping.host_port" class="port-row" :data-status="mapping.status">
+                <span class="port-main">
+                  <strong>{{ portUrl(mapping) }}</strong>
+                  <small>:{{ mapping.host_port }} -> :{{ mapping.guest_port }} / {{ portStatusText(mapping) }}</small>
+                </span>
+                <span class="port-actions">
+                  <button class="icon-button" type="button" title="Open port" :disabled="mapping.status !== 'active'" @click="openPort(mapping)">
+                    <i data-lucide="external-link"></i>
+                  </button>
+                  <button class="icon-button" type="button" title="Copy URL" @click="copyPortUrl(mapping)">
+                    <i data-lucide="copy"></i>
+                  </button>
+                  <button class="icon-button" type="button" title="Unpublish" :disabled="busy" @click="unpublishPort(selected, mapping)">
+                    <i data-lucide="x"></i>
+                  </button>
+                </span>
+              </div>
+            </div>
+            <div v-else class="port-empty">No published ports</div>
+          </section>
 
           <div class="terminal-surface">
             <div class="terminal-title">

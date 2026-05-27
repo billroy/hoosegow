@@ -476,6 +476,120 @@ input:focus {
   font-size: 18px;
 }
 
+.ports-panel {
+  margin-bottom: 18px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.ports-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.ports-header h3,
+.ports-header p {
+  margin: 0;
+}
+
+.ports-header h3 {
+  font-size: 14px;
+}
+
+.ports-header p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.port-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.port-form label {
+  display: grid;
+  gap: 5px;
+}
+
+.port-form label span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.port-form input {
+  width: 92px;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #10151b;
+  color: var(--text);
+  padding: 0 10px;
+}
+
+.port-list {
+  display: grid;
+  gap: 8px;
+}
+
+.port-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 8px 10px;
+  border: 1px solid #26303a;
+  border-radius: 8px;
+  background: #111820;
+}
+
+.port-row[data-status="pending_restart"],
+.port-row[data-status="remove_on_restart"] {
+  border-color: #614c28;
+}
+
+.port-main {
+  min-width: 0;
+}
+
+.port-main strong,
+.port-main small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.port-main strong {
+  font-size: 13px;
+}
+
+.port-main small,
+.port-empty {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.port-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.port-empty {
+  display: grid;
+  min-height: 46px;
+  place-items: center;
+  border: 1px dashed #26303a;
+  border-radius: 8px;
+}
+
 .terminal-surface {
   min-height: 260px;
   border: 1px solid #26303a;
@@ -636,6 +750,19 @@ input:focus {
 
   .metric-grid {
     grid-template-columns: repeat(2, minmax(130px, 1fr));
+  }
+
+  .ports-header,
+  .port-form {
+    display: grid;
+  }
+
+  .port-form {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .port-form .tool-button {
+    grid-column: 1 / -1;
   }
 }
 

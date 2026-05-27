@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from server.sandboxes import SandboxService
+from server.sandboxes import SandboxService, SandboxServiceError
 from server.toady_validation import ValidationError, validate_slug, validate_workspace_path
 
 
@@ -70,3 +70,54 @@ def test_sandbox_service_prevents_duplicate_slug(tmp_path):
 
     with pytest.raises(RuntimeError):
         service.create_manifest({"name": "demo", "workspace_root": str(workspace)})
+
+
+def test_sandbox_service_publishes_persisted_port_mapping(tmp_path, monkeypatch):
+    monkeypatch.setattr("server.sandboxes.host_port_in_use", lambda _port: False)
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    service = SandboxService(
+        home=str(tmp_path / "state"),
+        browse_roots=[str(tmp_path)],
+        port_pool="63100-63105",
+    )
+    service.create_manifest({"name": "demo", "workspace_root": str(workspace)})
+
+    mapping = service.publish_port("demo", {"guest_port": 5173})
+
+    assert mapping == {"guest_port": 5173, "host_port": 63101, "status": "active"}
+    assert service.list_ports("demo") == [mapping]
+
+
+def test_sandbox_service_marks_running_publish_pending_restart(tmp_path, monkeypatch):
+    monkeypatch.setattr("server.sandboxes.host_port_in_use", lambda _port: False)
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    service = SandboxService(
+        home=str(tmp_path / "state"),
+        browse_roots=[str(tmp_path)],
+        port_pool="63100-63105",
+    )
+    service.create_manifest({"name": "demo", "workspace_root": str(workspace)})
+    manifest = service.store.get("demo")
+    manifest.last_status = "running"
+    service.store.save(manifest)
+
+    mapping = service.publish_port("demo", {"guest_port": 3000, "host_port": 63104})
+
+    assert mapping["status"] == "pending_restart"
+
+
+def test_sandbox_service_rejects_reserved_host_port(tmp_path, monkeypatch):
+    monkeypatch.setattr("server.sandboxes.host_port_in_use", lambda _port: False)
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    service = SandboxService(
+        home=str(tmp_path / "state"),
+        browse_roots=[str(tmp_path)],
+        port_pool="63100-63105",
+    )
+    service.create_manifest({"name": "demo", "workspace_root": str(workspace)})
+
+    with pytest.raises(SandboxServiceError):
+        service.publish_port("demo", {"guest_port": 3000, "host_port": 63100})
