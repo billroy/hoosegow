@@ -17,6 +17,25 @@
   --shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
 }
 
+html[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f5f7fa;
+  --panel: #ffffff;
+  --panel-2: #eef2f6;
+  --line: #d5dde6;
+  --line-strong: #b8c4d0;
+  --text: #17202a;
+  --muted: #5f6c7b;
+  --subtle: #7c8998;
+  --teal: #1b8b80;
+  --teal-2: #146a63;
+  --blue: #236fbd;
+  --amber: #9b6f16;
+  --red: #b93f47;
+  --green: #357d4c;
+  --shadow: 0 18px 48px rgba(35, 45, 58, 0.18);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -1010,6 +1029,92 @@ input:focus {
   place-items: center;
   color: var(--muted);
   font-size: 13px;
+}
+
+html[data-theme="light"] .topbar,
+html[data-theme="light"] .create-band {
+  background: #f8fafc;
+}
+
+html[data-theme="light"] .brand-mark {
+  border-color: #80c5bd;
+  background: #dff5f1;
+  color: #0d5b55;
+}
+
+html[data-theme="light"] .sidebar,
+html[data-theme="light"] .workspace {
+  background: #edf2f7;
+}
+
+html[data-theme="light"] .sandbox-row,
+html[data-theme="light"] .metric,
+html[data-theme="light"] .ports-panel,
+html[data-theme="light"] .terminal-surface,
+html[data-theme="light"] .manifest div,
+html[data-theme="light"] .picker-panel,
+html[data-theme="light"] .modal-panel {
+  background: var(--panel);
+}
+
+html[data-theme="light"] .sandbox-row:hover,
+html[data-theme="light"] .sandbox-row.active,
+html[data-theme="light"] .picker-row:hover,
+html[data-theme="light"] .terminal-tab {
+  background: #eef4f8;
+}
+
+html[data-theme="light"] input {
+  background: #ffffff;
+}
+
+html[data-theme="light"] .base-chip,
+html[data-theme="light"] .base-banner {
+  border-color: #d9a842;
+  background: #fff6df;
+  color: #6f4d0e;
+}
+
+html[data-theme="light"] .base-chip[data-state="ready"],
+html[data-theme="light"] .connection.online {
+  border-color: #8fc99e;
+  color: #246d3d;
+}
+
+html[data-theme="light"] .base-banner[data-state="error"],
+html[data-theme="light"] .toast[data-tone="error"] {
+  border-color: #dda0a5;
+  background: #fff0f2;
+  color: #8b262f;
+}
+
+html[data-theme="light"] .base-log,
+html[data-theme="light"] .log-output,
+html[data-theme="light"] .terminal-viewport {
+  border-color: #cdd7e1;
+  background: #111820;
+  color: #dbe5ee;
+}
+
+html[data-theme="light"] .operation-strip {
+  border-color: #8ac4c1;
+  background: #e1f4f2;
+  color: #135c5a;
+}
+
+html[data-theme="light"] .operation-strip small,
+html[data-theme="light"] .terminal-title-text small,
+html[data-theme="light"] .terminal-tab small,
+html[data-theme="light"] .port-empty {
+  color: #657386;
+}
+
+html[data-theme="light"] .modal-backdrop {
+  background: rgba(225, 232, 240, 0.74);
+}
+
+html[data-theme="light"] .toast {
+  background: #ffffff;
 }
 
 @media (max-width: 980px) {

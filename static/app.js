@@ -19,6 +19,9 @@ function basename(path) {
 createApp({
   setup() {
     const socket = io({ transports: ['websocket', 'polling'] });
+    const storedTheme = window.localStorage.getItem('toady-theme');
+    const preferredTheme = window.matchMedia?.('(prefers-color-scheme: light)')?.matches ? 'light' : 'dark';
+    const theme = ref(storedTheme === 'light' || storedTheme === 'dark' ? storedTheme : preferredTheme);
     const connected = ref(false);
     const busy = ref(false);
     const selectedSlug = ref('');
@@ -125,6 +128,17 @@ createApp({
       nextTick(() => {
         if (window.lucide) window.lucide.createIcons();
       });
+    }
+
+    function applyTheme() {
+      document.documentElement.dataset.theme = theme.value;
+      window.localStorage.setItem('toady-theme', theme.value);
+    }
+
+    function toggleTheme() {
+      theme.value = theme.value === 'dark' ? 'light' : 'dark';
+      applyTheme();
+      refreshIcons();
     }
 
     function currentTerminalRecord() {
@@ -820,6 +834,7 @@ createApp({
       loadTerminalSessions().catch((error) => setToast(error.message, 'error'));
     });
 
+    applyTheme();
     refreshIcons();
 
     return {
@@ -866,6 +881,8 @@ createApp({
       terminalRef,
       terminals,
       terminalVisible,
+      theme,
+      toggleTheme,
       toast,
       unpublishPort,
       picker,
@@ -891,6 +908,9 @@ createApp({
           </button>
           <button class="icon-button" type="button" title="Base logs" @click="openBaseLogs">
             <i data-lucide="scroll-text"></i>
+          </button>
+          <button class="icon-button" type="button" title="Toggle theme" @click="toggleTheme">
+            <i :data-lucide="theme === 'dark' ? 'sun' : 'moon'"></i>
           </button>
           <span class="connection" :class="{ online: connected }">
             <span class="dot"></span>{{ connected ? 'Connected' : 'Offline' }}

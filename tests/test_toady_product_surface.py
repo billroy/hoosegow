@@ -1,7 +1,11 @@
 import json
+from pathlib import Path
 
 from server.app import create_app
 from server.app import socketio
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_toady_mode_hides_legacy_product_rest_apis(tmp_path):
@@ -99,3 +103,13 @@ def test_base_logs_are_available_after_reconnect(tmp_path):
             "logs": ["first line", "second line"],
         },
     }
+
+
+def test_toady_shell_has_theme_toggle_assets():
+    app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+    css = (ROOT / "static" / "style.css").read_text(encoding="utf-8")
+
+    assert "toady-theme" in app_js
+    assert "toggleTheme" in app_js
+    assert ':data-lucide="theme ===' in app_js
+    assert 'html[data-theme="light"]' in css
