@@ -159,6 +159,18 @@ class SandboxService:
         )
         if warnings and not payload.get("confirmed_sensitive_workspace"):
             raise SandboxServiceError("Workspace confirmation required: " + "; ".join(warnings))
+        sharing_sandboxes = [
+            manifest.slug
+            for manifest in self.store.list()
+            if manifest.canonical_workspace_path == canonical_workspace_path
+            and manifest.last_status in {"running", "starting"}
+        ]
+        if sharing_sandboxes and not payload.get("allow_shared_workspace"):
+            names = ", ".join(sharing_sandboxes)
+            raise SandboxServiceError(
+                f"Workspace is already used by running sandbox: {names}. "
+                "Confirm shared workspace use to continue."
+            )
 
         home_path = self.store.sandbox_home_path(slug)
         controller_token = secrets.token_urlsafe(32)

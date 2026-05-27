@@ -313,7 +313,7 @@ createApp({
       refreshIcons();
     }
 
-    async function createSandbox() {
+    async function createSandbox(options = {}) {
       if (!form.name.trim() || !form.workspace_root.trim()) {
         setToast('Name and workspace are required.', 'error');
         return;
@@ -329,6 +329,7 @@ createApp({
           workspace_root: form.workspace_root.trim(),
           vcpus: Number(form.vcpus) || 4,
           memory_mib: Number(form.memory_mib) || 4096,
+          allow_shared_workspace: Boolean(options.allowSharedWorkspace),
         });
         selectedSlug.value = response.sandbox.slug;
         form.name = '';
@@ -339,9 +340,17 @@ createApp({
         await openTerminal(started.sandbox, { manageBusy: false });
         setToast(`Created ${response.sandbox.slug} and opened a terminal.`, 'success');
       } catch (error) {
+        if (
+          !options.allowSharedWorkspace
+          && error.message.includes('Workspace is already used by running sandbox')
+          && window.confirm(`${error.message}\n\nShare this workspace anyway?`)
+        ) {
+          await createSandbox({ allowSharedWorkspace: true });
+          return;
+        }
         setToast(error.message, 'error');
       } finally {
-        busy.value = false;
+        if (!options.allowSharedWorkspace) busy.value = false;
       }
     }
 
