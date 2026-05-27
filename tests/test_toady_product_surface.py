@@ -44,6 +44,22 @@ def test_toady_mode_hides_legacy_product_static_assets(tmp_path):
     assert client.get("/manager/index.html").status_code == 404
 
 
+def test_toady_mode_served_shell_has_no_legacy_product_copy(tmp_path):
+    app = create_app(
+        str(tmp_path),
+        no_browser=True,
+        global_dir=str(tmp_path / "state"),
+        start_without_project=True,
+    )
+    client = app.test_client()
+
+    for path in ("/", "/app.js", "/style.css"):
+        response = client.get(path)
+        assert response.status_code == 200
+        assert b"Bullpen" not in response.data
+        assert b"bullpen" not in response.data
+
+
 def test_toady_mode_does_not_activate_legacy_project_registry(tmp_path):
     legacy_project = tmp_path / "legacy-project"
     legacy_project.mkdir()
