@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import secrets
 import time
@@ -47,6 +48,10 @@ from server.toady_validation import parse_port, parse_port_pool
 
 class SandboxServiceError(RuntimeError):
     """User-facing sandbox lifecycle error."""
+
+
+_LOG_MAX_BYTES = 10 * 1024 * 1024
+_LOG_BACKUPS = 5
 
 
 def _host_memory_mib() -> int | None:
@@ -110,6 +115,49 @@ class SandboxService:
         self.max_total_memory_mib = _positive_int_or_none(max_total_memory_mib) or (
             max(int(host_memory_mib * 0.75), self.default_memory_mib) if host_memory_mib else None
         )
+
+    def _sandbox_log_path(self, slug: str) -> str:
+        return os.path.join(self.home, "logs", f"sandbox-{slug}.log")
+
+    def _rotate_log_if_needed(self, path: str) -> None:
+        try:
+            if not os.path.exists(path) or os.path.getsize(path) <= _LOG_MAX_BYTES:
+                return
+        except OSError:
+            return
+        for index in range(_LOG_BACKUPS - 1, 0, -1):
+            src = f"{path}.{index}"
+            dst = f"{path}.{index + 1}"
+            if os.path.exists(src):
+                try:
+                    os.replace(src, dst)
+                except OSError:
+                    pass
+        try:
+            os.replace(path, f"{path}.1")
+        except OSError:
+            pass
+
+    def _log_sandbox_event(self, slug: str, event: str, **fields: Any) -> None:
+        try:
+            validate_slug(slug)
+        except ValidationError:
+            return
+        logs_dir = os.path.join(self.home, "logs")
+        path = self._sandbox_log_path(slug)
+        try:
+            os.makedirs(logs_dir, exist_ok=True)
+            self._rotate_log_if_needed(path)
+            record = {
+                "ts": round(time.time(), 3),
+                "sandbox": slug,
+                "event": event,
+            }
+            record.update(fields)
+            with open(path, "a", encoding="utf-8") as handle:
+                handle.write(json.dumps(record, sort_keys=True) + "\n")
+        except OSError:
+            return
 
     def list(self) -> list[dict[str, Any]]:
         return [manifest.to_dict() for manifest in self.store.list()]
@@ -252,7 +300,16 @@ class SandboxService:
             warnings=warnings,
         )
         self._check_resource_admission(manifest)
-        return self.store.save(manifest).to_dict()
+        saved = self.store.save(manifest).to_dict()
+        self._log_sandbox_event(
+            slug,
+            "created",
+            status=saved["last_status"],
+            vcpus=saved["vcpus"],
+            memory_mib=saved["memory_mib"],
+            controller_host_port=(saved.get("controller") or {}).get("host_port"),
+        )
+        return saved
 
     def _runtime_instance_exists(self, slug: str) -> bool:
         try:
@@ -333,6 +390,13 @@ class SandboxService:
         }
         manifest.published_ports.append(mapping)
         self.store.save(manifest)
+        self._log_sandbox_event(
+            manifest.slug,
+            "port_published",
+            guest_port=guest_port,
+            host_port=host_port,
+            status=status,
+        )
         return mapping
 
     def unpublish_port(self, slug: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -356,6 +420,13 @@ class SandboxService:
             raise SandboxServiceError(f"Host port {host_port} is not published.")
         manifest.published_ports = kept
         self.store.save(manifest)
+        self._log_sandbox_event(
+            manifest.slug,
+            "port_unpublished",
+            guest_port=removed.get("guest_port"),
+            host_port=removed.get("host_port"),
+            status=removed.get("status"),
+        )
         return removed
 
     def reassign_port(self, slug: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -383,6 +454,14 @@ class SandboxService:
             raise SandboxServiceError(f"Host port {old_host_port} is not published.")
         manifest.published_ports = next_mappings
         self.store.save(manifest)
+        self._log_sandbox_event(
+            manifest.slug,
+            "port_reassigned",
+            old_host_port=old_host_port,
+            new_host_port=new_host_port,
+            guest_port=updated_mapping.get("guest_port"),
+            status=updated_mapping.get("status"),
+        )
         return updated_mapping
 
     def _mark_conflicting_published_ports(self, manifest: SandboxManifest, mappings: list[dict[str, Any]]) -> None:
@@ -436,6 +515,7 @@ class SandboxService:
         self._check_resource_admission(manifest)
         manifest.last_status = "starting"
         self.store.save(manifest)
+        self._log_sandbox_event(manifest.slug, "starting", status=manifest.last_status)
         controller = self._ensure_controller_endpoint(manifest)
         host_port = int(controller["host_port"])
         guest_port = int(controller.get("guest_port") or 5859)
@@ -485,6 +565,7 @@ class SandboxService:
         except Exception:
             manifest.last_status = "error"
             self.store.save(manifest)
+            self._log_sandbox_event(manifest.slug, "start_failed", status=manifest.last_status)
             raise
 
         manifest.last_status = "running"
@@ -494,7 +575,18 @@ class SandboxService:
             for mapping in active_mappings
         ]
         manifest.updated_at = time.time()
-        return self.store.save(manifest).to_dict()
+        saved = self.store.save(manifest).to_dict()
+        self._log_sandbox_event(
+            manifest.slug,
+            "running",
+            status=saved["last_status"],
+            controller_host_port=(saved.get("controller") or {}).get("host_port"),
+            published_ports=[
+                {"guest_port": item.get("guest_port"), "host_port": item.get("host_port")}
+                for item in saved.get("published_ports", [])
+            ],
+        )
+        return saved
 
     async def stop(self, slug: str) -> dict[str, Any]:
         manifest = self.store.get(validate_slug(slug))
@@ -503,7 +595,9 @@ class SandboxService:
         runtime = MicrosandboxRuntime()
         await runtime.stop(manifest.slug)
         manifest.last_status = "stopped"
-        return self.store.save(manifest).to_dict()
+        saved = self.store.save(manifest).to_dict()
+        self._log_sandbox_event(manifest.slug, "stopped", status=saved["last_status"])
+        return saved
 
     async def stop_running(self) -> list[dict[str, Any]]:
         runtime: MicrosandboxRuntime | None = None
@@ -516,7 +610,9 @@ class SandboxService:
             await runtime.stop(manifest.slug)
             manifest.last_status = "stopped"
             manifest.updated_at = time.time()
-            stopped.append(self.store.save(manifest).to_dict())
+            saved = self.store.save(manifest).to_dict()
+            self._log_sandbox_event(manifest.slug, "stopped_on_exit", status=saved["last_status"])
+            stopped.append(saved)
         return stopped
 
     async def destroy(self, slug: str, *, purge_home: bool = False) -> bool:
@@ -539,6 +635,7 @@ class SandboxService:
                 await runtime.stop(manifest.slug)
         if last_error is not None:
             raise last_error
+        self._log_sandbox_event(manifest.slug, "destroyed", purge_home=bool(purge_home))
         self.store.delete(manifest.slug)
         if purge_home:
             import shutil

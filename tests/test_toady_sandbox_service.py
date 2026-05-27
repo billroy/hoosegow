@@ -1,4 +1,5 @@
 import asyncio
+import json
 from pathlib import Path
 
 import pytest
@@ -214,6 +215,37 @@ def test_sandbox_service_publishes_persisted_port_mapping(tmp_path, monkeypatch)
 
     assert mapping == {"guest_port": 5173, "host_port": 63101, "status": "active"}
     assert service.list_ports("demo") == [mapping]
+
+
+def test_sandbox_service_writes_lifecycle_log_without_controller_token(tmp_path, monkeypatch):
+    monkeypatch.setattr("server.sandboxes.host_port_in_use", lambda _port: False)
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    state = tmp_path / "state"
+    service = SandboxService(
+        home=str(state),
+        browse_roots=[str(tmp_path)],
+        port_pool="63100-63105",
+    )
+
+    created = service.create_manifest({"name": "demo", "workspace_root": str(workspace)})
+    mapping = service.publish_port("demo", {"guest_port": 5173})
+    service.unpublish_port("demo", {"host_port": mapping["host_port"]})
+
+    log_path = state / "logs" / "sandbox-demo.log"
+    records = [
+        json.loads(line)
+        for line in log_path.read_text(encoding="utf-8").splitlines()
+    ]
+
+    assert [record["event"] for record in records] == [
+        "created",
+        "port_published",
+        "port_unpublished",
+    ]
+    assert records[0]["controller_host_port"] == created["controller"]["host_port"]
+    assert records[1]["guest_port"] == 5173
+    assert created["controller"]["token"] not in log_path.read_text(encoding="utf-8")
 
 
 def test_sandbox_service_marks_running_publish_pending_restart(tmp_path, monkeypatch):
