@@ -59,6 +59,7 @@ time. Toady never deletes the host workspace root when destroying a sandbox.
 | `--guest-nofile` | `65536` | Target in-sandbox `agent` user file-descriptor limit. |
 | `--network-max-connections` | `8192` | Microsandbox guest network connection cap. |
 | `--no-browser` | off | Do not open a browser on startup. |
+| `--shutdown-sandboxes-on-exit` | off | Stop running sandboxes when Toady exits. |
 | `--websocket-debug` | off | Enable Socket.IO and Engine.IO logging. |
 | `--set-password [USERNAME]` | off | Set or update local login credentials, then exit. Repeatable. |
 | `--delete-user USERNAME` | off | Delete configured login users, then exit. Repeatable. |

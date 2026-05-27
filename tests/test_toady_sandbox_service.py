@@ -365,3 +365,33 @@ def test_sandbox_service_destroy_retries_remove_while_stopping(tmp_path, monkeyp
     assert calls["remove"] == 2
     assert calls["stop"] == 2
     assert service.get("demo") is None
+
+
+def test_sandbox_service_stop_running_stops_only_active_manifests(tmp_path, monkeypatch):
+    first_workspace = tmp_path / "first"
+    second_workspace = tmp_path / "second"
+    first_workspace.mkdir()
+    second_workspace.mkdir()
+    stopped = []
+
+    class FakeRuntime:
+        async def exists(self, _slug):
+            return False
+
+        async def stop(self, slug):
+            stopped.append(slug)
+
+    monkeypatch.setattr("server.sandboxes.MicrosandboxRuntime", FakeRuntime)
+    service = SandboxService(home=str(tmp_path / "state"), browse_roots=[str(tmp_path)])
+    service.create_manifest({"name": "active", "workspace_root": str(first_workspace)})
+    service.create_manifest({"name": "idle", "workspace_root": str(second_workspace)})
+    active = service.store.get("active")
+    active.last_status = "running"
+    service.store.save(active)
+
+    result = asyncio.run(service.stop_running())
+
+    assert [item["slug"] for item in result] == ["active"]
+    assert stopped == ["active"]
+    assert service.store.get("active").last_status == "stopped"
+    assert service.store.get("idle").last_status == "configured"

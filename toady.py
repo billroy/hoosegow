@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import asyncio
 import os
 import sys
@@ -227,6 +228,23 @@ def run_server(args: argparse.Namespace, home: str) -> int:
         start_without_project=True,
         terminal_limit=args.terminal_limit,
     )
+
+    if args.shutdown_sandboxes_on_exit:
+        service = app.config.get("toady_sandboxes")
+
+        def _shutdown_sandboxes() -> None:
+            if service is None:
+                return
+            try:
+                stopped = asyncio.run(service.stop_running())
+            except Exception as exc:
+                print(f"Error stopping sandboxes on exit: {exc}", file=sys.stderr)
+                return
+            if stopped:
+                names = ", ".join(item.get("slug", "?") for item in stopped)
+                print(f"Stopped sandbox(es) on exit: {names}", file=sys.stderr)
+
+        atexit.register(_shutdown_sandboxes)
 
     if not args.no_browser:
         import threading

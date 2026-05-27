@@ -505,6 +505,20 @@ class SandboxService:
         manifest.last_status = "stopped"
         return self.store.save(manifest).to_dict()
 
+    async def stop_running(self) -> list[dict[str, Any]]:
+        runtime: MicrosandboxRuntime | None = None
+        stopped = []
+        for manifest in self.store.list():
+            if manifest.last_status not in {"running", "starting"}:
+                continue
+            if runtime is None:
+                runtime = MicrosandboxRuntime()
+            await runtime.stop(manifest.slug)
+            manifest.last_status = "stopped"
+            manifest.updated_at = time.time()
+            stopped.append(self.store.save(manifest).to_dict())
+        return stopped
+
     async def destroy(self, slug: str, *, purge_home: bool = False) -> bool:
         manifest = self.store.get(validate_slug(slug))
         if manifest is None:
