@@ -1664,6 +1664,20 @@ def create_app(
             socketio.emit("sandbox:terminal:error", {"terminal_id": terminal_id, "error": str(exc)}, to=request.sid)
             return _toady_terminal_error_payload(exc)
 
+    @socketio.on("sandbox:terminal:status")
+    def toady_socket_terminal_status(payload):
+        payload = payload or {}
+        terminal_id = str(payload.get("terminal_id") or "")
+        try:
+            session_info = _toady_terminal_session(terminal_id)
+            status = session_info["driver"].status(terminal_id)
+            session_info["status"] = status.get("status") or session_info.get("status") or "running"
+            session_info["exit_code"] = status.get("exit_code")
+            return {"ok": True, "status": status}
+        except (SandboxServiceError, PtyDriverError) as exc:
+            socketio.emit("sandbox:terminal:error", {"terminal_id": terminal_id, "error": str(exc)}, to=request.sid)
+            return _toady_terminal_error_payload(exc)
+
     @socketio.on("sandbox:terminal:input")
     def toady_socket_terminal_input(payload):
         payload = payload or {}

@@ -50,6 +50,9 @@ class PtyDriver:
     def resize(self, terminal_id: str, *, cols: int, rows: int) -> dict[str, Any]:
         return self.rpc("resize", id=terminal_id, cols=cols, rows=rows)
 
+    def status(self, terminal_id: str) -> dict[str, Any]:
+        return self.rpc("status", id=terminal_id)
+
     def close(self, terminal_id: str) -> dict[str, Any]:
         return self.rpc("close", id=terminal_id)
 

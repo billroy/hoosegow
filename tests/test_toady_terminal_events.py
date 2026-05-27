@@ -19,6 +19,21 @@ class FakePtyDriver:
     def resize(self, terminal_id, *, cols, rows):
         return {"event": "ok"}
 
+    def status(self, terminal_id):
+        return {
+            "event": "status",
+            "id": terminal_id,
+            "status": "running",
+            "exit_code": None,
+            "foreground": {
+                "supported": True,
+                "busy": True,
+                "pgrp": 4321,
+                "pid": 4322,
+                "command": "sleep 100",
+            },
+        }
+
     def close(self, terminal_id):
         return {"event": "ok"}
 
@@ -139,6 +154,35 @@ def test_toady_terminal_close_frees_limit_slot(tmp_path, monkeypatch):
     assert blocked["ok"] is False
     assert closed["ok"] is True
     assert reopened["ok"] is True
+
+
+def test_toady_terminal_status_reports_foreground_process(tmp_path, monkeypatch):
+    monkeypatch.setattr("server.app.PtyDriver", FakePtyDriver)
+    app = create_app(
+        str(tmp_path),
+        no_browser=True,
+        global_dir=str(tmp_path / "state"),
+        start_without_project=True,
+    )
+    _running_sandbox(app, tmp_path)
+    client = socketio.test_client(app)
+    client.get_received()
+
+    opened = client.emit(
+        "sandbox:terminal:open",
+        {"sandbox_id": "demo", "cols": 80, "rows": 24},
+        callback=True,
+    )
+    status = client.emit(
+        "sandbox:terminal:status",
+        {"terminal_id": opened["terminal"]["id"]},
+        callback=True,
+    )
+
+    client.disconnect()
+    assert status["ok"] is True
+    assert status["status"]["foreground"]["busy"] is True
+    assert status["status"]["foreground"]["command"] == "sleep 100"
 
 
 def test_toady_terminal_can_be_rejoined_by_new_socket(tmp_path, monkeypatch):

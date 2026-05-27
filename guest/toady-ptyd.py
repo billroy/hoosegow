@@ -381,7 +381,65 @@ class PtyController:
             "shell": session.shell,
             "status": session.status,
             "exit_code": session.exit_code,
+            "foreground": self._foreground_status(session),
         }
+
+    def _foreground_status(self, session: PtySession) -> dict[str, Any]:
+        if session.status != "running":
+            return {"supported": True, "busy": False}
+        try:
+            foreground_pgrp = os.tcgetpgrp(session.fd)
+            shell_pgrp = os.getpgid(session.pid)
+        except OSError as exc:
+            return {"supported": False, "busy": False, "error": str(exc)}
+        busy = foreground_pgrp != shell_pgrp
+        foreground_pid, command = self._process_group_label(foreground_pgrp, shell_pid=session.pid)
+        return {
+            "supported": True,
+            "busy": busy,
+            "pgrp": foreground_pgrp,
+            "pid": foreground_pid,
+            "command": command,
+        }
+
+    def _process_group_label(self, pgrp: int, *, shell_pid: int) -> tuple[int | None, str | None]:
+        candidates: list[int] = []
+        proc_dir = "/proc"
+        if os.path.isdir(proc_dir):
+            for entry in os.listdir(proc_dir):
+                if not entry.isdigit():
+                    continue
+                pid = int(entry)
+                try:
+                    if os.getpgid(pid) == pgrp:
+                        candidates.append(pid)
+                except OSError:
+                    continue
+        target = None
+        for pid in sorted(candidates):
+            if pid != shell_pid:
+                target = pid
+                break
+        if target is None and candidates:
+            target = sorted(candidates)[0]
+        if target is None:
+            return None, None
+        return target, self._process_label(target)
+
+    def _process_label(self, pid: int) -> str | None:
+        try:
+            with open(f"/proc/{pid}/cmdline", "rb") as handle:
+                raw = handle.read(4096).replace(b"\x00", b" ").strip()
+            if raw:
+                return raw.decode("utf-8", errors="replace")
+        except OSError:
+            pass
+        try:
+            with open(f"/proc/{pid}/comm", "r", encoding="utf-8", errors="replace") as handle:
+                label = handle.read().strip()
+            return label or None
+        except OSError:
+            return None
 
     def _reader_loop(self, session_id: str) -> None:
         while not self.stopping.is_set():

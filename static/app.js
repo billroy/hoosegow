@@ -516,8 +516,29 @@ createApp({
       refreshIcons();
     }
 
+    async function foregroundProcessForTerminal(terminalId) {
+      try {
+        const response = await call('sandbox:terminal:status', { terminal_id: terminalId });
+        const foreground = response.status?.foreground || {};
+        return foreground.busy ? foreground : null;
+      } catch (_error) {
+        return null;
+      }
+    }
+
     async function closeTerminal(options = {}) {
       const terminalId = options.terminalId || activeTerminal.id;
+      if (terminalId && options.remote !== false && !options.force) {
+        const foreground = await foregroundProcessForTerminal(terminalId);
+        if (foreground) {
+          const label = foreground.command ? `\n\nForeground process: ${foreground.command}` : '';
+          const confirmed = window.confirm(
+            `Close this terminal while a foreground process is running?${label}\n\n`
+            + 'The process will be sent SIGHUP and may be killed if it does not exit.'
+          );
+          if (!confirmed) return;
+        }
+      }
       if (terminalId && options.remote !== false) {
         socket.emit('sandbox:terminal:close', { terminal_id: terminalId });
       }
