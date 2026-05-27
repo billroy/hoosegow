@@ -5,6 +5,7 @@ import re
 import subprocess
 import sys
 import json
+import base64
 import tempfile
 import zipfile
 from datetime import datetime, timedelta, timezone
@@ -83,6 +84,7 @@ _LOGIN_THROTTLE_MAX_FAILURES = 5
 _LOGIN_THROTTLE_BLOCK_SECONDS = 60
 _DEFAULT_SESSION_DAYS = 30
 _MAX_SESSION_DAYS = 365
+_TERMINAL_REPLAY_LIMIT_BYTES = 200 * 1024
 _TEXTUAL_APPLICATION_MIME_PREFIXES = (
     "application/json",
     "application/ld+json",
@@ -512,9 +514,67 @@ def create_app(
             session_info = app.config["toady_terminals"].get(terminal_id)
         if not session_info:
             raise SandboxServiceError("Unknown terminal session.")
-        if session_info.get("owner_sid") != request.sid:
-            raise SandboxServiceError("Terminal session belongs to another client.")
+        if request.sid not in session_info.get("clients", set()):
+            raise SandboxServiceError("Join the terminal before controlling it.")
         return session_info
+
+    def _toady_terminal_payload(session_info):
+        return {
+            "id": session_info.get("id"),
+            "sandbox_id": session_info.get("sandbox_id"),
+            "cwd": session_info.get("cwd") or "/workspace",
+            "pid": session_info.get("pid"),
+            "status": session_info.get("status") or "running",
+            "exit_code": session_info.get("exit_code"),
+        }
+
+    def _toady_terminal_replay(session_info):
+        replay = bytes(session_info.get("replay") or b"")
+        return {
+            "data": base64.b64encode(replay).decode("ascii"),
+            "truncated": bool(session_info.get("replay_truncated")),
+        }
+
+    def _record_toady_terminal_output(terminal_id, data_b64):
+        try:
+            chunk = base64.b64decode(str(data_b64 or "").encode("ascii"))
+        except Exception:
+            chunk = b""
+        if not chunk:
+            return
+        with app.config["toady_terminals_lock"]:
+            session_info = app.config["toady_terminals"].get(terminal_id)
+            if not session_info:
+                return
+            replay = session_info.setdefault("replay", bytearray())
+            replay.extend(chunk)
+            if len(replay) > _TERMINAL_REPLAY_LIMIT_BYTES:
+                del replay[: len(replay) - _TERMINAL_REPLAY_LIMIT_BYTES]
+                session_info["replay_truncated"] = True
+
+    def _close_toady_terminal(terminal_id, *, emit_closed=True):
+        with app.config["toady_terminals_lock"]:
+            session_info = app.config["toady_terminals"].pop(terminal_id, None)
+            if session_info:
+                session_info["alive"] = False
+        if not session_info:
+            return
+        try:
+            session_info["driver"].close(terminal_id)
+        except Exception:
+            pass
+        if emit_closed:
+            socketio.emit("sandbox:terminal:closed", {"terminal_id": terminal_id}, to=_toady_terminal_room(terminal_id))
+
+    def _close_toady_sandbox_terminals(sandbox_id):
+        with app.config["toady_terminals_lock"]:
+            terminal_ids = [
+                terminal_id
+                for terminal_id, session_info in app.config["toady_terminals"].items()
+                if session_info.get("sandbox_id") == sandbox_id
+            ]
+        for terminal_id in terminal_ids:
+            _close_toady_terminal(terminal_id)
 
     def _toady_terminal_poll(terminal_id):
         while True:
@@ -536,6 +596,7 @@ def create_app(
                     session_info = app.config["toady_terminals"].get(terminal_id)
                     if session_info:
                         session_info["alive"] = False
+                        session_info["status"] = "error"
                 return
 
             events = payload.get("events") or []
@@ -549,21 +610,24 @@ def create_app(
             for event in events:
                 event_name = event.get("event")
                 if event_name == "output":
+                    _record_toady_terminal_output(terminal_id, event.get("data") or "")
                     socketio.emit(
                         "sandbox:terminal:output",
                         {"terminal_id": terminal_id, "data": event.get("data") or ""},
                         to=_toady_terminal_room(terminal_id),
                     )
                 elif event_name == "exit":
+                    with app.config["toady_terminals_lock"]:
+                        session_info = app.config["toady_terminals"].get(terminal_id)
+                        if session_info:
+                            session_info["status"] = "exited"
+                            session_info["exit_code"] = event.get("exit_code")
+                            session_info["alive"] = False
                     socketio.emit(
                         "sandbox:terminal:exit",
                         {"terminal_id": terminal_id, "exit_code": event.get("exit_code")},
                         to=_toady_terminal_room(terminal_id),
                     )
-                    with app.config["toady_terminals_lock"]:
-                        session_info = app.config["toady_terminals"].get(terminal_id)
-                        if session_info:
-                            session_info["alive"] = False
                     return
                 elif event_name == "error":
                     socketio.emit(
@@ -1360,20 +1424,8 @@ def create_app(
         if terminal_manager:
             terminal_manager.close_for_sid(request.sid)
         with app.config["toady_terminals_lock"]:
-            terminal_ids = [
-                terminal_id
-                for terminal_id, session_info in app.config["toady_terminals"].items()
-                if session_info.get("owner_sid") == request.sid
-            ]
-            for terminal_id in terminal_ids:
-                app.config["toady_terminals"][terminal_id]["alive"] = False
-        for terminal_id in terminal_ids:
-            try:
-                _toady_terminal_session(terminal_id)["driver"].close(terminal_id)
-            except Exception:
-                pass
-            with app.config["toady_terminals_lock"]:
-                app.config["toady_terminals"].pop(terminal_id, None)
+            for session_info in app.config["toady_terminals"].values():
+                session_info.get("clients", set()).discard(request.sid)
         mcp_sids.discard(request.sid)
         mcp_sid_workspace.pop(request.sid, None)
 
@@ -1433,6 +1485,7 @@ def create_app(
         except (SandboxServiceError, ValidationError, RuntimeError) as exc:
             socketio.emit("sandbox:error", {"id": slug, "error": str(exc)}, to=request.sid)
             return _sandbox_error_payload(exc)
+        _close_toady_sandbox_terminals(manifest["slug"])
         _emit_sandboxes_updated()
         socketio.emit("sandbox:status", {"id": manifest["slug"], "status": manifest["last_status"]}, to="authenticated")
         return {"ok": True, "sandbox": manifest}
@@ -1464,6 +1517,7 @@ def create_app(
             return _sandbox_error_payload(exc)
         if not deleted:
             return {"ok": False, "error": "Unknown sandbox"}
+        _close_toady_sandbox_terminals(slug)
         _emit_sandboxes_updated()
         socketio.emit("sandbox:destroyed", {"id": slug}, to="authenticated")
         return {"ok": True}
@@ -1489,23 +1543,59 @@ def create_app(
                     "id": terminal_id,
                     "sandbox_id": manifest.slug,
                     "driver": driver,
-                    "owner_sid": request.sid,
+                    "clients": {request.sid},
                     "seq": 0,
                     "alive": True,
+                    "cwd": opened.get("cwd") or "/workspace",
+                    "pid": opened.get("pid"),
+                    "status": "running",
+                    "exit_code": None,
+                    "replay": bytearray(),
+                    "replay_truncated": False,
                 }
             join_room(_toady_terminal_room(terminal_id))
             socketio.start_background_task(_toady_terminal_poll, terminal_id)
+            session_info = _toady_terminal_session(terminal_id)
             return {
                 "ok": True,
-                "terminal": {
-                    "id": terminal_id,
-                    "sandbox_id": manifest.slug,
-                    "cwd": opened.get("cwd") or "/workspace",
-                    "pid": opened.get("pid"),
-                },
+                "terminal": _toady_terminal_payload(session_info),
             }
         except (SandboxServiceError, ValidationError, PtyDriverError, ValueError) as exc:
             socketio.emit("sandbox:terminal:error", {"sandbox_id": slug, "error": str(exc)}, to=request.sid)
+            return _toady_terminal_error_payload(exc)
+
+    @socketio.on("sandbox:terminal:list")
+    def toady_socket_list_terminals(payload):
+        payload = payload or {}
+        slug = payload.get("sandbox_id") or payload.get("slug") or payload.get("id") or ""
+        try:
+            slug = validate_slug(str(slug))
+            with app.config["toady_terminals_lock"]:
+                terminal_payloads = [
+                    _toady_terminal_payload(session_info)
+                    for session_info in app.config["toady_terminals"].values()
+                    if session_info.get("sandbox_id") == slug
+                ]
+            return {"ok": True, "terminals": terminal_payloads}
+        except (SandboxServiceError, ValidationError) as exc:
+            return _toady_terminal_error_payload(exc)
+
+    @socketio.on("sandbox:terminal:join")
+    def toady_socket_join_terminal(payload):
+        payload = payload or {}
+        terminal_id = str(payload.get("terminal_id") or "")
+        try:
+            with app.config["toady_terminals_lock"]:
+                session_info = app.config["toady_terminals"].get(terminal_id)
+                if not session_info:
+                    raise SandboxServiceError("Unknown terminal session.")
+                session_info.setdefault("clients", set()).add(request.sid)
+                terminal_payload = _toady_terminal_payload(session_info)
+                replay_payload = _toady_terminal_replay(session_info)
+            join_room(_toady_terminal_room(terminal_id))
+            return {"ok": True, "terminal": terminal_payload, "replay": replay_payload}
+        except (SandboxServiceError, ValidationError) as exc:
+            socketio.emit("sandbox:terminal:error", {"terminal_id": terminal_id, "error": str(exc)}, to=request.sid)
             return _toady_terminal_error_payload(exc)
 
     @socketio.on("sandbox:terminal:input")
@@ -1544,10 +1634,7 @@ def create_app(
         try:
             session_info = _toady_terminal_session(terminal_id)
             session_info["alive"] = False
-            session_info["driver"].close(terminal_id)
-            with app.config["toady_terminals_lock"]:
-                app.config["toady_terminals"].pop(terminal_id, None)
-            socketio.emit("sandbox:terminal:closed", {"terminal_id": terminal_id}, to=_toady_terminal_room(terminal_id))
+            _close_toady_terminal(terminal_id)
             return {"ok": True}
         except (SandboxServiceError, PtyDriverError) as exc:
             socketio.emit("sandbox:terminal:error", {"terminal_id": terminal_id, "error": str(exc)}, to=request.sid)

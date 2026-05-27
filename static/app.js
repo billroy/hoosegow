@@ -1,4 +1,4 @@
-const { createApp, computed, nextTick, reactive, ref } = Vue;
+const { createApp, computed, nextTick, reactive, ref, watch } = Vue;
 
 function formatDate(seconds) {
   if (!seconds) return '';
@@ -104,6 +104,35 @@ createApp({
         terminalTextDecoders.set(terminalId, new TextDecoder());
       }
       return terminalTextDecoders.get(terminalId).decode(bytes, { stream: true });
+    }
+
+    function decodeBase64Replay(value) {
+      const binary = window.atob(value || '');
+      if (!binary) return '';
+      const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+      return new TextDecoder().decode(bytes);
+    }
+
+    function upsertTerminalRecord(terminalInfo, transcript = '') {
+      let record = terminals.find((item) => item.id === terminalInfo.id);
+      if (!record) {
+        record = {
+          id: terminalInfo.id,
+          sandbox_id: terminalInfo.sandbox_id,
+          cwd: terminalInfo.cwd || '/workspace',
+          status: terminalInfo.status || 'running',
+          exit_code: terminalInfo.exit_code ?? null,
+          transcript,
+        };
+        terminals.push(record);
+      } else {
+        record.sandbox_id = terminalInfo.sandbox_id;
+        record.cwd = terminalInfo.cwd || record.cwd || '/workspace';
+        record.status = terminalInfo.status || record.status || 'running';
+        record.exit_code = terminalInfo.exit_code ?? record.exit_code ?? null;
+        if (!record.transcript && transcript) record.transcript = transcript;
+      }
+      return record;
     }
 
     function terminalCellSize() {
@@ -239,6 +268,35 @@ createApp({
       replaceSandboxes(response.sandboxes);
     }
 
+    async function joinTerminal(terminalInfo, options = {}) {
+      if (!terminalInfo?.id) return null;
+      const response = await call('sandbox:terminal:join', { terminal_id: terminalInfo.id });
+      const replayText = decodeBase64Replay(response.replay?.data || '');
+      const record = upsertTerminalRecord(response.terminal || terminalInfo, replayText);
+      if (options.focus) await focusTerminal(record.id);
+      return record;
+    }
+
+    async function loadTerminalSessions(sandbox = selected.value) {
+      if (!sandbox?.slug || !connected.value) return;
+      const response = await call('sandbox:terminal:list', { sandbox_id: sandbox.slug });
+      const liveIds = new Set((response.terminals || []).map((item) => item.id));
+      for (let index = terminals.length - 1; index >= 0; index -= 1) {
+        if (terminals[index].sandbox_id === sandbox.slug && !liveIds.has(terminals[index].id)) {
+          terminals.splice(index, 1);
+        }
+      }
+      let focused = Boolean(activeTerminal.id && liveIds.has(activeTerminal.id));
+      for (const terminalInfo of response.terminals || []) {
+        await joinTerminal(terminalInfo, { focus: !focused });
+        focused = true;
+      }
+      if (activeTerminal.id && !terminals.some((item) => item.id === activeTerminal.id)) {
+        syncActiveTerminal(null);
+        disposeTerminal();
+      }
+    }
+
     async function loadBaseStatus() {
       const response = await call('base:status');
       Object.assign(baseStatus, response.base || {});
@@ -303,15 +361,7 @@ createApp({
           cols: 100,
           rows: 30,
         });
-        const record = {
-          id: response.terminal.id,
-          sandbox_id: response.terminal.sandbox_id,
-          cwd: response.terminal.cwd || '/workspace',
-          status: 'running',
-          exit_code: null,
-          transcript: '',
-        };
-        terminals.push(record);
+        const record = upsertTerminalRecord(response.terminal, '');
         await focusTerminal(record.id);
         await nextTick();
         await ensureTerminal();
@@ -484,6 +534,7 @@ createApp({
       connected.value = true;
       try {
         await Promise.all([loadBaseStatus(), loadSandboxes()]);
+        await loadTerminalSessions();
       } catch (error) {
         setToast(error.message, 'error');
       }
@@ -556,6 +607,11 @@ createApp({
       if (baseLogs.length > 300) baseLogs.splice(0, baseLogs.length - 300);
     });
 
+    watch(selectedSlug, () => {
+      if (!connected.value) return;
+      loadTerminalSessions().catch((error) => setToast(error.message, 'error'));
+    });
+
     refreshIcons();
 
     return {
@@ -574,6 +630,7 @@ createApp({
       formatDate,
       loadBaseStatus,
       loadSandboxes,
+      loadTerminalSessions,
       openTerminal,
       copyPortUrl,
       openPort,
