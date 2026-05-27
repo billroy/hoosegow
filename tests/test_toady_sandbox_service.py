@@ -225,3 +225,29 @@ def test_sandbox_service_reassigns_conflicted_port(tmp_path, monkeypatch):
 
     assert mapping == {"guest_port": 3000, "host_port": 63101, "status": "active"}
     assert service.list_ports("demo") == [mapping]
+
+
+def test_sandbox_service_destroy_retries_remove_while_stopping(tmp_path, monkeypatch):
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    service = SandboxService(home=str(tmp_path / "state"), browse_roots=[str(tmp_path)])
+    service.create_manifest({"name": "demo", "workspace_root": str(workspace)})
+    calls = {"remove": 0, "stop": 0}
+
+    class FakeRuntime:
+        async def stop(self, _name):
+            calls["stop"] += 1
+
+        async def remove(self, _name):
+            calls["remove"] += 1
+            if calls["remove"] == 1:
+                raise RuntimeError("sandbox still running")
+
+    monkeypatch.setattr("server.sandboxes.MicrosandboxRuntime", FakeRuntime)
+
+    deleted = asyncio.run(service.destroy("demo", purge_home=False))
+
+    assert deleted is True
+    assert calls["remove"] == 2
+    assert calls["stop"] == 2
+    assert service.get("demo") is None

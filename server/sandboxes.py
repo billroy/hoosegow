@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import secrets
 import time
@@ -425,7 +426,20 @@ class SandboxService:
             return False
         runtime = MicrosandboxRuntime()
         await runtime.stop(manifest.slug)
-        await runtime.remove(manifest.slug)
+        last_error: Exception | None = None
+        for attempt in range(6):
+            try:
+                await runtime.remove(manifest.slug)
+                last_error = None
+                break
+            except Exception as exc:
+                last_error = exc
+                if "still running" not in str(exc).lower() or attempt == 5:
+                    break
+                await asyncio.sleep(0.5)
+                await runtime.stop(manifest.slug)
+        if last_error is not None:
+            raise last_error
         self.store.delete(manifest.slug)
         if purge_home:
             import shutil
