@@ -22,7 +22,6 @@ from flask import (
     abort,
     jsonify,
     redirect,
-    render_template_string,
     request,
     send_file,
     session,
@@ -32,19 +31,8 @@ from flask_socketio import SocketIO, join_room
 
 from server import auth
 from server import base as toady_base
-from server.events import register_events
-from server.init import init_workspace
 from server.persistence import read_json, write_json, read_frontmatter, ensure_within, atomic_write
-from server.transfer import transfer_worker, TransferError
-from server.profiles import list_profiles
-from server.scheduler import Scheduler
-from server.teams import list_teams
-from server.worker_types import ViewerContext, get_worker_type, normalize_layout, normalize_worker_slot, serialize_layout
 from server.workspace_manager import WorkspaceManager, projects_root
-from server import service_worker as service_worker_mod
-from server import mcp_auth
-from server import worktrees as worktree_mod
-from server.terminal import TerminalManager
 from server.pty_driver import PtyDriver, PtyDriverError
 from server.sandboxes import SandboxService, SandboxServiceError, browse_roots_from_env
 from server.toady_validation import ValidationError, validate_slug
@@ -191,6 +179,8 @@ def _translated_worker_slot(slot, delta_col, delta_row):
 
 
 def _merge_imported_worker_slots(existing_slots, imported_slots, *, config):
+    from server.worker_types import normalize_layout
+
     cols = max(_safe_int(((config or {}).get("grid") or {}).get("cols"), 4), 1)
     kept_existing = list(existing_slots or [])
     normalized_import = normalize_layout({"slots": imported_slots or []}, config=config).get("slots", [])
@@ -417,7 +407,18 @@ def create_app(
         logger=websocket_debug,
         engineio_logger=websocket_debug,
     )
-    app.config["terminal_manager"] = TerminalManager(socketio)
+    mcp_auth = None
+    service_worker_mod = None
+    if not start_without_project:
+        from server import mcp_auth as legacy_mcp_auth
+        from server import service_worker as legacy_service_worker_mod
+        from server.terminal import TerminalManager
+
+        mcp_auth = legacy_mcp_auth
+        service_worker_mod = legacy_service_worker_mod
+        app.config["terminal_manager"] = TerminalManager(socketio)
+    else:
+        app.config["terminal_manager"] = None
     app.config["toady_terminals"] = {}
     app.config["toady_terminals_lock"] = threading.RLock()
     app.config["toady_terminal_limit"] = max(
@@ -432,6 +433,8 @@ def create_app(
         return safe
 
     def _write_runtime_config(ws, preferred_token=None):
+        if mcp_auth is None:
+            return
         token = mcp_auth.ensure_workspace_runtime_config(
             ws.bp_dir,
             host=app.config.get("host", "127.0.0.1"),
@@ -456,17 +459,20 @@ def create_app(
     if not start_without_project and not _service_worker_atexit_registered:
         atexit.register(service_worker_mod.stop_all_services)
         _service_worker_atexit_registered = True
-    app.config["mcp_tokens_by_workspace"] = mcp_auth.initialize_workspace_runtime_configs(
-        manager.all_workspaces(),
-        host,
-        port,
-    )
-    for ws in manager.all_workspaces():
-        sync_deploy_label_config(ws.bp_dir)
+    if mcp_auth is not None:
+        app.config["mcp_tokens_by_workspace"] = mcp_auth.initialize_workspace_runtime_configs(
+            manager.all_workspaces(),
+            host,
+            port,
+        )
+        for ws in manager.all_workspaces():
+            sync_deploy_label_config(ws.bp_dir)
 
-    # Startup reconciliation for all registered workspaces
-    for ws in manager.all_workspaces():
-        reconcile(ws.bp_dir)
+        # Startup reconciliation for all registered workspaces
+        for ws in manager.all_workspaces():
+            reconcile(ws.bp_dir)
+    else:
+        app.config["mcp_tokens_by_workspace"] = {}
 
     # --- Public (unauthenticated) assets allowlist ---------------------
     # These paths must load without a session so the login page can be
@@ -1031,6 +1037,9 @@ def create_app(
     @auth.require_auth
     def worker_transfer():
         """Copy or move a worker between workspaces."""
+        from server.transfer import TransferError, transfer_worker
+        from server.worker_types import ViewerContext, serialize_layout
+
         data = request.get_json(silent=True)
         if not data or not isinstance(data, dict):
             return jsonify({"error": "invalid JSON body"}), 400
@@ -1094,6 +1103,8 @@ def create_app(
         return text[:80] or fallback
 
     def _normalized_worker_slots(ws):
+        from server.worker_types import normalize_layout
+
         layout_path = os.path.join(ws.bp_dir, "layout.json")
         layout = read_json(layout_path) if os.path.exists(layout_path) else {"slots": []}
         config = read_json(os.path.join(ws.bp_dir, "config.json"))
@@ -1215,6 +1226,8 @@ def create_app(
         return None
 
     def _replace_workspace_bp_dir(ws, source_bp_dir):
+        from server.init import init_workspace
+
         bp_dir = ws.bp_dir
         previous_token = mcp_auth.read_workspace_mcp_token(bp_dir)
         if os.path.exists(bp_dir):
@@ -1229,6 +1242,9 @@ def create_app(
         socketio.emit("files:changed", {"workspaceId": ws.id}, to=ws.id)
 
     def _replace_workspace_workers(ws, source_bp_dir):
+        from server.init import init_workspace
+        from server.worker_types import normalize_layout
+
         source_layout_path = os.path.join(source_bp_dir, "layout.json")
         if not os.path.exists(source_layout_path):
             raise ValueError("Archive does not contain layout.json")
@@ -1329,6 +1345,8 @@ def create_app(
     @app.route("/api/service/preview", methods=["POST"])
     @auth.require_auth
     def service_preview():
+        from server.worker_types import get_worker_type, normalize_layout, normalize_worker_slot
+
         payload = request.get_json(silent=True) or {}
         ws, error = _workspace_from_id(_workspace_id_from_payload(payload), activate=True)
         if error:
@@ -1475,7 +1493,11 @@ def create_app(
         # token is written to .bullpen/config.json on startup and is only
         # readable by processes with local filesystem access.
         token = (auth_data or {}).get("mcp_token") if isinstance(auth_data, dict) else None
-        mcp_ws_id = mcp_auth.find_workspace_id_for_token(manager.all_workspaces(), token)
+        mcp_ws_id = (
+            mcp_auth.find_workspace_id_for_token(manager.all_workspaces(), token)
+            if mcp_auth is not None
+            else None
+        )
         is_mcp = bool(mcp_ws_id)
         if auth.auth_enabled() and not session.get("authenticated"):
             if not is_mcp:
@@ -1812,10 +1834,14 @@ def create_app(
         return {"ok": True, "port": mapping, "ports": ports}
 
     if not start_without_project:
+        from server.events import register_events
+
         register_events(socketio, app)
 
     # Start time-based scheduler for each workspace
     if not start_without_project:
+        from server.scheduler import Scheduler
+
         for ws in manager.all_workspaces():
             scheduler = Scheduler(ws.bp_dir, socketio, ws_id=ws.id)
             scheduler.start()
@@ -1906,6 +1932,8 @@ def reconcile(bp_dir):
     references, repair interrupted in-progress tasks, and rebuild queues from
     assigned tickets so stale layout state cannot survive a restart.
     """
+    from server.worker_types import normalize_layout
+
     layout_path = os.path.join(bp_dir, "layout.json")
     if not os.path.exists(layout_path):
         return
@@ -2027,6 +2055,8 @@ def reconcile(bp_dir):
 
     workspace = os.path.dirname(bp_dir)
     try:
+        from server import worktrees as worktree_mod
+
         worktree_mod.reconcile_worktrees(workspace, bp_dir)
     except Exception:
         pass
@@ -2034,6 +2064,10 @@ def reconcile(bp_dir):
 
 def load_state(bp_dir, workspace, workspace_display=None):
     """Load full app state from .bullpen/ files."""
+    from server.profiles import list_profiles
+    from server.teams import list_teams
+    from server.worker_types import ViewerContext, serialize_layout
+
     config = read_json(os.path.join(bp_dir, "config.json"))
     if not isinstance(config.get("theme"), str):
         config["theme"] = "dark"

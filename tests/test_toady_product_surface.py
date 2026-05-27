@@ -1,5 +1,8 @@
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 from server.app import create_app
 from server.app import socketio
@@ -89,6 +92,43 @@ def test_toady_mode_does_not_activate_legacy_project_registry(tmp_path):
     assert not (legacy_project / ".bullpen").exists()
     assert "state:init" not in received_events
     assert "projects:updated" not in received_events
+
+
+def test_toady_mode_does_not_eagerly_import_legacy_product_modules(tmp_path):
+    script = """
+import json
+import sys
+from server.app import create_app
+
+create_app(sys.argv[1], no_browser=True, global_dir=sys.argv[2], start_without_project=True)
+legacy_modules = [
+    "server.events",
+    "server.mcp_auth",
+    "server.service_worker",
+    "server.terminal",
+    "server.scheduler",
+    "server.transfer",
+    "server.profiles",
+    "server.teams",
+    "server.worker_types",
+    "server.worktrees",
+    "server.init",
+]
+print(json.dumps([name for name in legacy_modules if name in sys.modules]))
+"""
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT)
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(tmp_path), str(tmp_path / "state")],
+        cwd=str(ROOT),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == []
 
 
 def test_base_logs_are_available_after_reconnect(tmp_path):

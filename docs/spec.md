@@ -145,8 +145,8 @@ before the app shell. If auth is disabled, there is no login screen.
   the grace period, close idle PTYs. PTYs with foreground processes remain
   alive until explicit close, sandbox stop, or server exit.
 - **Reattach**: when the browser reconnects to the same running Toady server,
-  the frontend calls `GET /api/terminals` to discover active PTYs, then joins
-  each terminal room by ID and receives bounded replay.
+  the frontend calls `sandbox:terminal:list` over Socket.IO to discover active
+  PTYs, then joins each terminal room by ID and receives bounded replay.
 - **Per-sandbox limit**: configurable; default 32 terminals per sandbox. v1
   must be tested with 32 simultaneously open terminals in one sandbox.
 - **Output buffering**: server-side ring buffer per PTY with both line and byte

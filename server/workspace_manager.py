@@ -6,7 +6,6 @@ import shutil
 import tempfile
 import threading
 
-from server.init import init_workspace
 from server.persistence import read_json, write_json
 
 
@@ -200,6 +199,8 @@ class WorkspaceManager:
 
             # Initialize workspace if not already active
             if ws_id not in self._workspaces:
+                from server.init import init_workspace
+
                 bp_dir = init_workspace(path)
                 ws = WorkspaceState(ws_id, path, entry["name"])
                 self._workspaces[ws_id] = ws
