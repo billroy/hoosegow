@@ -330,18 +330,32 @@ class SandboxService:
         detail = "; ".join(f":{mapping['host_port']} -> :{mapping['guest_port']}" for mapping in conflicts)
         raise SandboxServiceError(f"Published port conflict for {manifest.slug}: {detail}. Reassign the port and start again.")
 
+    def _ensure_controller_endpoint(self, manifest: SandboxManifest) -> dict[str, Any]:
+        controller = dict(manifest.controller or {})
+        host_port = int(controller.get("host_port") or 0)
+        if not host_port or host_port_in_use(host_port):
+            controller["host_port"] = self._allocate_port()
+        if not controller.get("guest_port"):
+            controller["guest_port"] = 5859
+        if not controller.get("token"):
+            controller["token"] = secrets.token_urlsafe(32)
+        controller["transport"] = controller.get("transport") or "http-long-poll"
+        if controller != (manifest.controller or {}):
+            manifest.controller = controller
+            manifest.updated_at = time.time()
+            self.store.save(manifest)
+        return controller
+
     async def start(self, slug: str) -> dict[str, Any]:
         manifest = self.store.get(validate_slug(slug))
         if manifest is None:
             raise SandboxServiceError(f"Unknown sandbox: {slug}")
         manifest.last_status = "starting"
         self.store.save(manifest)
-        controller = dict(manifest.controller or {})
-        host_port = controller.get("host_port")
+        controller = self._ensure_controller_endpoint(manifest)
+        host_port = int(controller["host_port"])
         guest_port = int(controller.get("guest_port") or 5859)
-        if not host_port:
-            raise SandboxServiceError("Sandbox controller host port allocation is not implemented yet.")
-        ports = {int(host_port): guest_port}
+        ports = {host_port: guest_port}
         active_mappings = [
             mapping
             for mapping in manifest.published_ports

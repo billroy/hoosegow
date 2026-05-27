@@ -216,6 +216,51 @@ def test_sandbox_service_marks_published_port_conflict_on_start(tmp_path, monkey
     assert "python 123" in manifest.published_ports[0]["conflict"]
 
 
+def test_sandbox_service_reassigns_occupied_controller_port_on_start(tmp_path, monkeypatch):
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    service = SandboxService(
+        home=str(tmp_path / "state"),
+        browse_roots=[str(tmp_path)],
+        port_pool="63100-63105",
+    )
+    service.create_manifest({
+        "name": "demo",
+        "workspace_root": str(workspace),
+        "controller_host_port": 63100,
+    })
+    captured = {}
+
+    class FakeRuntime:
+        async def ensure_installed(self):
+            return None
+
+        async def create(self, spec):
+            captured["ports"] = spec.ports
+            return object()
+
+    async def async_noop(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr("server.sandboxes.host_port_in_use", lambda port: port == 63100)
+    monkeypatch.setattr("server.sandboxes.ensure_host_ports_available", lambda _ports: None)
+    monkeypatch.setattr("server.sandboxes.MicrosandboxRuntime", FakeRuntime)
+    monkeypatch.setattr("server.sandboxes.prepare_runtime_dirs", async_noop)
+    monkeypatch.setattr("server.sandboxes.disable_guest_ipv6_for_claude", async_noop)
+    monkeypatch.setattr("server.sandboxes.verify_mount_access", async_noop)
+    monkeypatch.setattr("server.sandboxes.configure_codex_cli", async_noop)
+    monkeypatch.setattr("server.sandboxes.start_pty_controller", async_noop)
+    monkeypatch.setattr("server.sandboxes.detach_sandbox", async_noop)
+    monkeypatch.setattr("server.sandboxes.verify_detached_sandbox", async_noop)
+    monkeypatch.setattr("server.sandboxes.wait_for_controller_health", lambda _port: None)
+
+    started = asyncio.run(service.start("demo"))
+
+    assert started["last_status"] == "running"
+    assert started["controller"]["host_port"] == 63101
+    assert captured["ports"] == {63101: 5859}
+
+
 def test_sandbox_service_reassigns_conflicted_port(tmp_path, monkeypatch):
     monkeypatch.setattr("server.sandboxes.host_port_in_use", lambda _port: False)
     workspace = tmp_path / "project"
