@@ -425,6 +425,7 @@ def create_app(
 
     app.config["host"] = host
     app.config["port"] = port
+    app.config["base_prepare"] = {"running": False, "returncode": None}
     global _service_worker_atexit_registered
     if not _service_worker_atexit_registered:
         atexit.register(service_worker_mod.stop_all_services)
@@ -483,6 +484,58 @@ def create_app(
 
     def _emit_sandboxes_updated():
         socketio.emit("sandboxes:updated", {"sandboxes": _sandbox_service().list()}, to="authenticated")
+
+    def _emit_base_status(status):
+        socketio.emit("base:status", {"base": status}, to="authenticated")
+
+    def _base_prepare_worker(rebuild=False):
+        state = app.config["base_prepare"]
+        state["running"] = True
+        state["returncode"] = None
+        _emit_base_status({
+            "name": "toady-microsandbox-local",
+            "prepared": False,
+            "state": "preparing",
+            "message": "Preparing Microsandbox base...",
+        })
+        root = os.path.dirname(os.path.dirname(__file__))
+        command = [
+            sys.executable,
+            os.path.join(root, "toady.py"),
+            "--prepare-base" if not rebuild else "--rebuild-base",
+            "--home",
+            manager.global_dir,
+        ]
+        socketio.emit("base:log", {"line": "$ " + " ".join(command)}, to="authenticated")
+        try:
+            proc = subprocess.Popen(
+                command,
+                cwd=root,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                socketio.emit("base:log", {"line": line.rstrip("\n")}, to="authenticated")
+            state["returncode"] = proc.wait()
+            if state["returncode"] == 0:
+                socketio.emit("base:log", {"line": "Base preparation finished."}, to="authenticated")
+            else:
+                socketio.emit("base:log", {"line": f"Base preparation exited with code {state['returncode']}."}, to="authenticated")
+        except Exception as exc:
+            state["returncode"] = -1
+            socketio.emit("base:log", {"line": f"Base preparation failed: {exc}"}, to="authenticated")
+        finally:
+            state["running"] = False
+            import asyncio
+
+            status = asyncio.run(toady_base.base_status())
+            if state["returncode"] not in (None, 0) and not status.get("prepared"):
+                status["state"] = "error"
+                status["error"] = status.get("error") or f"prepare exited with code {state['returncode']}"
+            _emit_base_status(status)
 
     # --- Login / logout -------------------------------------------------
 
@@ -1234,14 +1287,19 @@ def create_app(
         import asyncio
 
         status = asyncio.run(toady_base.base_status())
+        if app.config["base_prepare"].get("running"):
+            status["state"] = "preparing"
+            status["message"] = "Preparing Microsandbox base..."
         return {"ok": True, "base": status}
 
     @socketio.on("base:prepare")
-    def toady_socket_base_prepare(_payload=None):
-        return {
-            "ok": False,
-            "error": "Base preparation from the web UI is not wired yet. Run: python3 toady.py --prepare-base",
-        }
+    def toady_socket_base_prepare(payload=None):
+        state = app.config["base_prepare"]
+        if state.get("running"):
+            return {"ok": True, "started": False, "message": "Base preparation is already running."}
+        rebuild = bool((payload or {}).get("rebuild"))
+        socketio.start_background_task(_base_prepare_worker, rebuild)
+        return {"ok": True, "started": True}
 
     @socketio.on("sandbox:create")
     def toady_socket_create_sandbox(payload):

@@ -29,6 +29,7 @@ createApp({
       name: 'toady-microsandbox-local',
       message: 'Checking Microsandbox base...',
     });
+    const baseLogs = reactive([]);
     const form = reactive({
       name: '',
       workspace_root: '',
@@ -153,7 +154,18 @@ createApp({
 
     async function requestBasePrepare() {
       try {
-        await call('base:prepare');
+        const response = await call('base:prepare');
+        if (response.started) {
+          baseLogs.splice(0, baseLogs.length);
+          setToast('Base preparation started.', 'success');
+          Object.assign(baseStatus, {
+            prepared: false,
+            state: 'preparing',
+            message: 'Preparing Microsandbox base...',
+          });
+        } else {
+          setToast(response.message || 'Base preparation is already running.', 'info');
+        }
       } catch (error) {
         setToast(error.message, 'error');
       }
@@ -183,12 +195,23 @@ createApp({
       if (payload?.id === selectedSlug.value) selectedSlug.value = '';
       loadSandboxes().catch((error) => setToast(error.message, 'error'));
     });
+    socket.on('base:status', (payload) => {
+      Object.assign(baseStatus, payload?.base || {});
+      refreshIcons();
+    });
+    socket.on('base:log', (payload) => {
+      const line = payload?.line || '';
+      if (!line) return;
+      baseLogs.push(line);
+      if (baseLogs.length > 300) baseLogs.splice(0, baseLogs.length - 300);
+    });
 
     refreshIcons();
 
     return {
       basename,
       baseStatus,
+      baseLogs,
       busy,
       canStartSelected,
       connected,
@@ -263,6 +286,9 @@ createApp({
             <button class="tool-button" type="button" @click="requestBasePrepare">
               <i data-lucide="hammer"></i><span>Prepare</span>
             </button>
+          </div>
+          <div class="base-log" v-if="baseLogs.length">
+            <div v-for="(line, index) in baseLogs" :key="index">{{ line }}</div>
           </div>
           <form class="create-form" @submit.prevent="createSandbox">
             <label>

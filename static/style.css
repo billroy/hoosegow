@@ -369,6 +369,20 @@ button:disabled {
   background: #24151a;
 }
 
+.base-log {
+  max-height: 180px;
+  margin: -4px 0 14px;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid #2d3844;
+  border-radius: 8px;
+  background: #080b0f;
+  color: #b9c7d6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .create-form {
   display: grid;
   grid-template-columns: minmax(150px, 0.9fr) minmax(260px, 2fr) 96px 122px auto;
