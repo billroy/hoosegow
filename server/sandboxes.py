@@ -219,6 +219,10 @@ class SandboxService:
         slug = validate_slug(str(payload.get("slug") or payload.get("name") or ""))
         if self.store.exists(slug):
             raise SandboxServiceError(f"Sandbox already exists: {slug}")
+        if self._runtime_instance_exists(slug):
+            raise SandboxServiceError(
+                f"Sandbox name is already used by an existing Microsandbox instance outside Toady: {slug}"
+            )
         canonical_workspace_path, warnings = validate_workspace_path(
             str(payload.get("workspace_root") or payload.get("workspace_path") or ""),
             browse_roots=self.browse_roots,
@@ -249,6 +253,18 @@ class SandboxService:
         )
         self._check_resource_admission(manifest)
         return self.store.save(manifest).to_dict()
+
+    def _runtime_instance_exists(self, slug: str) -> bool:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            pass
+        else:
+            return False
+        try:
+            return bool(asyncio.run(MicrosandboxRuntime().exists(slug)))
+        except Exception:
+            return False
 
     def _allocate_port(self, *, exclude: set[int] | None = None) -> int:
         exclude = set(exclude or set())

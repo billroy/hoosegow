@@ -86,6 +86,21 @@ def test_sandbox_service_prevents_duplicate_slug(tmp_path):
         service.create_manifest({"name": "demo", "workspace_root": str(workspace)})
 
 
+def test_sandbox_service_rejects_foreign_runtime_slug(tmp_path, monkeypatch):
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+
+    class FakeRuntime:
+        async def exists(self, slug):
+            return slug == "demo"
+
+    monkeypatch.setattr("server.sandboxes.MicrosandboxRuntime", FakeRuntime)
+    service = SandboxService(home=str(tmp_path / "state"), browse_roots=[str(tmp_path)])
+
+    with pytest.raises(SandboxServiceError, match="outside Toady: demo"):
+        service.create_manifest({"name": "demo", "workspace_root": str(workspace)})
+
+
 def test_sandbox_service_allows_running_shared_workspace(tmp_path, monkeypatch):
     monkeypatch.setattr("server.sandboxes.host_port_in_use", lambda _port: False)
     workspace = tmp_path / "project"
