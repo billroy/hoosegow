@@ -72,6 +72,8 @@ _LOGIN_THROTTLE_BLOCK_SECONDS = 60
 _DEFAULT_SESSION_DAYS = 30
 _MAX_SESSION_DAYS = 365
 _TERMINAL_REPLAY_LIMIT_BYTES = 200 * 1024
+_TERMINAL_REPLAY_LIMIT_LINES = 10_000
+_TERMINAL_REPLAY_TRUNCATED_MARKER = b"\r\n[Toady replay truncated]\r\n"
 _TEXTUAL_APPLICATION_MIME_PREFIXES = (
     "application/json",
     "application/ld+json",
@@ -620,6 +622,8 @@ def create_app(
 
     def _toady_terminal_replay(session_info):
         replay = bytes(session_info.get("replay") or b"")
+        if session_info.get("replay_truncated"):
+            replay = _TERMINAL_REPLAY_TRUNCATED_MARKER + replay
         return {
             "data": base64.b64encode(replay).decode("ascii"),
             "truncated": bool(session_info.get("replay_truncated")),
@@ -641,6 +645,19 @@ def create_app(
             if len(replay) > _TERMINAL_REPLAY_LIMIT_BYTES:
                 del replay[: len(replay) - _TERMINAL_REPLAY_LIMIT_BYTES]
                 session_info["replay_truncated"] = True
+            newline_count = replay.count(b"\n")
+            if newline_count > _TERMINAL_REPLAY_LIMIT_LINES:
+                trim_lines = newline_count - _TERMINAL_REPLAY_LIMIT_LINES
+                trim_index = -1
+                search_from = 0
+                for _index in range(trim_lines):
+                    trim_index = replay.find(b"\n", search_from)
+                    if trim_index < 0:
+                        break
+                    search_from = trim_index + 1
+                if trim_index >= 0:
+                    del replay[: trim_index + 1]
+                    session_info["replay_truncated"] = True
 
     def _close_toady_terminal(terminal_id, *, emit_closed=True):
         with app.config["toady_terminals_lock"]:
