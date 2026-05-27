@@ -31,7 +31,7 @@ createApp({
     });
     const baseLogs = reactive([]);
     const form = reactive({
-      name: '',
+      name: 'sandbox',
       workspace_root: '',
       vcpus: 4,
       memory_mib: 4096,
@@ -148,6 +148,20 @@ createApp({
       if (!binary) return '';
       const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
       return new TextDecoder().decode(bytes);
+    }
+
+    function nextSandboxName() {
+      const used = new Set(sandboxes.map((sandbox) => sandbox.slug));
+      if (!used.has('sandbox')) return 'sandbox';
+      for (let index = 2; index < 1000; index += 1) {
+        const candidate = `sandbox-${index}`;
+        if (!used.has(candidate)) return candidate;
+      }
+      return `sandbox-${Date.now().toString(36).slice(-5)}`;
+    }
+
+    function isGeneratedSandboxName(value) {
+      return /^sandbox(?:-\d+)?$/.test(String(value || '').trim());
     }
 
     function upsertTerminalRecord(terminalInfo, transcript = '') {
@@ -277,6 +291,11 @@ createApp({
 
     function replaceSandboxes(nextSandboxes) {
       sandboxes.splice(0, sandboxes.length, ...(Array.isArray(nextSandboxes) ? nextSandboxes : []));
+      const generatedNameTaken = isGeneratedSandboxName(form.name)
+        && sandboxes.some((sandbox) => sandbox.slug === form.name.trim());
+      if (!form.name.trim() || generatedNameTaken) {
+        form.name = nextSandboxName();
+      }
       if (!selectedSlug.value && sandboxes.length) selectedSlug.value = sandboxes[0].slug;
       if (selectedSlug.value && !sandboxes.some((sandbox) => sandbox.slug === selectedSlug.value)) {
         selectedSlug.value = sandboxes[0]?.slug || '';
@@ -401,7 +420,7 @@ createApp({
 
     function selectWorkspacePath(path) {
       form.workspace_root = path || picker.path;
-      if (!form.name.trim()) form.name = basename(form.workspace_root);
+      if (!form.name.trim()) form.name = nextSandboxName();
       picker.open = false;
       refreshIcons();
     }
@@ -842,8 +861,8 @@ createApp({
           </div>
           <form class="create-form" @submit.prevent="createSandbox">
             <label>
-              <span>Name</span>
-              <input v-model="form.name" autocomplete="off" placeholder="project-demo">
+              <span>Sandbox name</span>
+              <input v-model="form.name" autocomplete="off" placeholder="sandbox">
             </label>
             <label class="path-input">
               <span>Workspace root</span>
