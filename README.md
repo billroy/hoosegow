@@ -120,6 +120,12 @@ python3 scripts/pty_controller_microsandbox_smoke.py --verbose
 Set `TOADY_MICROSANDBOX_BASE` or pass `--snapshot` to test another base.
 The latest local run is recorded in `docs/release-smokes.md`.
 
+The same real smokes are available as an opt-in pytest target:
+
+```bash
+TOADY_RUN_REAL_MICROSANDBOX=1 pytest -q -m real_microsandbox
+```
+
 The repo still contains copied Bullpen modules and tests while excavation is in
 progress. See `docs/spec.md` and `docs/bullpen-excavation.md` for the current
 plan and provenance notes.

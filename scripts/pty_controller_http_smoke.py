@@ -91,6 +91,15 @@ class HttpPtyClient:
         combined = b"".join(chunks)
         raise TimeoutError(f"timed out waiting for output {needle!r}; got {combined!r}")
 
+    def wait_for_status(self, session_id: str, status: str, timeout: float = 5.0) -> dict[str, Any]:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            payload = self.rpc({"op": "status", "id": session_id})
+            if payload.get("status") == status:
+                return payload
+            time.sleep(0.1)
+        raise TimeoutError(f"timed out waiting for status {status!r}")
+
 
 def wait_for_health(base_url: str, timeout: float = 5.0) -> None:
     deadline = time.time() + timeout
@@ -126,11 +135,11 @@ def exercise_http_controller(base_url: str, token: str, cwd: str, *, verbose: bo
     client.rpc({"op": "resize", "id": "http-smoke", "cols": 90, "rows": 28})
     command = b"printf 'TOADY_HTTP_PTYD_SMOKE:%s\\n' \"$PWD\"; exit 11\n"
     client.rpc({"op": "write", "id": "http-smoke", "data": base64.b64encode(command).decode("ascii")})
-    output = client.wait_for_output_containing("http-smoke", b"TOADY_HTTP_PTYD_SMOKE:", timeout=10)
-    exited = client.wait_for("http-smoke", "exit", timeout=10)
-    if exited.get("exit_code") != 11:
-        raise RuntimeError(f"unexpected exit payload: {exited}")
-    status = client.rpc({"op": "status", "id": "http-smoke"})
+    expected_output = f"TOADY_HTTP_PTYD_SMOKE:{cwd}".encode()
+    output = client.wait_for_output_containing("http-smoke", expected_output, timeout=10)
+    status = client.wait_for_status("http-smoke", "exited", timeout=10)
+    if status.get("exit_code") != 11:
+        raise RuntimeError(f"unexpected status payload: {status}")
     if status.get("status") != "exited":
         raise RuntimeError(f"unexpected status payload: {status}")
     second = client.rpc(

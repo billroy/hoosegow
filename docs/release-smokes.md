@@ -17,6 +17,7 @@ Passing real Microsandbox smokes:
 ```bash
 python3 scripts/microsandbox_port_smoke.py
 python3 scripts/pty_controller_microsandbox_smoke.py --verbose
+TOADY_RUN_REAL_MICROSANDBOX=1 pytest -q -m real_microsandbox
 ```
 
 Observed output:
