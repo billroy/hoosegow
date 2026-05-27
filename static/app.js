@@ -37,10 +37,31 @@ createApp({
       memory_mib: 4096,
     });
     const toast = reactive({ message: '', tone: 'info' });
+    const activeTerminal = reactive({
+      id: '',
+      sandbox_id: '',
+      cwd: '',
+      status: 'closed',
+      exit_code: null,
+    });
+    const terminalRef = ref(null);
+    const terminal = ref(null);
+    const terminalDataDisposable = ref(null);
+    const terminalResizeDisposable = ref(null);
+    const terminalResizeObserver = ref(null);
+    const terminalFitTimer = ref(null);
+    const terminalTextDecoder = new TextDecoder();
 
     const selected = computed(() => sandboxes.find((sandbox) => sandbox.slug === selectedSlug.value) || sandboxes[0] || null);
     const sortedSandboxes = computed(() => [...sandboxes].sort((a, b) => a.slug.localeCompare(b.slug)));
     const canStartSelected = computed(() => Boolean(selected.value && baseStatus.prepared && !busy.value));
+    const canOpenTerminal = computed(() => Boolean(selected.value && selected.value.last_status === 'running' && !busy.value));
+    const terminalVisible = computed(() => Boolean(
+      selected.value
+      && activeTerminal.id
+      && activeTerminal.sandbox_id === selected.value.slug
+      && activeTerminal.status !== 'closed'
+    ));
 
     function setToast(message, tone = 'info') {
       toast.message = message;
@@ -55,6 +76,114 @@ createApp({
       nextTick(() => {
         if (window.lucide) window.lucide.createIcons();
       });
+    }
+
+    function decodeBase64Text(value) {
+      const binary = window.atob(value || '');
+      if (!binary) return '';
+      const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+      return terminalTextDecoder.decode(bytes, { stream: true });
+    }
+
+    function terminalCellSize() {
+      if (!terminalRef.value) return null;
+      const probe = document.createElement('span');
+      probe.textContent = 'W';
+      probe.style.position = 'absolute';
+      probe.style.visibility = 'hidden';
+      probe.style.whiteSpace = 'pre';
+      probe.style.fontFamily = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+      probe.style.fontSize = '12px';
+      probe.style.lineHeight = '15px';
+      terminalRef.value.appendChild(probe);
+      const rect = probe.getBoundingClientRect();
+      probe.remove();
+      if (!rect.width || !rect.height) return null;
+      return { width: rect.width, height: rect.height };
+    }
+
+    function fitTerminal() {
+      terminalFitTimer.value = null;
+      if (!terminal.value || !terminalRef.value) return;
+      const cell = terminalCellSize();
+      if (!cell) return;
+      const styles = getComputedStyle(terminalRef.value);
+      const width = terminalRef.value.clientWidth - parseFloat(styles.paddingLeft) - parseFloat(styles.paddingRight);
+      const height = terminalRef.value.clientHeight - parseFloat(styles.paddingTop) - parseFloat(styles.paddingBottom);
+      const cols = Math.max(20, Math.floor(width / cell.width));
+      const rows = Math.max(5, Math.floor(height / cell.height));
+      if (terminal.value.cols !== cols || terminal.value.rows !== rows) {
+        terminal.value.resize(cols, rows);
+      }
+    }
+
+    function scheduleTerminalFit() {
+      if (terminalFitTimer.value) window.clearTimeout(terminalFitTimer.value);
+      terminalFitTimer.value = window.setTimeout(() => fitTerminal(), 50);
+    }
+
+    async function ensureTerminal() {
+      if (!terminalRef.value || terminal.value) return;
+      if (!window.Terminal) {
+        setToast('Terminal renderer did not load.', 'error');
+        return;
+      }
+      terminal.value = new window.Terminal({
+        convertEol: true,
+        cursorBlink: true,
+        disableStdin: false,
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+        fontSize: 12,
+        lineHeight: 1.25,
+        scrollback: 8000,
+        theme: {
+          background: '#07090c',
+          foreground: '#d7dde7',
+          cursor: '#e9edf5',
+          selectionBackground: '#3b5366',
+        },
+      });
+      terminal.value.open(terminalRef.value);
+      terminalDataDisposable.value = terminal.value.onData((data) => {
+        if (!activeTerminal.id || activeTerminal.status !== 'running') return;
+        socket.emit('sandbox:terminal:input', { terminal_id: activeTerminal.id, data });
+      });
+      terminalResizeDisposable.value = terminal.value.onResize(({ cols, rows }) => {
+        if (!activeTerminal.id || activeTerminal.status !== 'running') return;
+        socket.emit('sandbox:terminal:resize', { terminal_id: activeTerminal.id, cols, rows });
+      });
+      if (typeof ResizeObserver !== 'undefined') {
+        terminalResizeObserver.value = new ResizeObserver(() => scheduleTerminalFit());
+        terminalResizeObserver.value.observe(terminalRef.value);
+      }
+      window.addEventListener('resize', scheduleTerminalFit);
+      await nextTick();
+      fitTerminal();
+      terminal.value.focus();
+    }
+
+    function disposeTerminal() {
+      if (terminalResizeObserver.value) {
+        terminalResizeObserver.value.disconnect();
+        terminalResizeObserver.value = null;
+      }
+      window.removeEventListener('resize', scheduleTerminalFit);
+      if (terminalFitTimer.value) {
+        window.clearTimeout(terminalFitTimer.value);
+        terminalFitTimer.value = null;
+      }
+      if (terminalDataDisposable.value) {
+        terminalDataDisposable.value.dispose();
+        terminalDataDisposable.value = null;
+      }
+      if (terminalResizeDisposable.value) {
+        terminalResizeDisposable.value.dispose();
+        terminalResizeDisposable.value = null;
+      }
+      if (terminal.value) {
+        terminal.value.dispose();
+        terminal.value = null;
+      }
     }
 
     function replaceSandboxes(nextSandboxes) {
@@ -124,6 +253,9 @@ createApp({
         setToast(baseStatus.message || 'Prepare the Microsandbox base before starting sandboxes.', 'error');
         return;
       }
+      if ((event === 'sandbox:stop' || event === 'sandbox:destroy') && activeTerminal.sandbox_id === sandbox.slug) {
+        await closeTerminal({ silent: true });
+      }
       busy.value = true;
       try {
         await call(event, { id: sandbox.slug });
@@ -136,10 +268,67 @@ createApp({
       }
     }
 
+    async function openTerminal(sandbox) {
+      if (!sandbox || sandbox.last_status !== 'running') {
+        setToast('Start the sandbox before opening a terminal.', 'error');
+        return;
+      }
+      if (activeTerminal.id && activeTerminal.sandbox_id === sandbox.slug && activeTerminal.status !== 'closed') {
+        await nextTick();
+        await ensureTerminal();
+        if (terminal.value) terminal.value.focus();
+        return;
+      }
+      if (activeTerminal.id) await closeTerminal({ silent: true });
+      busy.value = true;
+      try {
+        const response = await call('sandbox:terminal:open', {
+          sandbox_id: sandbox.slug,
+          cols: 100,
+          rows: 30,
+        });
+        activeTerminal.id = response.terminal.id;
+        activeTerminal.sandbox_id = response.terminal.sandbox_id;
+        activeTerminal.cwd = response.terminal.cwd || '/workspace';
+        activeTerminal.status = 'running';
+        activeTerminal.exit_code = null;
+        await nextTick();
+        await ensureTerminal();
+        setToast(`Terminal opened for ${sandbox.slug}.`, 'success');
+      } catch (error) {
+        activeTerminal.id = '';
+        activeTerminal.sandbox_id = '';
+        activeTerminal.status = 'closed';
+        setToast(error.message, 'error');
+      } finally {
+        busy.value = false;
+        refreshIcons();
+      }
+    }
+
+    async function closeTerminal(options = {}) {
+      const terminalId = activeTerminal.id;
+      if (terminalId && options.remote !== false) {
+        socket.emit('sandbox:terminal:close', { terminal_id: terminalId });
+      }
+      disposeTerminal();
+      activeTerminal.id = '';
+      activeTerminal.sandbox_id = '';
+      activeTerminal.cwd = '';
+      activeTerminal.status = 'closed';
+      activeTerminal.exit_code = null;
+      if (!options.silent) setToast('Terminal closed.', 'info');
+      await nextTick();
+      refreshIcons();
+    }
+
     async function destroySandbox(sandbox) {
       if (!sandbox) return;
       const confirmed = window.confirm(`Destroy ${sandbox.slug}?`);
       if (!confirmed) return;
+      if (activeTerminal.sandbox_id === sandbox.slug) {
+        await closeTerminal({ silent: true });
+      }
       busy.value = true;
       try {
         await call('sandbox:destroy', { id: sandbox.slug, purge: true });
@@ -195,6 +384,32 @@ createApp({
       if (payload?.id === selectedSlug.value) selectedSlug.value = '';
       loadSandboxes().catch((error) => setToast(error.message, 'error'));
     });
+    socket.on('sandbox:terminal:output', (payload) => {
+      if (!terminal.value || payload?.terminal_id !== activeTerminal.id) return;
+      try {
+        terminal.value.write(decodeBase64Text(payload.data));
+      } catch (error) {
+        setToast(error.message, 'error');
+      }
+    });
+    socket.on('sandbox:terminal:exit', (payload) => {
+      if (payload?.terminal_id !== activeTerminal.id) return;
+      activeTerminal.status = 'exited';
+      activeTerminal.exit_code = payload.exit_code;
+      if (terminal.value) terminal.value.write(`\r\n[terminal exited: ${payload.exit_code ?? 0}]\r\n`);
+    });
+    socket.on('sandbox:terminal:error', (payload) => {
+      if (payload?.terminal_id && payload.terminal_id !== activeTerminal.id) return;
+      const message = payload?.error || 'Terminal error';
+      if (terminal.value && payload?.terminal_id === activeTerminal.id) {
+        terminal.value.write(`\r\n[terminal error: ${message}]\r\n`);
+      }
+      setToast(message, 'error');
+    });
+    socket.on('sandbox:terminal:closed', (payload) => {
+      if (payload?.terminal_id !== activeTerminal.id) return;
+      closeTerminal({ silent: true, remote: false });
+    });
     socket.on('base:status', (payload) => {
       Object.assign(baseStatus, payload?.base || {});
       refreshIcons();
@@ -209,11 +424,14 @@ createApp({
     refreshIcons();
 
     return {
+      activeTerminal,
       basename,
       baseStatus,
       baseLogs,
       busy,
+      canOpenTerminal,
       canStartSelected,
+      closeTerminal,
       connected,
       createSandbox,
       destroySandbox,
@@ -221,11 +439,14 @@ createApp({
       formatDate,
       loadBaseStatus,
       loadSandboxes,
+      openTerminal,
       requestBasePrepare,
       runSandboxAction,
       selected,
       selectedSlug,
       sortedSandboxes,
+      terminalRef,
+      terminalVisible,
       toast,
     };
   },
@@ -324,6 +545,9 @@ createApp({
               <button class="tool-button" type="button" :disabled="!canStartSelected" @click="runSandboxAction('sandbox:start', selected, 'Start requested.')">
                 <i data-lucide="play"></i><span>Start</span>
               </button>
+              <button class="primary-button" type="button" :disabled="!canOpenTerminal" @click="openTerminal(selected)">
+                <i data-lucide="terminal"></i><span>Terminal</span>
+              </button>
               <button class="tool-button" type="button" :disabled="busy" @click="runSandboxAction('sandbox:stop', selected, 'Stopped.')">
                 <i data-lucide="square"></i><span>Stop</span>
               </button>
@@ -354,11 +578,21 @@ createApp({
 
           <div class="terminal-surface">
             <div class="terminal-title">
-              <i data-lucide="terminal"></i>
-              <span>Terminal surface</span>
+              <span class="terminal-title-text">
+                <i data-lucide="terminal"></i>
+                <span>Terminal</span>
+                <small v-if="terminalVisible">{{ activeTerminal.cwd }}</small>
+              </span>
+              <button v-if="terminalVisible" class="icon-button terminal-close" type="button" title="Close terminal" @click="closeTerminal">
+                <i data-lucide="x"></i>
+              </button>
             </div>
-            <div class="terminal-placeholder">
-              <span>{{ selected.last_status === 'running' ? 'Ready' : 'Stopped' }}</span>
+            <div v-if="terminalVisible" ref="terminalRef" class="terminal-viewport"></div>
+            <div v-else class="terminal-placeholder">
+              <button v-if="selected.last_status === 'running'" class="primary-button" type="button" :disabled="busy" @click="openTerminal(selected)">
+                <i data-lucide="terminal"></i><span>Open Terminal</span>
+              </button>
+              <span v-else>Start the sandbox to open a terminal</span>
             </div>
           </div>
 

@@ -11,6 +11,8 @@ from datetime import datetime, timedelta, timezone
 from io import BytesIO
 import shutil
 import atexit
+import threading
+import uuid
 from time import monotonic
 from urllib.parse import urlparse
 
@@ -42,8 +44,9 @@ from server import service_worker as service_worker_mod
 from server import mcp_auth
 from server import worktrees as worktree_mod
 from server.terminal import TerminalManager
+from server.pty_driver import PtyDriver, PtyDriverError
 from server.sandboxes import SandboxService, SandboxServiceError, browse_roots_from_env
-from server.toady_validation import ValidationError
+from server.toady_validation import ValidationError, validate_slug
 
 
 socketio = SocketIO()
@@ -405,6 +408,8 @@ def create_app(
         engineio_logger=websocket_debug,
     )
     app.config["terminal_manager"] = TerminalManager(socketio)
+    app.config["toady_terminals"] = {}
+    app.config["toady_terminals_lock"] = threading.RLock()
 
     def _portable_config(config):
         safe = dict(config or {})
@@ -482,11 +487,90 @@ def create_app(
     def _sandbox_error_payload(exc):
         return {"ok": False, "error": str(exc)}
 
+    def _toady_terminal_error_payload(exc):
+        return {"ok": False, "error": str(exc)}
+
     def _emit_sandboxes_updated():
         socketio.emit("sandboxes:updated", {"sandboxes": _sandbox_service().list()}, to="authenticated")
 
     def _emit_base_status(status):
         socketio.emit("base:status", {"base": status}, to="authenticated")
+
+    def _toady_terminal_room(terminal_id):
+        return f"toady-terminal:{terminal_id}"
+
+    def _toady_terminal_driver(manifest):
+        controller = dict(manifest.controller or {})
+        host_port = int(controller.get("host_port") or 0)
+        token = str(controller.get("token") or "")
+        if not host_port or not token:
+            raise SandboxServiceError("Sandbox terminal controller is not configured.")
+        return PtyDriver(base_url=f"http://127.0.0.1:{host_port}", token=token)
+
+    def _toady_terminal_session(terminal_id):
+        with app.config["toady_terminals_lock"]:
+            session_info = app.config["toady_terminals"].get(terminal_id)
+        if not session_info:
+            raise SandboxServiceError("Unknown terminal session.")
+        if session_info.get("owner_sid") != request.sid:
+            raise SandboxServiceError("Terminal session belongs to another client.")
+        return session_info
+
+    def _toady_terminal_poll(terminal_id):
+        while True:
+            with app.config["toady_terminals_lock"]:
+                session_info = app.config["toady_terminals"].get(terminal_id)
+                if not session_info or not session_info.get("alive"):
+                    return
+                driver = session_info["driver"]
+                since = int(session_info.get("seq") or 0)
+            try:
+                payload = driver.poll(terminal_id, since=since, timeout=1.0)
+            except PtyDriverError as exc:
+                socketio.emit(
+                    "sandbox:terminal:error",
+                    {"terminal_id": terminal_id, "error": str(exc)},
+                    to=_toady_terminal_room(terminal_id),
+                )
+                with app.config["toady_terminals_lock"]:
+                    session_info = app.config["toady_terminals"].get(terminal_id)
+                    if session_info:
+                        session_info["alive"] = False
+                return
+
+            events = payload.get("events") or []
+            next_seq = int(payload.get("next_seq") or since)
+            with app.config["toady_terminals_lock"]:
+                session_info = app.config["toady_terminals"].get(terminal_id)
+                if not session_info:
+                    return
+                session_info["seq"] = next_seq
+
+            for event in events:
+                event_name = event.get("event")
+                if event_name == "output":
+                    socketio.emit(
+                        "sandbox:terminal:output",
+                        {"terminal_id": terminal_id, "data": event.get("data") or ""},
+                        to=_toady_terminal_room(terminal_id),
+                    )
+                elif event_name == "exit":
+                    socketio.emit(
+                        "sandbox:terminal:exit",
+                        {"terminal_id": terminal_id, "exit_code": event.get("exit_code")},
+                        to=_toady_terminal_room(terminal_id),
+                    )
+                    with app.config["toady_terminals_lock"]:
+                        session_info = app.config["toady_terminals"].get(terminal_id)
+                        if session_info:
+                            session_info["alive"] = False
+                    return
+                elif event_name == "error":
+                    socketio.emit(
+                        "sandbox:terminal:error",
+                        {"terminal_id": terminal_id, "error": event.get("error") or "Terminal error"},
+                        to=_toady_terminal_room(terminal_id),
+                    )
 
     def _base_prepare_worker(rebuild=False):
         state = app.config["base_prepare"]
@@ -1275,6 +1359,21 @@ def create_app(
         terminal_manager = app.config.get("terminal_manager")
         if terminal_manager:
             terminal_manager.close_for_sid(request.sid)
+        with app.config["toady_terminals_lock"]:
+            terminal_ids = [
+                terminal_id
+                for terminal_id, session_info in app.config["toady_terminals"].items()
+                if session_info.get("owner_sid") == request.sid
+            ]
+            for terminal_id in terminal_ids:
+                app.config["toady_terminals"][terminal_id]["alive"] = False
+        for terminal_id in terminal_ids:
+            try:
+                _toady_terminal_session(terminal_id)["driver"].close(terminal_id)
+            except Exception:
+                pass
+            with app.config["toady_terminals_lock"]:
+                app.config["toady_terminals"].pop(terminal_id, None)
         mcp_sids.discard(request.sid)
         mcp_sid_workspace.pop(request.sid, None)
 
@@ -1368,6 +1467,91 @@ def create_app(
         _emit_sandboxes_updated()
         socketio.emit("sandbox:destroyed", {"id": slug}, to="authenticated")
         return {"ok": True}
+
+    @socketio.on("sandbox:terminal:open")
+    def toady_socket_open_terminal(payload):
+        payload = payload or {}
+        slug = payload.get("sandbox_id") or payload.get("slug") or payload.get("id") or ""
+        try:
+            slug = validate_slug(str(slug))
+            manifest = _sandbox_service().store.get(slug)
+            if manifest is None:
+                raise SandboxServiceError("Unknown sandbox")
+            if manifest.last_status != "running":
+                raise SandboxServiceError("Start the sandbox before opening a terminal.")
+            cols = max(20, min(300, int(payload.get("cols") or 100)))
+            rows = max(5, min(100, int(payload.get("rows") or 30)))
+            terminal_id = f"{manifest.slug}-{uuid.uuid4().hex[:12]}"
+            driver = _toady_terminal_driver(manifest)
+            opened = driver.open(terminal_id, cwd="/workspace", shell="/bin/bash", cols=cols, rows=rows)
+            with app.config["toady_terminals_lock"]:
+                app.config["toady_terminals"][terminal_id] = {
+                    "id": terminal_id,
+                    "sandbox_id": manifest.slug,
+                    "driver": driver,
+                    "owner_sid": request.sid,
+                    "seq": 0,
+                    "alive": True,
+                }
+            join_room(_toady_terminal_room(terminal_id))
+            socketio.start_background_task(_toady_terminal_poll, terminal_id)
+            return {
+                "ok": True,
+                "terminal": {
+                    "id": terminal_id,
+                    "sandbox_id": manifest.slug,
+                    "cwd": opened.get("cwd") or "/workspace",
+                    "pid": opened.get("pid"),
+                },
+            }
+        except (SandboxServiceError, ValidationError, PtyDriverError, ValueError) as exc:
+            socketio.emit("sandbox:terminal:error", {"sandbox_id": slug, "error": str(exc)}, to=request.sid)
+            return _toady_terminal_error_payload(exc)
+
+    @socketio.on("sandbox:terminal:input")
+    def toady_socket_terminal_input(payload):
+        payload = payload or {}
+        terminal_id = str(payload.get("terminal_id") or "")
+        data = payload.get("data")
+        if not isinstance(data, str):
+            return _toady_terminal_error_payload(SandboxServiceError("Terminal input must be text."))
+        try:
+            session_info = _toady_terminal_session(terminal_id)
+            session_info["driver"].write(terminal_id, data)
+            return {"ok": True}
+        except (SandboxServiceError, PtyDriverError) as exc:
+            socketio.emit("sandbox:terminal:error", {"terminal_id": terminal_id, "error": str(exc)}, to=request.sid)
+            return _toady_terminal_error_payload(exc)
+
+    @socketio.on("sandbox:terminal:resize")
+    def toady_socket_terminal_resize(payload):
+        payload = payload or {}
+        terminal_id = str(payload.get("terminal_id") or "")
+        try:
+            cols = max(20, min(300, int(payload.get("cols") or 100)))
+            rows = max(5, min(100, int(payload.get("rows") or 30)))
+            session_info = _toady_terminal_session(terminal_id)
+            session_info["driver"].resize(terminal_id, cols=cols, rows=rows)
+            return {"ok": True}
+        except (SandboxServiceError, PtyDriverError, ValueError) as exc:
+            socketio.emit("sandbox:terminal:error", {"terminal_id": terminal_id, "error": str(exc)}, to=request.sid)
+            return _toady_terminal_error_payload(exc)
+
+    @socketio.on("sandbox:terminal:close")
+    def toady_socket_terminal_close(payload):
+        payload = payload or {}
+        terminal_id = str(payload.get("terminal_id") or "")
+        try:
+            session_info = _toady_terminal_session(terminal_id)
+            session_info["alive"] = False
+            session_info["driver"].close(terminal_id)
+            with app.config["toady_terminals_lock"]:
+                app.config["toady_terminals"].pop(terminal_id, None)
+            socketio.emit("sandbox:terminal:closed", {"terminal_id": terminal_id}, to=_toady_terminal_room(terminal_id))
+            return {"ok": True}
+        except (SandboxServiceError, PtyDriverError) as exc:
+            socketio.emit("sandbox:terminal:error", {"terminal_id": terminal_id, "error": str(exc)}, to=request.sid)
+            return _toady_terminal_error_payload(exc)
 
     register_events(socketio, app)
 
