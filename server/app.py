@@ -286,22 +286,26 @@ def create_app(
     startup_workspace_name = (os.environ.get("TOADY_WORKSPACE_NAME") or os.environ.get("BULLPEN_WORKSPACE_NAME") or "").strip() or None
     start_without_project = bool(start_without_project) or os.environ.get("TOADY_START_WITHOUT_PROJECT", os.environ.get("BULLPEN_START_WITHOUT_PROJECT", "")) == "1"
 
-    # Initialize workspace manager and register startup project unless this
-    # runtime intentionally starts as an empty project shell.
+    # Initialize workspace manager and register startup projects only for the
+    # legacy Bullpen workspace surface. Toady mode uses sandbox manifests and
+    # workspace roots, so persisted project registry entries must not activate
+    # or create `.bullpen` directories on startup.
     manager = WorkspaceManager(global_dir=global_dir)
-    startup_id = None if start_without_project else manager.register_project(workspace, name=startup_workspace_name)
-    # Activate all persisted projects so the UI can switch between them immediately.
-    # The registry can contain projects from prior runs that need in-memory state.
-    for entry in manager.list_projects():
-        if entry["id"] == startup_id:
-            continue
-        try:
-            manager.register_project(entry["path"], name=entry.get("name"))
-        except ValueError:
-            # Path is currently missing/unavailable (renamed, unmounted, etc.).
-            # Keep the registry entry so it returns when the path comes back;
-            # do not silently delete user data.
-            continue
+    startup_id = None
+    if not start_without_project:
+        startup_id = manager.register_project(workspace, name=startup_workspace_name)
+        # Activate all persisted projects so the UI can switch between them immediately.
+        # The registry can contain projects from prior runs that need in-memory state.
+        for entry in manager.list_projects():
+            if entry["id"] == startup_id:
+                continue
+            try:
+                manager.register_project(entry["path"], name=entry.get("name"))
+            except ValueError:
+                # Path is currently missing/unavailable (renamed, unmounted, etc.).
+                # Keep the registry entry so it returns when the path comes back;
+                # do not silently delete user data.
+                continue
     bp_dir = manager.get_bp_dir(startup_id) if startup_id else None
 
     app = Flask(
@@ -442,7 +446,7 @@ def create_app(
     app.config["port"] = port
     app.config["base_prepare"] = {"running": False, "returncode": None}
     global _service_worker_atexit_registered
-    if not _service_worker_atexit_registered:
+    if not start_without_project and not _service_worker_atexit_registered:
         atexit.register(service_worker_mod.stop_all_services)
         _service_worker_atexit_registered = True
     app.config["mcp_tokens_by_workspace"] = mcp_auth.initialize_workspace_runtime_configs(
@@ -1456,14 +1460,15 @@ def create_app(
             return
 
         join_room("authenticated")
-        socketio.emit("project:settings", {"projectsRoot": projects_root() or ""}, to=request.sid)
-        ws = manager.get_or_activate(startup_id)
-        if ws:
-            join_room(ws.id)
-            state = load_state(ws.bp_dir, ws.path, workspace_display=ws.name)
-            state["workspaceId"] = ws.id
-            socketio.emit("state:init", state, to=request.sid)
-        socketio.emit("projects:updated", manager.list_visible_projects(include_path=False), to=request.sid)
+        if not start_without_project:
+            socketio.emit("project:settings", {"projectsRoot": projects_root() or ""}, to=request.sid)
+            ws = manager.get_or_activate(startup_id)
+            if ws:
+                join_room(ws.id)
+                state = load_state(ws.bp_dir, ws.path, workspace_display=ws.name)
+                state["workspaceId"] = ws.id
+                socketio.emit("state:init", state, to=request.sid)
+            socketio.emit("projects:updated", manager.list_visible_projects(include_path=False), to=request.sid)
 
     @socketio.on("disconnect")
     def on_disconnect():
@@ -1755,10 +1760,11 @@ def create_app(
         register_events(socketio, app)
 
     # Start time-based scheduler for each workspace
-    for ws in manager.all_workspaces():
-        scheduler = Scheduler(ws.bp_dir, socketio, ws_id=ws.id)
-        scheduler.start()
-        ws.scheduler = scheduler
+    if not start_without_project:
+        for ws in manager.all_workspaces():
+            scheduler = Scheduler(ws.bp_dir, socketio, ws_id=ws.id)
+            scheduler.start()
+            ws.scheduler = scheduler
 
     return app
 
