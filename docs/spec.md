@@ -199,7 +199,7 @@ Single CLI: `toady.py`.
 | `--max-total-memory-mib` | 75% host RAM | Host-wide admitted RAM cap. |
 | `--terminal-limit` | `32` | Default per-sandbox terminal cap. |
 | `--port-pool` | `3000-3099` | Host-published dev-server port pool. |
-| `--workspace-root` | `$HOME` and cwd | Repeatable canonical browse root for the picker. |
+| `--workspace-root` | cwd and `$HOME` | Repeatable canonical browse root for the picker. |
 | `--host-nofile` | `12000` | Target host `RLIMIT_NOFILE` before creating Microsandbox runtimes. |
 | `--guest-nofile` | `65536` | Target in-sandbox `agent` user `RLIMIT_NOFILE`. |
 | `--network-max-connections` | `8192` | Microsandbox network max concurrent guest connections. |

@@ -4,7 +4,12 @@ from pathlib import Path
 import pytest
 
 from server.sandboxes import SandboxService, SandboxServiceError
-from server.toady_validation import ValidationError, validate_slug, validate_workspace_path
+from server.toady_validation import (
+    ValidationError,
+    normalize_browse_roots,
+    validate_slug,
+    validate_workspace_path,
+)
 
 
 def test_validate_slug_rejects_bullpen_style_ids():
@@ -25,6 +30,14 @@ def test_workspace_validation_allows_browse_root_child(tmp_path):
 
     assert path == str(workspace.resolve())
     assert warnings == []
+
+
+def test_default_browse_roots_prefer_cwd_before_home(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    roots = normalize_browse_roots(None)
+
+    assert roots[0] == str(tmp_path.resolve())
 
 
 def test_workspace_validation_rejects_symlink_escape(tmp_path):

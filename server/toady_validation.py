@@ -62,7 +62,7 @@ def parse_port(name: str, value: str | int) -> int:
 def normalize_browse_roots(raw_roots: list[str] | tuple[str, ...] | None) -> list[str]:
     roots = list(raw_roots or [])
     if not roots:
-        roots = [str(Path.home()), os.getcwd()]
+        roots = [os.getcwd(), str(Path.home())]
     normalized: list[str] = []
     for root in roots:
         path = os.path.realpath(os.path.abspath(os.path.expanduser(root)))
