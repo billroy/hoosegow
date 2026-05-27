@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bullpen — Sign in</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    /* Minimal self-contained styles so the login page stays usable even
+       if /style.css fails to load. */
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg-primary, #0f1117);
+      color: var(--text-primary, #e1e4ed);
+    }
+    .login-wrap {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+    .login-card {
+      width: 100%;
+      max-width: 360px;
+      background: var(--bg-secondary, #1a1d27);
+      border: 1px solid var(--border, #333649);
+      border-radius: var(--radius-lg, 10px);
+      padding: 32px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    }
+    .login-card h1 {
+      margin: 0 0 4px 0;
+      font-size: 22px;
+      font-weight: 600;
+    }
+    .login-card .subtitle {
+      margin: 0 0 24px 0;
+      color: var(--text-secondary, #8b90a0);
+      font-size: 13px;
+    }
+    .login-card label {
+      display: block;
+      font-size: 12px;
+      color: var(--text-secondary, #8b90a0);
+      margin: 12px 0 4px 0;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .login-card input[type="text"],
+    .login-card input[type="password"] {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px 12px;
+      border-radius: var(--radius, 6px);
+      border: 1px solid var(--border, #333649);
+      background: var(--bg-tertiary, #242733);
+      color: var(--text-primary, #e1e4ed);
+      font-size: 14px;
+      outline: none;
+    }
+    .login-card input:focus {
+      border-color: var(--accent, #6c8aff);
+    }
+    .login-card button {
+      width: 100%;
+      margin-top: 20px;
+      padding: 10px 12px;
+      border: 0;
+      border-radius: var(--radius, 6px);
+      background: var(--accent, #6c8aff);
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .login-card button:hover {
+      background: var(--accent-hover, #8aa4ff);
+    }
+    .login-card button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .login-error {
+      display: none;
+      margin-top: 16px;
+      padding: 8px 12px;
+      border-radius: var(--radius, 6px);
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--red, #EF4444);
+      font-size: 13px;
+    }
+    .login-error.visible { display: block; }
+  </style>
+</head>
+<body>
+  <div class="login-wrap">
+    <form class="login-card" method="POST" action="/login" id="loginForm">
+      <h1>Bullpen</h1>
+      <p class="subtitle">Sign in to continue</p>
+
+      <div class="login-error" id="loginError" role="alert">
+        Invalid credentials.
+      </div>
+
+      <label for="username">Username</label>
+      <input id="username" name="username" type="text" autocomplete="username"
+             autocapitalize="off" autocorrect="off" spellcheck="false" required>
+
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password"
+             autocomplete="current-password" required>
+
+      <input type="hidden" name="csrf_token" id="csrfToken" value="">
+      <input type="hidden" name="next" id="nextField" value="">
+
+      <button type="submit" id="submitBtn">Sign in</button>
+    </form>
+  </div>
+
+  <script>
+    (function () {
+      // Show an error from the ?error=... query param, if any.
+      var params = new URLSearchParams(window.location.search);
+      var err = params.get('error');
+      if (err) {
+        var box = document.getElementById('loginError');
+        box.textContent =
+          err === 'csrf' ? 'Session expired. Please try again.'
+                         : 'Invalid credentials.';
+        box.classList.add('visible');
+      }
+
+      // Propagate ?next= into the form so the server can redirect back.
+      var next = params.get('next') || '';
+      document.getElementById('nextField').value = next;
+
+      // Fetch CSRF token from the server. We do this via XHR so login.html
+      // itself stays a fully static file (no server-side templating).
+      fetch('/login/csrf', { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          document.getElementById('csrfToken').value = data.csrf_token || '';
+        })
+        .catch(function () { /* CSRF fetch failed; submit will 302 back */ });
+
+      // Focus username on load.
+      document.getElementById('username').focus();
+    })();
+  </script>
+</body>
+</html>

@@ -48,7 +48,7 @@
 | **Workspace root** | A canonical host directory mounted read-write into a sandbox as `/workspace/<slug>`. The user picks this when creating a sandbox. |
 | **Sandbox** | A named Microsandbox microVM with the Toady base image (Python, Node, git, gh, ripgrep, Claude/Codex/Gemini/opencode CLIs). Has persistent `/home/agent` storage. |
 | **Terminal** | A PTY session running inside a sandbox, bridged to a browser xterm.js tab over Socket.IO. |
-| **PTY controller** | A small in-sandbox process (`toady-ptyd`) that owns PTYs and exposes a local control/data API to the host Toady server. |
+| **PTY controller** | A small in-sandbox process (`toady-ptyd`) that owns PTYs and exposes a token-protected HTTP control/data API to the host Toady server through a Microsandbox-published localhost port. |
 | **Base image** | Reusable Microsandbox snapshot, prepared once on first run. Mirrors Bullpen's `deploy-sandbox.py --prepare-base` flow. |
 
 A sandbox has 0..N terminals. A workspace root may be referenced by at most one
@@ -126,13 +126,16 @@ before the app shell. If auth is disabled, there is no login screen.
   UTF-8 and control-code fidelity, resize, exit status, EOF propagation,
   signal or close-based teardown, foreground-process detection where available,
   and reconnect to a still-running PTY within the same Toady server process.
-- **PTY controller architecture**: v1 assumes a required in-sandbox
-  `toady-ptyd` process. The controller binds only to sandbox-local loopback or a
-  Unix socket under `/var/lib/toady`, never directly to the host/LAN, and the
-  host Toady server is the only browser-facing web endpoint. The early PTY
-  spike may prove that Microsandbox's SDK can simplify the controller, but the
-  implementation plan defaults to the controller so terminal work is not
-  blocked on SDK optimism.
+- **PTY controller architecture**: v1 requires an in-sandbox `toady-ptyd`
+  process. The selected host bridge is HTTP, not a raw TCP stream: a P-1 spike
+  proved that Microsandbox-published HTTP ports work, while generic raw TCP
+  connections can be accepted and then closed before reaching the guest process.
+  `toady-ptyd` therefore binds inside the sandbox on a dedicated controller
+  port, published by Microsandbox to host `127.0.0.1` only. The host Toady
+  server is the only intended client and the only browser-facing web endpoint.
+  Every controller request includes a per-sandbox secret. Unix sockets and raw
+  newline JSON remain useful for local development diagnostics, but not for the
+  v1 host-to-sandbox bridge.
 - **Resize**: forward cols/rows on browser viewport changes.
 - **Close**: confirm if a foreground process is detected (best-effort: child
   of PTY leader is not the shell); otherwise close PTY and remove tab.
@@ -159,8 +162,9 @@ Toady state lives under `~/.toady/`:
   config.json            # global settings (port, theme, base image name, ...)
   sandboxes/
     <slug>.json          # sandbox manifest: slug, name, workspace path,
-                         #   home path, resource caps, ports, created-at,
-                         #   last-status, Microsandbox instance ID
+                         #   home path, resource caps, dev ports,
+                         #   controller host/guest port and token,
+                         #   created-at, last-status, Microsandbox instance ID
     <slug>/home/         # bind-mounted into sandbox as /home/agent
   base/                  # Microsandbox base snapshot artifacts (if any)
   logs/
@@ -341,7 +345,9 @@ Required inherited pieces:
 - **PTY controller launch point**: extend Bullpen's sandbox bootstrap flow to
   install and start `toady-ptyd` inside each sandbox after runtime directories,
   FD limits, network caps, CA env, IPv6 mitigation, and Codex config are in
-  place.
+  place. Start it with the HTTP transport on an internal controller port
+  published to host loopback only; do not attempt a raw TCP controller bridge
+  through Microsandbox published ports.
 - **Health and detach checks**: use Bullpen-style wait loops for HTTP health
   where applicable, and verify a sandbox is still running after detach/start.
 - **Port diagnostics**: keep Bullpen's host-port-in-use and `lsof` owner
@@ -456,6 +462,10 @@ guest/
   sandbox, terminal, picker, base, and port CRUD.
 - **Frontend**: Vue 3 from CDN. No npm. xterm.js from CDN with SRI.
 - **Sandboxing**: Microsandbox Python SDK.
+- **Host-to-controller bridge**: token-protected HTTP RPC and long-poll event
+  reads from host Toady to `toady-ptyd`, over a Microsandbox-published
+  localhost-only port. Browser traffic still goes only to the host Toady
+  Flask/Socket.IO server.
 
 ### Relationship to Bullpen
 
@@ -501,7 +511,9 @@ be removed; product features die unless the Toady spec names them.
 
 ## 8. API Sketch
 
-REST:
+REST is intentionally small and boring: health, auth, static/file fetches,
+base/picker queries, and any future download/upload-style operation that fits
+HTTP better than a live command acknowledgement.
 
 ```
 GET    /health
@@ -510,40 +522,45 @@ GET    /login/csrf
 POST   /login
 POST   /logout
 
-GET    /api/sandboxes
-POST   /api/sandboxes
-       { name, workspace_root, vcpus?, memory_mib?, allow_shared_workspace? }
-GET    /api/sandboxes/:id
-POST   /api/sandboxes/:id/start
-POST   /api/sandboxes/:id/stop
-DELETE /api/sandboxes/:id?purge=true
-
-GET    /api/terminals
-POST   /api/sandboxes/:id/terminals
-       { cols, rows }
-DELETE /api/terminals/:id
-
-GET    /api/sandboxes/:id/ports
-POST   /api/sandboxes/:id/ports
-       { guest_port, host_port? }
-DELETE /api/sandboxes/:id/ports/:host_port
-
 GET    /api/base/status
-POST   /api/base/prepare
 GET    /api/picker?path=<abs-path>
 ```
 
-Socket.IO events:
+Socket.IO is the primary control plane for sandbox lifecycle, terminal
+lifecycle, dev-port publishing, and base preparation. These operations are
+stateful, long-running, and naturally broadcast status to every connected tab;
+this matches the Bullpen architecture better than REST-first CRUD.
 
 ```
-sandbox:status     { id, status, terminal_status? }
+sandbox:list       {}                                    client -> server ack
+sandbox:create     { name, workspace_root, vcpus?, memory_mib?,
+                      allow_shared_workspace? }          client -> server ack
+sandbox:get        { id }                                client -> server ack
+sandbox:start      { id }                                client -> server ack
+sandbox:stop       { id }                                client -> server ack
+sandbox:destroy    { id, purge? }                        client -> server ack
+sandboxes:updated  { sandboxes }                         server -> client
+sandbox:status     { id, status, terminal_status? }      server -> client
+sandbox:error      { id, error }                         server -> client
+sandbox:destroyed  { id }                                server -> client
+
+terminal:list      {}                                    client -> server ack
+terminal:open      { sandbox_id, cols, rows }            client -> server ack
 terminal:join      { term_id }                           client -> server
 terminal:input     { term_id, data }                     client -> server
 terminal:resize    { term_id, cols, rows }               client -> server
-terminal:close     { term_id }                           client -> server
+terminal:close     { term_id }                           client -> server ack
 terminal:replay    { term_id, data, truncated }          server -> client
 terminal:output    { term_id, data }                     server -> client
 terminal:exit      { term_id, exit_code }                server -> client
+
+port:list          { sandbox_id }                        client -> server ack
+port:publish       { sandbox_id, guest_port, host_port? } client -> server ack
+port:unpublish     { sandbox_id, host_port }             client -> server ack
+ports:updated      { sandbox_id, ports }                 server -> client
+
+base:status        {}                                    client -> server ack
+base:prepare       { rebuild? }                          client -> server ack
 base:log           { line }                              server -> client
 ```
 
@@ -581,7 +598,8 @@ base:log           { line }                              server -> client
 ### P-1 - PTY Controller Spike (0.5-1 day, do first)
 
 Objective: prove the required in-sandbox PTY controller shape before the
-Bullpen excavation begins.
+Bullpen excavation begins. Status: complete for the first build spike; details
+live in `docs/pty-controller-spike.md`.
 
 Decision: Toady v1 defaults to an in-sandbox `toady-ptyd` process. The host
 server remains the only browser-facing web server. The spike exists to settle
@@ -590,22 +608,31 @@ can simplify the controller, not to postpone the controller decision.
 
 Tasks:
 
-- Build the smallest `toady-ptyd` proof outside the app tree: open a PTY with
-  `forkpty`, run `/bin/bash -l`, stream bytes over a Unix socket or
-  sandbox-local loopback HTTP/WebSocket endpoint, resize, close, and report
-  exit status.
-- Launch it inside a throwaway Microsandbox using Bullpen's runtime helpers
-  where possible.
-- From the host, connect through the available Microsandbox control path and
-  prove `echo hello`, resize, EOF, and teardown.
-- Probe SDK `attach()` / `exec_stream()` only as a possible simplifier. If the
-  SDK cannot provide the full contract cleanly, continue with `toady-ptyd`.
+- Built `guest/toady-ptyd.py`: open a PTY with `os.openpty()` +
+  `subprocess.Popen()`, run `/bin/bash -l`, stream base64 PTY bytes, resize,
+  close, record bounded event history, and report exit status.
+- Implemented two transports: raw newline JSON for local diagnostics and HTTP
+  RPC plus long-poll `/events` for the production Microsandbox bridge.
+- Proved plain Microsandbox published HTTP works with a throwaway HTTP server.
+- Proved raw generic TCP is not a viable bridge through the published-port
+  path on the target host: a raw echo server listens in the guest, but host
+  connections receive EOF without the guest server seeing a client.
+- Proved `toady-ptyd --http 0.0.0.0:<port>` inside a throwaway Microsandbox
+  can be reached through host `127.0.0.1:<port>` and can run a PTY command,
+  resize, emit output, return EOF, and preserve exit status.
+- Deferred SDK `attach()` / `exec_stream()` probing; the HTTP controller path
+  is good enough to start Bullpen excavation and should remain the default
+  unless the SDK later proves a strictly simpler full PTY contract.
 
 Verification gate:
 
-- A local proof opens `/bin/bash -l` inside a sandbox, sends `echo hello`,
-  receives exact PTY bytes, resizes, exits, and reports status.
-- The selected data path is documented in `docs/pty-controller-spike.md`.
+- `python3 -m py_compile guest/toady-ptyd.py scripts/*.py`
+- `python3 scripts/pty_controller_smoke.py`
+- `python3 scripts/pty_controller_http_smoke.py`
+- `python3 scripts/microsandbox_port_smoke.py`
+- `python3 scripts/microsandbox_raw_tcp_smoke.py` currently documents the raw
+  TCP failure mode and is expected to fail until Microsandbox behavior changes.
+- `python3 scripts/pty_controller_microsandbox_smoke.py --verbose`
 
 ### P0 - Bullpen Excavation Baseline (0.5-1 day)
 
@@ -761,8 +788,9 @@ Tasks:
 - Add `guest/toady-ptyd.py` to the base image and start it during sandbox
   bootstrap.
 - Implement `server/pty_driver.py` as the host-side client for `toady-ptyd`.
-- Define controller operations: create PTY, join/read stream, write bytes,
-  resize, close, query foreground state, query status, and shutdown.
+- Define controller operations over HTTP: create PTY (`POST /rpc op=open`),
+  read stream (`GET /events?id=&since=&timeout=`), write bytes, resize, close,
+  query foreground state, query status, and shutdown.
 - Add controller authentication/authorization at the transport layer using a
   per-sandbox secret stored in the sandbox manifest and injected at bootstrap.
 - Record the controller contract in tests before wiring the browser UI.
@@ -830,9 +858,9 @@ No open product decisions are blocking implementation planning.
 
 Implementation watchpoints:
 
-1. **PTY controller protocol details.** P-1 must confirm Unix socket vs
-   sandbox-local loopback, framing, auth token handling, and how the host Toady
-   server reaches the controller through Microsandbox.
+1. **Foreground-process detection.** The PTY controller still needs a v1-grade
+   implementation or an explicit best-effort fallback before close
+   confirmations are considered complete.
 2. **Base-image budget.** Low priority during excavation. Measure prep time and
    artifact size before v1; trim or raise the target only if the measured cost
    is painful.

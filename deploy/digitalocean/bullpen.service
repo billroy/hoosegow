@@ -1,0 +1,24 @@
+[Unit]
+Description=Bullpen service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bullpen
+Group=bullpen
+WorkingDirectory=/opt/bullpen
+Environment=BULLPEN_PRODUCTION=1
+Environment=BULLPEN_BOOTSTRAP_USER=admin
+EnvironmentFile=-/etc/default/bullpen
+ExecStart=/opt/bullpen/.venv/bin/python /opt/bullpen/bullpen.py --workspace /var/lib/bullpen/workspace --host 127.0.0.1 --port 8080 --no-browser
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/bullpen /var/lib/bullpen /home/bullpen/.bullpen
+
+[Install]
+WantedBy=multi-user.target

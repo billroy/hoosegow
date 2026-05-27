@@ -1,0 +1,11 @@
+{
+  "id": "unconfigured-worker",
+  "name": "Unconfigured Worker",
+  "default_agent": "claude",
+  "default_model": "claude-sonnet-4-6",
+  "default_activation": "on_drop",
+  "default_disposition": "review",
+  "default_max_retries": 0,
+  "color_hint": "gray",
+  "expertise_prompt": "You are intentionally unconfigured. Do not make code changes, run commands, or modify files. Reply with a short note asking the user to configure your role and instructions first."
+}
