@@ -367,7 +367,7 @@ createApp({
       form.workspace_root = browse.path || browse.roots?.[0]?.path || '';
     }
 
-    async function createSandbox() {
+    async function createSandbox(options = {}) {
       if (!form.name.trim() || !form.workspace_root.trim()) {
         setToast('Name and workspace root are required.', 'error');
         return;
@@ -380,11 +380,13 @@ createApp({
       let workflowSlug = '';
       try {
         setAction('Creating sandbox...', '', form.workspace_root.trim());
+        const workspaceRoot = form.workspace_root.trim();
         const response = await call('sandbox:create', {
           name: form.name.trim(),
-          workspace_root: form.workspace_root.trim(),
+          workspace_root: workspaceRoot,
           vcpus: Number(form.vcpus) || 4,
           memory_mib: Number(form.memory_mib) || 4096,
+          confirmed_sensitive_workspace: Boolean(options.confirmedSensitiveWorkspace),
         });
         selectedSlug.value = response.sandbox.slug;
         workflowSlug = response.sandbox.slug;
@@ -398,6 +400,16 @@ createApp({
         await openTerminal(started.sandbox, { manageBusy: false, manageAction: false });
         setToast(`Created ${response.sandbox.slug} and opened a terminal.`, 'success');
       } catch (error) {
+        if (!options.confirmedSensitiveWorkspace && error.message.includes('Workspace confirmation required')) {
+          const workspaceRoot = form.workspace_root.trim();
+          const typed = window.prompt(`${error.message}\n\nType the workspace root to continue:\n${workspaceRoot}`);
+          if (typed === workspaceRoot) {
+            await createSandbox({ confirmedSensitiveWorkspace: true });
+          } else if (typed !== null) {
+            setToast('Workspace confirmation did not match.', 'error');
+          }
+          return;
+        }
         setToast(error.message, 'error');
       } finally {
         busy.value = false;
