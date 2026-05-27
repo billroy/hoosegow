@@ -458,6 +458,14 @@ def create_app(
     # These paths must load without a session so the login page can be
     # rendered and styled before the user authenticates.
     PUBLIC_STATIC_FILES = {"login.html", "style.css", "favicon.ico"}
+    LEGACY_PRODUCT_API_PREFIXES = (
+        "/api/commits",
+        "/api/files",
+        "/api/worker",
+        "/api/export",
+        "/api/import",
+        "/api/service",
+    )
 
     @app.before_request
     def _gate_static_assets():
@@ -478,6 +486,14 @@ def create_app(
         if auth.is_xhr_request(request):
             return jsonify({"error": "authentication required"}), 401
         return redirect(url_for("login"))
+
+    @app.before_request
+    def _gate_legacy_product_apis():
+        if not app.config.get("start_without_project"):
+            return None
+        if request.path.startswith(LEGACY_PRODUCT_API_PREFIXES):
+            abort(404)
+        return None
 
     @app.route("/")
     @auth.require_auth
@@ -1717,7 +1733,8 @@ def create_app(
         socketio.emit("ports:updated", {"sandbox_id": slug, "ports": ports}, to="authenticated")
         return {"ok": True, "port": mapping, "ports": ports}
 
-    register_events(socketio, app)
+    if not start_without_project:
+        register_events(socketio, app)
 
     # Start time-based scheduler for each workspace
     for ws in manager.all_workspaces():
