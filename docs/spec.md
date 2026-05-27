@@ -515,8 +515,8 @@ be removed; product features die unless the Toady spec names them.
 ## 8. API Sketch
 
 REST is intentionally small and boring: health, auth, static/file fetches,
-base/picker queries, and any future download/upload-style operation that fits
-HTTP better than a live command acknowledgement.
+and any future download/upload-style operation that fits HTTP better than a
+live command acknowledgement.
 
 ```
 GET    /health
@@ -525,8 +525,6 @@ GET    /login/csrf
 POST   /login
 POST   /logout
 
-GET    /api/base/status
-GET    /api/picker?path=<abs-path>
 ```
 
 Socket.IO is the primary control plane for sandbox lifecycle, terminal
@@ -564,6 +562,7 @@ ports:updated      { sandbox_id, ports }                 server -> client
 base:status        {}                                    client -> server ack
 base:prepare       { rebuild? }                          client -> server ack
 base:log           { line }                              server -> client
+workspace:browse   { path? }                             client -> server ack
 ```
 
 ## 9. Observability
