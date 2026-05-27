@@ -93,14 +93,17 @@ def main() -> int:
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
-    with tempfile.TemporaryDirectory(prefix="toady-ptyd-smoke-", dir="/private/tmp"):
+    with tempfile.TemporaryDirectory(prefix="toady-ptyd-smoke-", dir="/private/tmp") as home:
         port = reserve_loopback_port()
         address = ("127.0.0.1", port)
+        env = os.environ.copy()
+        env["HOME"] = home
         proc = subprocess.Popen(
             [sys.executable, str(PTYD), "--tcp", f"127.0.0.1:{port}", "--token", TOKEN],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            env=env,
         )
         try:
             wait_for_tcp(address)

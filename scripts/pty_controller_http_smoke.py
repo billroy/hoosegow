@@ -6,9 +6,11 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import os
 import subprocess
 import sys
 import time
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -118,6 +120,9 @@ def exercise_http_controller(base_url: str, token: str, cwd: str, *, verbose: bo
     )
     if opened.get("event") != "opened":
         raise RuntimeError(f"unexpected opened payload: {opened}")
+    banner = client.wait_for_output_containing("http-smoke", b"codex login", timeout=10)
+    if b"gh auth login" not in banner:
+        raise RuntimeError(f"missing auth banner content: {banner!r}")
     client.rpc({"op": "resize", "id": "http-smoke", "cols": 90, "rows": 28})
     command = b"printf 'TOADY_HTTP_PTYD_SMOKE:%s\\n' \"$PWD\"; exit 11\n"
     client.rpc({"op": "write", "id": "http-smoke", "data": base64.b64encode(command).decode("ascii")})
@@ -128,6 +133,27 @@ def exercise_http_controller(base_url: str, token: str, cwd: str, *, verbose: bo
     status = client.rpc({"op": "status", "id": "http-smoke"})
     if status.get("status") != "exited":
         raise RuntimeError(f"unexpected status payload: {status}")
+    second = client.rpc(
+        {
+            "op": "open",
+            "id": "http-smoke-second",
+            "cwd": cwd,
+            "shell": "/bin/bash",
+            "cols": 100,
+            "rows": 30,
+        }
+    )
+    if second.get("event") != "opened":
+        raise RuntimeError(f"unexpected second opened payload: {second}")
+    second_events = client.poll("http-smoke-second", timeout=0.5)
+    second_output = b"".join(
+        base64.b64decode(event.get("data", ""))
+        for event in second_events
+        if event.get("event") == "output"
+    )
+    if b"codex login" in second_output:
+        raise RuntimeError("auth banner repeated in second terminal")
+    client.rpc({"op": "close", "id": "http-smoke-second"})
     if verbose:
         print(output.decode("utf-8", errors="replace"))
 
@@ -139,29 +165,33 @@ def main() -> int:
 
     port = reserve_loopback_port()
     base_url = f"http://127.0.0.1:{port}"
-    proc = subprocess.Popen(
-        [sys.executable, str(PTYD), "--http", f"127.0.0.1:{port}", "--token", TOKEN],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    try:
-        wait_for_health(base_url)
-        exercise_http_controller(base_url, TOKEN, str(ROOT), verbose=args.verbose)
-        print("PTY controller HTTP smoke passed")
-        return 0
-    finally:
-        proc.terminate()
+    with tempfile.TemporaryDirectory(prefix="toady-ptyd-home-") as home:
+        env = os.environ.copy()
+        env["HOME"] = home
+        proc = subprocess.Popen(
+            [sys.executable, str(PTYD), "--http", f"127.0.0.1:{port}", "--token", TOKEN],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env,
+        )
         try:
-            stdout, stderr = proc.communicate(timeout=2)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            stdout, stderr = proc.communicate(timeout=2)
-        if args.verbose and (stdout or stderr):
-            if stdout:
-                print(stdout)
-            if stderr:
-                print(stderr, file=sys.stderr)
+            wait_for_health(base_url)
+            exercise_http_controller(base_url, TOKEN, str(ROOT), verbose=args.verbose)
+            print("PTY controller HTTP smoke passed")
+            return 0
+        finally:
+            proc.terminate()
+            try:
+                stdout, stderr = proc.communicate(timeout=2)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                stdout, stderr = proc.communicate(timeout=2)
+            if args.verbose and (stdout or stderr):
+                if stdout:
+                    print(stdout)
+                if stderr:
+                    print(stderr, file=sys.stderr)
 
 
 if __name__ == "__main__":

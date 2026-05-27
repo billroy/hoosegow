@@ -32,6 +32,14 @@ from typing import Any
 
 READ_CHUNK = 16 * 1024
 TERMINATE_GRACE_SECONDS = 2.0
+AUTH_BANNER_MARKER = ".toady-auth-banner-shown"
+AUTH_BANNER = (
+    "\r\n"
+    "Toady sandbox terminal\r\n"
+    "Agent CLI auth is stored inside this sandbox home (/home/agent).\r\n"
+    "Suggested setup: claude | codex login | gemini auth | opencode | gh auth login\r\n"
+    "\r\n"
+)
 
 
 def _json_line(payload: dict[str, Any]) -> bytes:
@@ -332,8 +340,27 @@ class PtyController:
                 session.subscribers.add(client)
                 client.subscriptions.add(session_id)
             self.sessions[session_id] = session
+        self._maybe_broadcast_auth_banner(session_id)
         threading.Thread(target=self._reader_loop, args=(session_id,), daemon=True).start()
         return {"event": "opened", "id": session_id, "pid": proc.pid, "cwd": cwd, "shell": shell}
+
+    def _maybe_broadcast_auth_banner(self, session_id: str) -> None:
+        marker = os.path.join(os.path.expanduser("~"), AUTH_BANNER_MARKER)
+        try:
+            if os.path.exists(marker):
+                return
+            with open(marker, "x", encoding="utf-8") as handle:
+                handle.write(str(time.time()))
+        except OSError:
+            return
+        self._broadcast(
+            session_id,
+            {
+                "event": "output",
+                "id": session_id,
+                "data": base64.b64encode(AUTH_BANNER.encode("utf-8")).decode("ascii"),
+            },
+        )
 
     def _join(self, session_id: str, *, client: Client | None) -> dict[str, Any]:
         with self.lock:
