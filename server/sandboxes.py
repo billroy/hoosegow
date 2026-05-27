@@ -24,10 +24,13 @@ from server.microsandbox_runtime import (
 from server.sandbox_bootstrap import (
     build_runtime_env,
     configure_codex_cli,
+    detach_sandbox,
     disable_guest_ipv6_for_claude,
     prepare_runtime_dirs,
     start_pty_controller,
+    verify_detached_sandbox,
     verify_mount_access,
+    wait_for_controller_health,
 )
 from server.sandbox_store import SCHEMA_VERSION, SandboxManifest, SandboxStore
 from server.toady_validation import ValidationError, normalize_browse_roots, validate_slug, validate_workspace_path
@@ -67,6 +70,23 @@ class SandboxService:
 
     def list(self) -> list[dict[str, Any]]:
         return [manifest.to_dict() for manifest in self.store.list()]
+
+    async def reconcile(self) -> list[dict[str, Any]]:
+        runtime: MicrosandboxRuntime | None = None
+        changed = False
+        manifests = self.store.list()
+        for manifest in manifests:
+            if manifest.last_status not in {"running", "starting"}:
+                continue
+            if runtime is None:
+                runtime = MicrosandboxRuntime()
+                await runtime.ensure_installed()
+            status = await runtime.status(manifest.slug)
+            if status is None or "running" not in status.lower():
+                manifest.last_status = "stopped"
+                self.store.save(manifest)
+                changed = True
+        return [manifest.to_dict() for manifest in (self.store.list() if changed else manifests)]
 
     def get(self, slug: str) -> dict[str, Any] | None:
         slug = validate_slug(slug)
@@ -130,6 +150,8 @@ class SandboxService:
         manifest = self.store.get(validate_slug(slug))
         if manifest is None:
             raise SandboxServiceError(f"Unknown sandbox: {slug}")
+        manifest.last_status = "starting"
+        self.store.save(manifest)
         controller = dict(manifest.controller or {})
         host_port = controller.get("host_port")
         guest_port = int(controller.get("guest_port") or 5859)
@@ -156,14 +178,17 @@ class SandboxService:
         build_runtime_env(spec, controller_port=guest_port, controller_token=str(controller.get("token") or ""))
         runtime = MicrosandboxRuntime()
         await runtime.ensure_installed()
-        sandbox = await runtime.create(spec)
         try:
+            sandbox = await runtime.create(spec)
             await prepare_runtime_dirs(sandbox, spec)
             await disable_guest_ipv6_for_claude(sandbox)
             await verify_mount_access(sandbox, spec)
             await configure_codex_cli(sandbox, spec)
             await start_pty_controller(sandbox, spec)
-        except ToadyRuntimeError:
+            wait_for_controller_health(int(host_port))
+            await detach_sandbox(sandbox)
+            await verify_detached_sandbox(runtime, spec)
+        except Exception:
             manifest.last_status = "error"
             self.store.save(manifest)
             raise

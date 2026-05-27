@@ -1280,7 +1280,9 @@ def create_app(
 
     @socketio.on("sandbox:list")
     def toady_socket_list_sandboxes(_payload=None):
-        return {"ok": True, "sandboxes": _sandbox_service().list()}
+        import asyncio
+
+        return {"ok": True, "sandboxes": asyncio.run(_sandbox_service().reconcile())}
 
     @socketio.on("base:status")
     def toady_socket_base_status(_payload=None):
@@ -1326,6 +1328,7 @@ def create_app(
         import asyncio
 
         slug = (payload or {}).get("slug") or (payload or {}).get("id") or ""
+        socketio.emit("sandbox:status", {"id": slug, "status": "starting"}, to="authenticated")
         try:
             manifest = asyncio.run(_sandbox_service().start(slug))
         except (SandboxServiceError, ValidationError, RuntimeError) as exc:
