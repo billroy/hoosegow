@@ -444,7 +444,14 @@ def create_app(
 
     app.config["host"] = host
     app.config["port"] = port
-    app.config["base_prepare"] = {"running": False, "returncode": None}
+    app.config["base_prepare"] = {
+        "running": False,
+        "returncode": None,
+        "logs": [],
+        "started_at": None,
+        "finished_at": None,
+        "duration_seconds": None,
+    }
     global _service_worker_atexit_registered
     if not start_without_project and not _service_worker_atexit_registered:
         atexit.register(service_worker_mod.stop_all_services)
@@ -627,6 +634,17 @@ def create_app(
                 if session_info.get("sandbox_id") == sandbox_id
             )
 
+    def _base_prepare_payload(*, include_logs=True):
+        state = app.config.get("base_prepare") or {}
+        payload = {
+            "running": bool(state.get("running")),
+            "returncode": state.get("returncode"),
+            "duration_seconds": state.get("duration_seconds"),
+        }
+        if include_logs:
+            payload["logs"] = list(state.get("logs") or [])
+        return payload
+
     def _toady_terminal_poll(terminal_id):
         while True:
             with app.config["toady_terminals_lock"]:
@@ -691,6 +709,20 @@ def create_app(
         state = app.config["base_prepare"]
         state["running"] = True
         state["returncode"] = None
+        state["logs"] = []
+        state["started_at"] = monotonic()
+        state["finished_at"] = None
+        state["duration_seconds"] = None
+
+        def emit_base_log(line):
+            line = str(line or "")
+            if not line:
+                return
+            state.setdefault("logs", []).append(line)
+            if len(state["logs"]) > 500:
+                del state["logs"][: len(state["logs"]) - 500]
+            socketio.emit("base:log", {"line": line}, to="authenticated")
+
         _emit_base_status({
             "name": "toady-microsandbox-local",
             "prepared": False,
@@ -705,7 +737,7 @@ def create_app(
             "--home",
             manager.global_dir,
         ]
-        socketio.emit("base:log", {"line": "$ " + " ".join(command)}, to="authenticated")
+        emit_base_log("$ " + " ".join(command))
         try:
             proc = subprocess.Popen(
                 command,
@@ -717,23 +749,27 @@ def create_app(
             )
             assert proc.stdout is not None
             for line in proc.stdout:
-                socketio.emit("base:log", {"line": line.rstrip("\n")}, to="authenticated")
+                emit_base_log(line.rstrip("\n"))
             state["returncode"] = proc.wait()
             if state["returncode"] == 0:
-                socketio.emit("base:log", {"line": "Base preparation finished."}, to="authenticated")
+                emit_base_log("Base preparation finished.")
             else:
-                socketio.emit("base:log", {"line": f"Base preparation exited with code {state['returncode']}."}, to="authenticated")
+                emit_base_log(f"Base preparation exited with code {state['returncode']}.")
         except Exception as exc:
             state["returncode"] = -1
-            socketio.emit("base:log", {"line": f"Base preparation failed: {exc}"}, to="authenticated")
+            emit_base_log(f"Base preparation failed: {exc}")
         finally:
             state["running"] = False
+            state["finished_at"] = monotonic()
+            if state["started_at"] is not None:
+                state["duration_seconds"] = round(state["finished_at"] - state["started_at"], 1)
             import asyncio
 
             status = asyncio.run(toady_base.base_status())
             if state["returncode"] not in (None, 0) and not status.get("prepared"):
                 status["state"] = "error"
                 status["error"] = status.get("error") or f"prepare exited with code {state['returncode']}"
+            status["prepare"] = _base_prepare_payload(include_logs=False)
             _emit_base_status(status)
 
     # --- Login / logout -------------------------------------------------
@@ -1495,7 +1531,12 @@ def create_app(
         if app.config["base_prepare"].get("running"):
             status["state"] = "preparing"
             status["message"] = "Preparing Microsandbox base..."
+        status["prepare"] = _base_prepare_payload(include_logs=False)
         return {"ok": True, "base": status}
+
+    @socketio.on("base:logs")
+    def toady_socket_base_logs(_payload=None):
+        return {"ok": True, "prepare": _base_prepare_payload(include_logs=True)}
 
     @socketio.on("base:prepare")
     def toady_socket_base_prepare(payload=None):

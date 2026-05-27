@@ -30,6 +30,11 @@ createApp({
       message: 'Checking Microsandbox base...',
     });
     const baseLogs = reactive([]);
+    const baseLogViewer = reactive({
+      open: false,
+      returncode: null,
+      duration_seconds: null,
+    });
     const form = reactive({
       name: 'sandbox',
       workspace_root: '',
@@ -357,7 +362,24 @@ createApp({
     async function loadBaseStatus() {
       const response = await call('base:status');
       Object.assign(baseStatus, response.base || {});
+      Object.assign(baseLogViewer, response.base?.prepare || {});
       refreshIcons();
+    }
+
+    async function loadBaseLogs() {
+      const response = await call('base:logs');
+      const prepare = response.prepare || {};
+      baseLogs.splice(0, baseLogs.length, ...(prepare.logs || []));
+      Object.assign(baseLogViewer, {
+        returncode: prepare.returncode ?? null,
+        duration_seconds: prepare.duration_seconds ?? null,
+      });
+      refreshIcons();
+    }
+
+    async function openBaseLogs() {
+      baseLogViewer.open = true;
+      await loadBaseLogs();
     }
 
     async function loadWorkspaceDefaults() {
@@ -698,6 +720,9 @@ createApp({
         const response = await call('base:prepare', { rebuild: Boolean(rebuild) });
         if (response.started) {
           baseLogs.splice(0, baseLogs.length);
+          baseLogViewer.open = true;
+          baseLogViewer.returncode = null;
+          baseLogViewer.duration_seconds = null;
           setToast(rebuild ? 'Base rebuild started.' : 'Base preparation started.', 'success');
           Object.assign(baseStatus, {
             prepared: false,
@@ -715,7 +740,7 @@ createApp({
     socket.on('connect', async () => {
       connected.value = true;
       try {
-        await Promise.all([loadBaseStatus(), loadSandboxes(), loadWorkspaceDefaults()]);
+        await Promise.all([loadBaseStatus(), loadBaseLogs(), loadSandboxes(), loadWorkspaceDefaults()]);
         await loadTerminalSessions();
       } catch (error) {
         setToast(error.message, 'error');
@@ -780,6 +805,7 @@ createApp({
     });
     socket.on('base:status', (payload) => {
       Object.assign(baseStatus, payload?.base || {});
+      Object.assign(baseLogViewer, payload?.base?.prepare || {});
       refreshIcons();
     });
     socket.on('base:log', (payload) => {
@@ -800,6 +826,7 @@ createApp({
       activeTerminal,
       actionState,
       basename,
+      baseLogViewer,
       baseStatus,
       basePreparing,
       baseLogs,
@@ -812,10 +839,12 @@ createApp({
       destroySandbox,
       form,
       formatDate,
+      loadBaseLogs,
       loadBaseStatus,
       loadSandboxes,
       loadTerminalSessions,
       openTerminal,
+      openBaseLogs,
       operationBySandbox,
       copyPortUrl,
       openPort,
@@ -859,6 +888,9 @@ createApp({
           </span>
           <button v-if="baseStatus.prepared" class="tool-button base-rebuild" type="button" title="Rebuild base" :disabled="basePreparing" @click="requestBasePrepare(true)">
             <i data-lucide="hammer"></i><span>Rebuild</span>
+          </button>
+          <button class="icon-button" type="button" title="Base logs" @click="openBaseLogs">
+            <i data-lucide="scroll-text"></i>
           </button>
           <span class="connection" :class="{ online: connected }">
             <span class="dot"></span>{{ connected ? 'Connected' : 'Offline' }}
@@ -1117,6 +1149,34 @@ createApp({
           </div>
         </section>
       </main>
+
+      <div v-if="baseLogViewer.open" class="modal-backdrop" @click.self="baseLogViewer.open = false">
+        <section class="modal-panel log-viewer">
+          <header class="modal-header">
+            <div>
+              <h2>Base Logs</h2>
+              <p>
+                <span v-if="basePreparing">Preparing now</span>
+                <span v-else-if="baseLogViewer.returncode !== null">Exit {{ baseLogViewer.returncode }}</span>
+                <span v-else>Idle</span>
+                <span v-if="baseLogViewer.duration_seconds !== null"> / {{ baseLogViewer.duration_seconds }}s</span>
+              </p>
+            </div>
+            <span class="modal-actions">
+              <button class="icon-button" type="button" title="Refresh logs" @click="loadBaseLogs">
+                <i data-lucide="refresh-cw"></i>
+              </button>
+              <button class="icon-button" type="button" title="Close logs" @click="baseLogViewer.open = false">
+                <i data-lucide="x"></i>
+              </button>
+            </span>
+          </header>
+          <div v-if="baseLogs.length" class="log-output">
+            <div v-for="(line, index) in baseLogs" :key="index">{{ line }}</div>
+          </div>
+          <div v-else class="log-empty">No base-prep logs in this server session.</div>
+        </section>
+      </div>
 
       <div v-if="toast.message" class="toast" :data-tone="toast.tone">{{ toast.message }}</div>
     </div>

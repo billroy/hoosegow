@@ -69,3 +69,33 @@ def test_toady_mode_does_not_activate_legacy_project_registry(tmp_path):
     assert not (legacy_project / ".bullpen").exists()
     assert "state:init" not in received_events
     assert "projects:updated" not in received_events
+
+
+def test_base_logs_are_available_after_reconnect(tmp_path):
+    app = create_app(
+        str(tmp_path),
+        no_browser=True,
+        global_dir=str(tmp_path / "state"),
+        start_without_project=True,
+    )
+    app.config["base_prepare"].update({
+        "logs": ["first line", "second line"],
+        "returncode": 0,
+        "duration_seconds": 12.3,
+    })
+
+    first_client = socketio.test_client(app)
+    first_client.disconnect()
+    second_client = socketio.test_client(app)
+    response = second_client.emit("base:logs", callback=True)
+    second_client.disconnect()
+
+    assert response == {
+        "ok": True,
+        "prepare": {
+            "running": False,
+            "returncode": 0,
+            "duration_seconds": 12.3,
+            "logs": ["first line", "second line"],
+        },
+    }
