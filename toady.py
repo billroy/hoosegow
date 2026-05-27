@@ -13,6 +13,7 @@ from pathlib import Path
 LOCALHOST_BINDS = {"127.0.0.1", "localhost", "::1"}
 DEFAULT_HOME = "~/.toady"
 DEFAULT_PORT = 5858
+__version__ = "0.1.0"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -21,6 +22,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Toady — run coding agents inside Microsandbox terminals",
     )
     parser.add_argument("--port", type=int, default=int(os.environ.get("TOADY_PORT", os.environ.get("PORT", DEFAULT_PORT))))
+    parser.add_argument("--version", action="version", version=f"toady {__version__}")
     parser.add_argument("--host", default=os.environ.get("TOADY_HOST", "127.0.0.1"))
     parser.add_argument("--home", default=os.environ.get("TOADY_HOME", DEFAULT_HOME), help="State directory (default: ~/.toady)")
     parser.add_argument("--no-browser", action="store_true", help="Do not open a browser on startup")

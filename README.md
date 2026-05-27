@@ -1,5 +1,7 @@
 # Toady
 
+Current release target: `0.1.0`.
+
 Toady runs coding-agent terminals inside Microsandbox microVMs. It gives you a
 local browser UI for creating sandboxes, opening persistent terminals, and
 publishing sandbox dev-server ports without exposing the rest of your host
