@@ -746,10 +746,11 @@ Objective: create/start/stop/destroy sandboxes without terminals.
 
 Tasks:
 
-- Implement REST routes for sandbox list/create/get/start/stop/destroy.
-- Implement base status and base prepare routes, streaming `base:log` over
-  Socket.IO.
-- Implement server-side picker route rooted at configured browse roots.
+- Implement Socket.IO commands for sandbox list/create/get/start/stop/destroy.
+- Implement base status and base preparation over Socket.IO, streaming
+  `base:log` events to all authenticated tabs.
+- Implement server-side workspace picker over Socket.IO, rooted at configured
+  browse roots.
 - Implement left pane sandbox cards, New Sandbox modal, base-prep first-run
   view, status pills, resource readouts, and destroy confirmation.
 - Implement slug collision checks against Toady manifests and foreign
@@ -759,7 +760,7 @@ Tasks:
 Verification gate:
 
 - Fake-driver browser smoke: base ready -> create sandbox -> stop -> start ->
-  destroy.
+  destroy, with all lifecycle actions driven through Socket.IO.
 - Host-only integration tests do not require real Microsandbox.
 
 ### P5 - Dev-Port Publishing (1 day)
@@ -812,7 +813,7 @@ Tasks:
 - Replace `pty.openpty()` / `subprocess.Popen()` with `PtyDriver.open()` for
   inside-sandbox sessions.
 - Add per-PTY ring buffers with line and byte caps.
-- Add `GET /api/terminals` discovery and `terminal:join` replay.
+- Add Socket.IO terminal discovery and `sandbox:terminal:join` replay.
 - Implement browser-disconnect grace period and foreground-process close
   confirmation where the driver can report foreground state.
 - Raise per-sandbox terminal limit to 32 and remove owner-SID-only ownership so

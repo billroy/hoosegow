@@ -307,12 +307,21 @@ button:disabled {
 
 .status-pill {
   min-width: 74px;
+  max-width: 132px;
   padding: 4px 8px;
   border: 1px solid var(--line);
   border-radius: 999px;
   color: var(--muted);
   font-size: 12px;
   text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-pill[data-busy="true"] {
+  border-color: #3d8c84;
+  color: #a9ded8;
 }
 
 .empty-list {
@@ -388,6 +397,51 @@ button:disabled {
   grid-template-columns: minmax(150px, 0.9fr) minmax(260px, 2fr) 96px 122px auto;
   gap: 12px;
   align-items: end;
+}
+
+.operation-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  margin-top: 12px;
+  padding: 9px 12px;
+  border: 1px solid #355f60;
+  border-radius: 8px;
+  background: #102123;
+  color: #c9e8e5;
+}
+
+.operation-strip svg {
+  width: 18px;
+  height: 18px;
+  animation: spin 1s linear infinite;
+}
+
+.operation-strip span,
+.operation-strip strong,
+.operation-strip small {
+  display: block;
+  min-width: 0;
+}
+
+.operation-strip strong {
+  font-size: 13px;
+}
+
+.operation-strip small {
+  margin-top: 2px;
+  overflow: hidden;
+  color: #8fb9b9;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .path-control {

@@ -50,6 +50,13 @@ createApp({
       truncated: false,
       error: '',
     });
+    const actionState = reactive({
+      active: false,
+      sandbox_id: '',
+      label: '',
+      detail: '',
+    });
+    const operationBySandbox = reactive({});
     const toast = reactive({ message: '', tone: 'info' });
     const activeTerminal = reactive({
       id: '',
@@ -86,6 +93,26 @@ createApp({
       setToast._timer = window.setTimeout(() => {
         toast.message = '';
       }, 4200);
+    }
+
+    function setAction(label, sandboxId = '', detail = '') {
+      actionState.active = true;
+      actionState.sandbox_id = sandboxId || '';
+      actionState.label = label || '';
+      actionState.detail = detail || '';
+      if (sandboxId) operationBySandbox[sandboxId] = label;
+      refreshIcons();
+    }
+
+    function clearAction(sandboxId = '') {
+      if (!sandboxId || actionState.sandbox_id === sandboxId) {
+        actionState.active = false;
+        actionState.sandbox_id = '';
+        actionState.label = '';
+        actionState.detail = '';
+      }
+      if (sandboxId) delete operationBySandbox[sandboxId];
+      refreshIcons();
     }
 
     function refreshIcons() {
@@ -323,7 +350,9 @@ createApp({
         return;
       }
       busy.value = true;
+      let workflowSlug = '';
       try {
+        setAction('Creating sandbox...', '', form.workspace_root.trim());
         const response = await call('sandbox:create', {
           name: form.name.trim(),
           workspace_root: form.workspace_root.trim(),
@@ -332,12 +361,15 @@ createApp({
           allow_shared_workspace: Boolean(options.allowSharedWorkspace),
         });
         selectedSlug.value = response.sandbox.slug;
+        workflowSlug = response.sandbox.slug;
         form.name = '';
         form.workspace_root = '';
+        setAction(`Starting ${response.sandbox.slug}...`, response.sandbox.slug, 'Create starts the sandbox automatically.');
         setToast(`Starting ${response.sandbox.slug}...`, 'info');
         const started = await call('sandbox:start', { id: response.sandbox.slug });
         await loadSandboxes();
-        await openTerminal(started.sandbox, { manageBusy: false });
+        setAction(`Opening terminal for ${response.sandbox.slug}...`, response.sandbox.slug, 'Create opens the first terminal automatically.');
+        await openTerminal(started.sandbox, { manageBusy: false, manageAction: false });
         setToast(`Created ${response.sandbox.slug} and opened a terminal.`, 'success');
       } catch (error) {
         if (
@@ -351,6 +383,7 @@ createApp({
         setToast(error.message, 'error');
       } finally {
         if (!options.allowSharedWorkspace) busy.value = false;
+        clearAction(workflowSlug);
       }
     }
 
@@ -393,10 +426,13 @@ createApp({
       }
       busy.value = true;
       try {
+        if (event === 'sandbox:start') setAction(`Starting ${sandbox.slug}...`, sandbox.slug, 'A terminal will open when it is ready.');
+        if (event === 'sandbox:stop') setAction(`Stopping ${sandbox.slug}...`, sandbox.slug);
         const response = await call(event, { id: sandbox.slug });
         await loadSandboxes();
         if (event === 'sandbox:start' && response?.sandbox?.last_status === 'running') {
-          await openTerminal(response.sandbox, { manageBusy: false });
+          setAction(`Opening terminal for ${sandbox.slug}...`, sandbox.slug);
+          await openTerminal(response.sandbox, { manageBusy: false, manageAction: false });
           setToast('Started and opened a terminal.', 'success');
           return;
         }
@@ -405,6 +441,7 @@ createApp({
         setToast(error.message, 'error');
       } finally {
         busy.value = false;
+        clearAction(sandbox.slug);
       }
     }
 
@@ -415,6 +452,7 @@ createApp({
       }
       if (options.manageBusy !== false) busy.value = true;
       try {
+        if (options.manageAction !== false) setAction(`Opening terminal for ${sandbox.slug}...`, sandbox.slug);
         const response = await call('sandbox:terminal:open', {
           sandbox_id: sandbox.slug,
           cols: 100,
@@ -429,6 +467,7 @@ createApp({
         setToast(error.message, 'error');
       } finally {
         if (options.manageBusy !== false) busy.value = false;
+        if (options.manageAction !== false) clearAction(sandbox.slug);
         refreshIcons();
       }
     }
@@ -587,6 +626,7 @@ createApp({
       await closeSandboxTerminals(sandbox.slug, { silent: true });
       busy.value = true;
       try {
+        setAction(`Destroying ${sandbox.slug}...`, sandbox.slug);
         await call('sandbox:destroy', { id: sandbox.slug, purge: true });
         await loadSandboxes();
         setToast(`Destroyed ${sandbox.slug}.`, 'success');
@@ -594,6 +634,7 @@ createApp({
         setToast(error.message, 'error');
       } finally {
         busy.value = false;
+        clearAction(sandbox.slug);
       }
     }
 
@@ -702,6 +743,7 @@ createApp({
 
     return {
       activeTerminal,
+      actionState,
       basename,
       baseStatus,
       baseLogs,
@@ -718,6 +760,7 @@ createApp({
       loadSandboxes,
       loadTerminalSessions,
       openTerminal,
+      operationBySandbox,
       copyPortUrl,
       openPort,
       browseWorkspace,
@@ -785,7 +828,9 @@ createApp({
             <strong>{{ sandbox.name || sandbox.slug }}</strong>
             <small>{{ basename(sandbox.canonical_workspace_path) }}</small>
           </span>
-          <span class="status-pill">{{ sandbox.last_status }}</span>
+          <span class="status-pill" :data-busy="operationBySandbox[sandbox.slug] ? 'true' : null">
+            {{ operationBySandbox[sandbox.slug] || sandbox.last_status }}
+          </span>
         </button>
         <div v-if="!sortedSandboxes.length" class="empty-list">No sandboxes</div>
       </aside>
@@ -831,6 +876,13 @@ createApp({
               <span>Create + Start</span>
             </button>
           </form>
+          <div v-if="actionState.active" class="operation-strip">
+            <i data-lucide="loader-circle"></i>
+            <span>
+              <strong>{{ actionState.label }}</strong>
+              <small v-if="actionState.detail">{{ actionState.detail }}</small>
+            </span>
+          </div>
           <div v-if="picker.open" class="picker-panel">
             <div class="picker-toolbar">
               <div>
@@ -892,7 +944,7 @@ createApp({
           <div class="metric-grid">
             <div class="metric">
               <span>Status</span>
-              <strong>{{ selected.last_status }}</strong>
+              <strong>{{ operationBySandbox[selected.slug] || selected.last_status }}</strong>
             </div>
             <div class="metric">
               <span>vCPU</span>
