@@ -34,7 +34,13 @@ from server.sandbox_bootstrap import (
     wait_for_controller_health,
 )
 from server.sandbox_store import SCHEMA_VERSION, SandboxManifest, SandboxStore
-from server.toady_validation import ValidationError, normalize_browse_roots, validate_slug, validate_workspace_path
+from server.toady_validation import (
+    ValidationError,
+    ensure_descendant,
+    normalize_browse_roots,
+    validate_slug,
+    validate_workspace_path,
+)
 from server.toady_validation import parse_port, parse_port_pool
 
 
@@ -93,6 +99,54 @@ class SandboxService:
         slug = validate_slug(slug)
         manifest = self.store.get(slug)
         return None if manifest is None else manifest.to_dict()
+
+    def browse_workspaces(self, path: str | None = None) -> dict[str, Any]:
+        roots = list(self.browse_roots)
+        if not roots:
+            raise SandboxServiceError("No workspace browse roots are configured.")
+        current = ensure_descendant(path or roots[0], roots)
+        if not os.path.isdir(current):
+            raise SandboxServiceError(f"Workspace browse path is not a directory: {path}")
+
+        entries = []
+        try:
+            with os.scandir(current) as iterator:
+                for entry in iterator:
+                    try:
+                        if not entry.is_dir(follow_symlinks=True):
+                            continue
+                        real_path = ensure_descendant(entry.path, roots)
+                    except (OSError, ValidationError):
+                        continue
+                    entries.append(
+                        {
+                            "name": entry.name,
+                            "path": real_path,
+                            "basename": os.path.basename(real_path) or real_path,
+                        }
+                    )
+        except OSError as exc:
+            raise SandboxServiceError(f"Cannot browse workspace path {current}: {exc}") from exc
+
+        entries.sort(key=lambda item: item["name"].lower())
+        parent = None
+        for root in roots:
+            if current == root:
+                break
+            try:
+                if os.path.commonpath([root, current]) == root:
+                    parent_path = os.path.dirname(current)
+                    parent = parent_path if parent_path and parent_path != current else None
+                    break
+            except ValueError:
+                continue
+        return {
+            "path": current,
+            "parent": parent,
+            "roots": [{"name": root, "path": root} for root in roots],
+            "entries": entries[:500],
+            "truncated": len(entries) > 500,
+        }
 
     def create_manifest(self, payload: dict[str, Any]) -> dict[str, Any]:
         slug = validate_slug(str(payload.get("slug") or payload.get("name") or ""))

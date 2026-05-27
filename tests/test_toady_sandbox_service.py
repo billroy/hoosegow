@@ -73,6 +73,38 @@ def test_sandbox_service_prevents_duplicate_slug(tmp_path):
         service.create_manifest({"name": "demo", "workspace_root": str(workspace)})
 
 
+def test_sandbox_service_browses_allowed_workspace_roots(tmp_path):
+    root = tmp_path / "root"
+    root.mkdir()
+    child = root / "project"
+    child.mkdir()
+    service = SandboxService(home=str(tmp_path / "state"), browse_roots=[str(root)])
+
+    browse = service.browse_workspaces()
+
+    assert browse["path"] == str(root.resolve())
+    assert browse["parent"] is None
+    assert browse["roots"] == [{"name": str(root.resolve()), "path": str(root.resolve())}]
+    assert browse["entries"] == [
+        {
+            "name": "project",
+            "path": str(child.resolve()),
+            "basename": "project",
+        }
+    ]
+
+
+def test_sandbox_service_browse_rejects_path_outside_roots(tmp_path):
+    root = tmp_path / "root"
+    outside = tmp_path / "outside"
+    root.mkdir()
+    outside.mkdir()
+    service = SandboxService(home=str(tmp_path / "state"), browse_roots=[str(root)])
+
+    with pytest.raises(ValidationError):
+        service.browse_workspaces(str(outside))
+
+
 def test_sandbox_service_publishes_persisted_port_mapping(tmp_path, monkeypatch):
     monkeypatch.setattr("server.sandboxes.host_port_in_use", lambda _port: False)
     workspace = tmp_path / "project"

@@ -40,6 +40,16 @@ createApp({
       guest_port: 3000,
       host_port: '',
     });
+    const picker = reactive({
+      open: false,
+      loading: false,
+      path: '',
+      parent: '',
+      roots: [],
+      entries: [],
+      truncated: false,
+      error: '',
+    });
     const toast = reactive({ message: '', tone: 'info' });
     const activeTerminal = reactive({
       id: '',
@@ -326,6 +336,34 @@ createApp({
       } finally {
         busy.value = false;
       }
+    }
+
+    async function browseWorkspace(path = '') {
+      picker.open = true;
+      picker.loading = true;
+      picker.error = '';
+      try {
+        const response = await call('workspace:browse', { path: path || undefined });
+        const browse = response.browse || {};
+        picker.path = browse.path || '';
+        picker.parent = browse.parent || '';
+        picker.roots = browse.roots || [];
+        picker.entries = browse.entries || [];
+        picker.truncated = Boolean(browse.truncated);
+      } catch (error) {
+        picker.error = error.message;
+        setToast(error.message, 'error');
+      } finally {
+        picker.loading = false;
+        refreshIcons();
+      }
+    }
+
+    function selectWorkspacePath(path) {
+      form.workspace_root = path || picker.path;
+      if (!form.name.trim()) form.name = basename(form.workspace_root);
+      picker.open = false;
+      refreshIcons();
     }
 
     async function runSandboxAction(event, sandbox, successMessage) {
@@ -661,6 +699,7 @@ createApp({
       openTerminal,
       copyPortUrl,
       openPort,
+      browseWorkspace,
       portForm,
       portIsLive,
       portStatusText,
@@ -672,6 +711,7 @@ createApp({
       runSandboxAction,
       selected,
       selectedSlug,
+      selectWorkspacePath,
       selectedTerminals,
       sortedSandboxes,
       terminalRef,
@@ -679,6 +719,7 @@ createApp({
       terminalVisible,
       toast,
       unpublishPort,
+      picker,
     };
   },
   template: `
@@ -749,7 +790,12 @@ createApp({
             </label>
             <label class="path-input">
               <span>Workspace</span>
-              <input v-model="form.workspace_root" autocomplete="off" placeholder="/Users/bill/aistuff/toady">
+              <span class="path-control">
+                <input v-model="form.workspace_root" autocomplete="off" placeholder="/Users/bill/aistuff/toady">
+                <button class="icon-button" type="button" title="Browse workspaces" @click="browseWorkspace(form.workspace_root)">
+                  <i data-lucide="folder-open"></i>
+                </button>
+              </span>
             </label>
             <label>
               <span>vCPU</span>
@@ -764,6 +810,40 @@ createApp({
               <span>Create</span>
             </button>
           </form>
+          <div v-if="picker.open" class="picker-panel">
+            <div class="picker-toolbar">
+              <div>
+                <strong>{{ picker.path || 'Workspace roots' }}</strong>
+                <span v-if="picker.truncated">First 500 directories shown</span>
+                <span v-else>Select a directory for the sandbox workspace.</span>
+              </div>
+              <button class="icon-button" type="button" title="Close picker" @click="picker.open = false">
+                <i data-lucide="x"></i>
+              </button>
+            </div>
+            <div class="picker-roots" v-if="picker.roots.length">
+              <button v-for="root in picker.roots" :key="root.path" type="button" class="tool-button" @click="browseWorkspace(root.path)">
+                <i data-lucide="hard-drive"></i><span>{{ root.path }}</span>
+              </button>
+            </div>
+            <div class="picker-actions">
+              <button class="tool-button" type="button" :disabled="!picker.parent || picker.loading" @click="browseWorkspace(picker.parent)">
+                <i data-lucide="corner-up-left"></i><span>Parent</span>
+              </button>
+              <button class="primary-button" type="button" :disabled="!picker.path || picker.loading" @click="selectWorkspacePath(picker.path)">
+                <i data-lucide="check"></i><span>Select</span>
+              </button>
+            </div>
+            <div v-if="picker.error" class="picker-error">{{ picker.error }}</div>
+            <div v-else-if="picker.loading" class="picker-empty">Loading...</div>
+            <div v-else-if="!picker.entries.length" class="picker-empty">No child directories</div>
+            <div v-else class="picker-list">
+              <button v-for="entry in picker.entries" :key="entry.path" type="button" class="picker-row" @click="browseWorkspace(entry.path)">
+                <i data-lucide="folder"></i>
+                <span>{{ entry.name }}</span>
+              </button>
+            </div>
+          </div>
         </section>
 
         <section class="detail" v-if="selected">

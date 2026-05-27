@@ -1487,6 +1487,14 @@ def create_app(
             return {"ok": False, "error": "Unknown sandbox"}
         return {"ok": True, "sandbox": manifest}
 
+    @socketio.on("workspace:browse")
+    def toady_socket_browse_workspace(payload):
+        try:
+            browse = _sandbox_service().browse_workspaces((payload or {}).get("path"))
+        except (SandboxServiceError, ValidationError) as exc:
+            return _sandbox_error_payload(exc)
+        return {"ok": True, "browse": browse}
+
     @socketio.on("sandbox:start")
     def toady_socket_start_sandbox(payload):
         import asyncio

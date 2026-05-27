@@ -390,6 +390,12 @@ button:disabled {
   align-items: end;
 }
 
+.path-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38px;
+  gap: 8px;
+}
+
 label {
   display: grid;
   gap: 6px;
@@ -416,6 +422,114 @@ input {
 input:focus {
   border-color: var(--teal);
   box-shadow: 0 0 0 3px rgba(57, 184, 166, 0.14);
+}
+
+.picker-panel {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.picker-toolbar,
+.picker-actions,
+.picker-roots {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.picker-toolbar {
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.picker-toolbar strong,
+.picker-toolbar span {
+  display: block;
+  max-width: min(860px, 72vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker-toolbar strong {
+  font-size: 13px;
+}
+
+.picker-toolbar span,
+.picker-error,
+.picker-empty {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.picker-roots {
+  flex-wrap: wrap;
+  padding: 10px 12px 0;
+}
+
+.picker-roots .tool-button {
+  max-width: 100%;
+}
+
+.picker-roots .tool-button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker-actions {
+  padding: 10px 12px;
+}
+
+.picker-error,
+.picker-empty {
+  padding: 14px 12px;
+  border-top: 1px solid var(--line);
+}
+
+.picker-error {
+  color: #ffd9d9;
+}
+
+.picker-list {
+  display: grid;
+  max-height: 280px;
+  overflow: auto;
+  border-top: 1px solid var(--line);
+}
+
+.picker-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 0;
+  border-bottom: 1px solid #26303a;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.picker-row:hover {
+  background: #20262d;
+}
+
+.picker-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker-row svg {
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
 }
 
 .detail {
