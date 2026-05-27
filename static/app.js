@@ -76,6 +76,7 @@ createApp({
 
     const selected = computed(() => sandboxes.find((sandbox) => sandbox.slug === selectedSlug.value) || sandboxes[0] || null);
     const sortedSandboxes = computed(() => [...sandboxes].sort((a, b) => a.slug.localeCompare(b.slug)));
+    const basePreparing = computed(() => baseStatus.state === 'preparing');
     const canStartSelected = computed(() => Boolean(selected.value && baseStatus.prepared && !busy.value));
     const canOpenTerminal = computed(() => Boolean(selected.value && selected.value.last_status === 'running' && !busy.value));
     const terminalVisible = computed(() => Boolean(
@@ -659,16 +660,16 @@ createApp({
       }
     }
 
-    async function requestBasePrepare() {
+    async function requestBasePrepare(rebuild = false) {
       try {
-        const response = await call('base:prepare');
+        const response = await call('base:prepare', { rebuild: Boolean(rebuild) });
         if (response.started) {
           baseLogs.splice(0, baseLogs.length);
-          setToast('Base preparation started.', 'success');
+          setToast(rebuild ? 'Base rebuild started.' : 'Base preparation started.', 'success');
           Object.assign(baseStatus, {
             prepared: false,
             state: 'preparing',
-            message: 'Preparing Microsandbox base...',
+            message: rebuild ? 'Rebuilding Microsandbox base...' : 'Preparing Microsandbox base...',
           });
         } else {
           setToast(response.message || 'Base preparation is already running.', 'info');
@@ -767,6 +768,7 @@ createApp({
       actionState,
       basename,
       baseStatus,
+      basePreparing,
       baseLogs,
       busy,
       canOpenTerminal,
@@ -822,6 +824,9 @@ createApp({
             <i data-lucide="box"></i>
             {{ baseStatus.prepared ? 'Base ready' : 'Base missing' }}
           </span>
+          <button v-if="baseStatus.prepared" class="tool-button base-rebuild" type="button" title="Rebuild base" :disabled="basePreparing" @click="requestBasePrepare(true)">
+            <i data-lucide="hammer"></i><span>Rebuild</span>
+          </button>
           <span class="connection" :class="{ online: connected }">
             <span class="dot"></span>{{ connected ? 'Connected' : 'Offline' }}
           </span>
@@ -863,7 +868,7 @@ createApp({
               <strong>{{ baseStatus.message || 'Microsandbox base is not prepared.' }}</strong>
               <span>Prepare the base before starting sandboxes.</span>
             </div>
-            <button class="tool-button" type="button" @click="requestBasePrepare">
+            <button class="tool-button" type="button" :disabled="basePreparing" @click="requestBasePrepare(false)">
               <i data-lucide="hammer"></i><span>Prepare</span>
             </button>
           </div>

@@ -140,6 +140,11 @@ button:disabled {
   height: 15px;
 }
 
+.base-rebuild {
+  height: 32px;
+  padding: 0 10px;
+}
+
 .connection.online {
   color: #c3f4d3;
   border-color: #385b45;
