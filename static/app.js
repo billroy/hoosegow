@@ -38,6 +38,12 @@ createApp({
       returncode: null,
       duration_seconds: null,
     });
+    const sandboxLogs = reactive([]);
+    const sandboxLogViewer = reactive({
+      open: false,
+      sandbox_id: '',
+      title: '',
+    });
     const form = reactive({
       name: 'sandbox',
       workspace_root: '',
@@ -394,6 +400,23 @@ createApp({
     async function openBaseLogs() {
       baseLogViewer.open = true;
       await loadBaseLogs();
+    }
+
+    async function loadSandboxLogs(sandbox = selected.value) {
+      if (!sandbox?.slug) return;
+      const response = await call('sandbox:logs', { id: sandbox.slug });
+      sandboxLogs.splice(0, sandboxLogs.length, ...(response.logs || []));
+      Object.assign(sandboxLogViewer, {
+        sandbox_id: response.sandbox_id || sandbox.slug,
+        title: sandbox.name || sandbox.slug,
+      });
+      refreshIcons();
+    }
+
+    async function openSandboxLogs(sandbox = selected.value) {
+      if (!sandbox?.slug) return;
+      sandboxLogViewer.open = true;
+      await loadSandboxLogs(sandbox);
     }
 
     async function loadWorkspaceDefaults() {
@@ -845,6 +868,8 @@ createApp({
       baseStatus,
       basePreparing,
       baseLogs,
+      sandboxLogViewer,
+      sandboxLogs,
       busy,
       canOpenTerminal,
       canStartSelected,
@@ -857,9 +882,11 @@ createApp({
       loadBaseLogs,
       loadBaseStatus,
       loadSandboxes,
+      loadSandboxLogs,
       loadTerminalSessions,
       openTerminal,
       openBaseLogs,
+      openSandboxLogs,
       operationBySandbox,
       copyPortUrl,
       openPort,
@@ -1052,6 +1079,9 @@ createApp({
               <button class="tool-button" type="button" :disabled="busy" @click="runSandboxAction('sandbox:stop', selected, 'Stopped.')">
                 <i data-lucide="square"></i><span>Stop</span>
               </button>
+              <button class="tool-button" type="button" @click="openSandboxLogs(selected)">
+                <i data-lucide="scroll-text"></i><span>Logs</span>
+              </button>
               <button class="danger-button" type="button" :disabled="busy" @click="destroySandbox(selected)">
                 <i data-lucide="trash-2"></i><span>Destroy</span>
               </button>
@@ -1214,6 +1244,29 @@ createApp({
             <div v-for="(line, index) in baseLogs" :key="index">{{ line }}</div>
           </div>
           <div v-else class="log-empty">No base-prep logs in this server session.</div>
+        </section>
+      </div>
+
+      <div v-if="sandboxLogViewer.open" class="modal-backdrop" @click.self="sandboxLogViewer.open = false">
+        <section class="modal-panel log-viewer">
+          <header class="modal-header">
+            <div>
+              <h2>Sandbox Logs</h2>
+              <p>{{ sandboxLogViewer.title || sandboxLogViewer.sandbox_id }}</p>
+            </div>
+            <span class="modal-actions">
+              <button class="icon-button" type="button" title="Refresh logs" @click="loadSandboxLogs(selected)">
+                <i data-lucide="refresh-cw"></i>
+              </button>
+              <button class="icon-button" type="button" title="Close logs" @click="sandboxLogViewer.open = false">
+                <i data-lucide="x"></i>
+              </button>
+            </span>
+          </header>
+          <div v-if="sandboxLogs.length" class="log-output">
+            <div v-for="(line, index) in sandboxLogs" :key="index">{{ line }}</div>
+          </div>
+          <div v-else class="log-empty">No lifecycle logs for this sandbox yet.</div>
         </section>
       </div>
 

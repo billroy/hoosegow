@@ -365,6 +365,20 @@ class SandboxService:
             raise SandboxServiceError(f"Unknown sandbox: {slug}")
         return list(manifest.published_ports or [])
 
+    def read_logs(self, slug: str, *, limit: int = 500) -> list[str]:
+        slug = validate_slug(slug)
+        if self.store.get(slug) is None:
+            raise SandboxServiceError(f"Unknown sandbox: {slug}")
+        path = self._sandbox_log_path(slug)
+        if not os.path.exists(path):
+            return []
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                lines = handle.read().splitlines()
+        except OSError:
+            return []
+        return lines[-max(1, int(limit)):]
+
     def publish_port(self, slug: str, payload: dict[str, Any]) -> dict[str, Any]:
         manifest = self.store.get(validate_slug(slug))
         if manifest is None:

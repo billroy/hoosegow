@@ -110,6 +110,7 @@ def test_socket_lifecycle_smoke_create_start_terminal_port_destroy(tmp_path, mon
         {"sandbox_id": "smoke", "guest_port": 5173},
         callback=True,
     )
+    logs = client.emit("sandbox:logs", {"id": "smoke"}, callback=True)
     started = client.emit("sandbox:start", {"id": "smoke"}, callback=True)
     terminal = client.emit(
         "sandbox:terminal:open",
@@ -131,6 +132,9 @@ def test_socket_lifecycle_smoke_create_start_terminal_port_destroy(tmp_path, mon
     assert created["ok"] is True
     assert published["ok"] is True
     assert published["port"]["guest_port"] == 5173
+    assert logs["ok"] is True
+    assert any('"event": "created"' in line for line in logs["logs"])
+    assert any('"event": "port_published"' in line for line in logs["logs"])
     assert started["ok"] is True
     assert started["sandbox"]["last_status"] == "running"
     assert terminal["ok"] is True

@@ -1651,6 +1651,16 @@ def create_app(
             return {"ok": False, "error": "Unknown sandbox"}
         return {"ok": True, "sandbox": manifest}
 
+    @socketio.on("sandbox:logs")
+    def toady_socket_sandbox_logs(payload):
+        slug = str((payload or {}).get("slug") or (payload or {}).get("id") or "")
+        try:
+            logs = _sandbox_service().read_logs(slug)
+            return {"ok": True, "sandbox_id": slug, "logs": logs}
+        except (SandboxServiceError, ValidationError) as exc:
+            socketio.emit("sandbox:error", {"sandbox_id": slug, "error": str(exc)}, to=request.sid)
+            return _sandbox_error_payload(exc)
+
     @socketio.on("workspace:browse")
     def toady_socket_browse_workspace(payload):
         try:

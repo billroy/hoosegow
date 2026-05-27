@@ -199,6 +199,8 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "No Sandboxes" in app_js
     assert "Workspace Root" in app_js
     assert "Publish :{{ portForm.guest_port }}" in app_js
+    assert "sandbox:logs" in app_js
+    assert "Sandbox Logs" in app_js
     assert ".empty-state" in css
     assert ".base-banner-actions" in css
 
