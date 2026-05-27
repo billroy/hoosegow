@@ -49,6 +49,31 @@ class SandboxServiceError(RuntimeError):
     """User-facing sandbox lifecycle error."""
 
 
+def _host_memory_mib() -> int | None:
+    if not hasattr(os, "sysconf"):
+        return None
+    try:
+        pages = os.sysconf("SC_PHYS_PAGES")
+        page_size = os.sysconf("SC_PAGE_SIZE")
+    except (OSError, ValueError):
+        return None
+    if not isinstance(pages, int) or not isinstance(page_size, int):
+        return None
+    return max(1, int((pages * page_size) / (1024 * 1024)))
+
+
+def _positive_int_or_none(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise SandboxServiceError("Resource admission limits must be positive integers.") from exc
+    if parsed < 1:
+        raise SandboxServiceError("Resource admission limits must be positive integers.")
+    return parsed
+
+
 class SandboxService:
     def __init__(
         self,
@@ -63,6 +88,9 @@ class SandboxService:
         guest_nofile: int = GUEST_NOFILE_DEFAULT,
         network_max_connections: int = NETWORK_MAX_CONNECTIONS_DEFAULT,
         port_pool: str = "3000-3099",
+        max_sandboxes: int | None = 8,
+        max_total_vcpus: int | None = None,
+        max_total_memory_mib: int | None = None,
     ) -> None:
         self.home = os.path.abspath(os.path.expanduser(home))
         self.store = SandboxStore(self.home)
@@ -75,9 +103,47 @@ class SandboxService:
         self.guest_nofile = guest_nofile
         self.network_max_connections = network_max_connections
         self.port_pool = parse_port_pool(port_pool)
+        self.max_sandboxes = _positive_int_or_none(max_sandboxes)
+        detected_vcpus = os.cpu_count() or self.default_vcpus
+        self.max_total_vcpus = _positive_int_or_none(max_total_vcpus) or max(detected_vcpus, self.default_vcpus)
+        host_memory_mib = _host_memory_mib()
+        self.max_total_memory_mib = _positive_int_or_none(max_total_memory_mib) or (
+            max(int(host_memory_mib * 0.75), self.default_memory_mib) if host_memory_mib else None
+        )
 
     def list(self) -> list[dict[str, Any]]:
         return [manifest.to_dict() for manifest in self.store.list()]
+
+    def _admitted_manifests(self, *, exclude_slug: str | None = None) -> list[SandboxManifest]:
+        return [
+            manifest
+            for manifest in self.store.list()
+            if manifest.slug != exclude_slug and manifest.last_status in {"running", "starting"}
+        ]
+
+    def _check_resource_admission(self, candidate: SandboxManifest) -> None:
+        admitted = self._admitted_manifests(exclude_slug=candidate.slug)
+        next_count = len(admitted) + 1
+        next_vcpus = sum(manifest.vcpus for manifest in admitted) + candidate.vcpus
+        next_memory_mib = sum(manifest.memory_mib for manifest in admitted) + candidate.memory_mib
+        failures = []
+        if self.max_sandboxes is not None and next_count > self.max_sandboxes:
+            failures.append(f"sandboxes {next_count}/{self.max_sandboxes}")
+        if self.max_total_vcpus is not None and next_vcpus > self.max_total_vcpus:
+            failures.append(f"vCPUs {next_vcpus}/{self.max_total_vcpus}")
+        if self.max_total_memory_mib is not None and next_memory_mib > self.max_total_memory_mib:
+            failures.append(f"memory {next_memory_mib}/{self.max_total_memory_mib} MiB")
+        if not failures:
+            return
+        running = ", ".join(
+            f"{manifest.slug} ({manifest.vcpus} vCPU, {manifest.memory_mib} MiB)"
+            for manifest in admitted
+        ) or "none"
+        raise SandboxServiceError(
+            "Resource admission refused: "
+            + "; ".join(failures)
+            + f". Currently running sandboxes: {running}."
+        )
 
     async def reconcile(self) -> list[dict[str, Any]]:
         runtime: MicrosandboxRuntime | None = None
@@ -181,6 +247,7 @@ class SandboxService:
             last_status="configured",
             warnings=warnings,
         )
+        self._check_resource_admission(manifest)
         return self.store.save(manifest).to_dict()
 
     def _allocate_port(self, *, exclude: set[int] | None = None) -> int:
@@ -350,6 +417,7 @@ class SandboxService:
         manifest = self.store.get(validate_slug(slug))
         if manifest is None:
             raise SandboxServiceError(f"Unknown sandbox: {slug}")
+        self._check_resource_admission(manifest)
         manifest.last_status = "starting"
         self.store.save(manifest)
         controller = self._ensure_controller_endpoint(manifest)

@@ -86,6 +86,15 @@ def configure_environment(args: argparse.Namespace) -> str:
         )
     os.environ["TOADY_PORT_POOL"] = args.port_pool
     os.environ["TOADY_TERMINAL_LIMIT"] = str(max(1, int(args.terminal_limit or 32)))
+    os.environ["TOADY_MAX_SANDBOXES"] = str(max(1, int(args.max_sandboxes or 8)))
+    if args.max_total_vcpus:
+        os.environ["TOADY_MAX_TOTAL_VCPUS"] = str(max(1, int(args.max_total_vcpus)))
+    else:
+        os.environ.pop("TOADY_MAX_TOTAL_VCPUS", None)
+    if args.max_total_memory_mib:
+        os.environ["TOADY_MAX_TOTAL_MEMORY_MIB"] = str(max(1, int(args.max_total_memory_mib)))
+    else:
+        os.environ.pop("TOADY_MAX_TOTAL_MEMORY_MIB", None)
     return home
 
 

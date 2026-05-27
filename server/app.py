@@ -351,6 +351,9 @@ def create_app(
         browse_roots=browse_roots_from_env(),
         source_root=os.path.dirname(os.path.dirname(__file__)),
         port_pool=os.environ.get("TOADY_PORT_POOL", "3000-3099"),
+        max_sandboxes=os.environ.get("TOADY_MAX_SANDBOXES", 8),
+        max_total_vcpus=os.environ.get("TOADY_MAX_TOTAL_VCPUS"),
+        max_total_memory_mib=os.environ.get("TOADY_MAX_TOTAL_MEMORY_MIB"),
     )
     app.config["startup_workspace_id"] = startup_id
     # Backward-compat: existing handlers still use these directly

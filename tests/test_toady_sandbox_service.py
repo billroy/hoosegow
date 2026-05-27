@@ -109,6 +109,49 @@ def test_sandbox_service_allows_running_shared_workspace(tmp_path, monkeypatch):
     assert shared["canonical_workspace_path"] == str(workspace.resolve())
 
 
+def test_sandbox_service_rejects_create_when_admission_limit_exceeded(tmp_path):
+    first_workspace = tmp_path / "first"
+    second_workspace = tmp_path / "second"
+    first_workspace.mkdir()
+    second_workspace.mkdir()
+    service = SandboxService(
+        home=str(tmp_path / "state"),
+        browse_roots=[str(tmp_path)],
+        max_sandboxes=1,
+        max_total_vcpus=16,
+        max_total_memory_mib=32768,
+    )
+    service.create_manifest({"name": "first", "workspace_root": str(first_workspace)})
+    manifest = service.store.get("first")
+    manifest.last_status = "running"
+    service.store.save(manifest)
+
+    with pytest.raises(SandboxServiceError, match="Resource admission refused"):
+        service.create_manifest({"name": "second", "workspace_root": str(second_workspace)})
+
+
+def test_sandbox_service_rejects_start_when_resource_totals_exceeded(tmp_path):
+    first_workspace = tmp_path / "first"
+    second_workspace = tmp_path / "second"
+    first_workspace.mkdir()
+    second_workspace.mkdir()
+    service = SandboxService(
+        home=str(tmp_path / "state"),
+        browse_roots=[str(tmp_path)],
+        max_sandboxes=2,
+        max_total_vcpus=4,
+        max_total_memory_mib=8192,
+    )
+    service.create_manifest({"name": "first", "workspace_root": str(first_workspace), "vcpus": 2, "memory_mib": 4096})
+    service.create_manifest({"name": "second", "workspace_root": str(second_workspace), "vcpus": 3, "memory_mib": 4096})
+    manifest = service.store.get("first")
+    manifest.last_status = "running"
+    service.store.save(manifest)
+
+    with pytest.raises(SandboxServiceError, match="vCPUs 5/4"):
+        asyncio.run(service.start("second"))
+
+
 def test_sandbox_service_browses_allowed_workspace_roots(tmp_path):
     root = tmp_path / "root"
     root.mkdir()
