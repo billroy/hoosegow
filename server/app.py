@@ -279,6 +279,7 @@ def create_app(
     port=5000,
     websocket_debug=False,
     start_without_project=False,
+    terminal_limit=None,
 ):
     """Create and configure the Flask + SocketIO app."""
     workspace = os.path.abspath(workspace)
@@ -412,6 +413,10 @@ def create_app(
     app.config["terminal_manager"] = TerminalManager(socketio)
     app.config["toady_terminals"] = {}
     app.config["toady_terminals_lock"] = threading.RLock()
+    app.config["toady_terminal_limit"] = max(
+        1,
+        _safe_int(terminal_limit or os.environ.get("TOADY_TERMINAL_LIMIT", ""), 32),
+    )
 
     def _portable_config(config):
         safe = dict(config or {})
@@ -575,6 +580,14 @@ def create_app(
             ]
         for terminal_id in terminal_ids:
             _close_toady_terminal(terminal_id)
+
+    def _toady_sandbox_terminal_count(sandbox_id):
+        with app.config["toady_terminals_lock"]:
+            return sum(
+                1
+                for session_info in app.config["toady_terminals"].values()
+                if session_info.get("sandbox_id") == sandbox_id
+            )
 
     def _toady_terminal_poll(terminal_id):
         while True:
@@ -1533,6 +1546,12 @@ def create_app(
                 raise SandboxServiceError("Unknown sandbox")
             if manifest.last_status != "running":
                 raise SandboxServiceError("Start the sandbox before opening a terminal.")
+            terminal_limit_value = int(app.config.get("toady_terminal_limit") or 32)
+            if _toady_sandbox_terminal_count(manifest.slug) >= terminal_limit_value:
+                raise SandboxServiceError(
+                    f"Terminal limit reached for {manifest.slug} ({terminal_limit_value}). "
+                    "Close a terminal before opening another."
+                )
             cols = max(20, min(300, int(payload.get("cols") or 100)))
             rows = max(5, min(100, int(payload.get("rows") or 30)))
             terminal_id = f"{manifest.slug}-{uuid.uuid4().hex[:12]}"

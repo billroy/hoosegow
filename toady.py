@@ -85,6 +85,7 @@ def configure_environment(args: argparse.Namespace) -> str:
             os.path.abspath(os.path.expanduser(path)) for path in args.workspace_root
         )
     os.environ["TOADY_PORT_POOL"] = args.port_pool
+    os.environ["TOADY_TERMINAL_LIMIT"] = str(max(1, int(args.terminal_limit or 32)))
     return home
 
 
@@ -213,6 +214,7 @@ def run_server(args: argparse.Namespace, home: str) -> int:
         port=args.port,
         websocket_debug=args.websocket_debug,
         start_without_project=True,
+        terminal_limit=args.terminal_limit,
     )
 
     if not args.no_browser:
