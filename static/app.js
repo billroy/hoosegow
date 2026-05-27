@@ -430,6 +430,7 @@ createApp({
       if (!mapping) return '';
       if (mapping.status === 'pending_restart') return 'activates on restart';
       if (mapping.status === 'remove_on_restart') return 'active until restart';
+      if (mapping.status === 'conflict') return 'conflict';
       return mapping.status || 'active';
     }
 
@@ -478,6 +479,24 @@ createApp({
         await loadSandboxes();
         const restartNote = response.port?.status === 'remove_on_restart' ? ' Restart the sandbox to remove the live mapping.' : '';
         setToast(`Unpublished :${mapping.guest_port}.${restartNote}`, 'success');
+      } catch (error) {
+        setToast(error.message, 'error');
+      } finally {
+        busy.value = false;
+      }
+    }
+
+    async function reassignPort(sandbox, mapping) {
+      if (!sandbox || !mapping) return;
+      busy.value = true;
+      try {
+        const response = await call('port:reassign', {
+          sandbox_id: sandbox.slug,
+          host_port: mapping.host_port,
+        });
+        await loadSandboxes();
+        const restartNote = response.port?.status === 'pending_restart' ? ' Restart the sandbox to activate it.' : '';
+        setToast(`Reassigned :${mapping.guest_port} to :${response.port.host_port}.${restartNote}`, 'success');
       } catch (error) {
         setToast(error.message, 'error');
       } finally {
@@ -647,6 +666,7 @@ createApp({
       portStatusText,
       portUrl,
       publishPort,
+      reassignPort,
       focusTerminal,
       requestBasePrepare,
       runSandboxAction,
@@ -819,6 +839,9 @@ createApp({
                   </button>
                   <button class="icon-button" type="button" title="Copy URL" @click="copyPortUrl(mapping)">
                     <i data-lucide="copy"></i>
+                  </button>
+                  <button v-if="mapping.status === 'conflict'" class="icon-button" type="button" title="Reassign port" :disabled="busy" @click="reassignPort(selected, mapping)">
+                    <i data-lucide="shuffle"></i>
                   </button>
                   <button class="icon-button" type="button" title="Unpublish" :disabled="busy" @click="unpublishPort(selected, mapping)">
                     <i data-lucide="x"></i>

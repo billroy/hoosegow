@@ -555,6 +555,10 @@ input:focus {
   border-color: #614c28;
 }
 
+.port-row[data-status="conflict"] {
+  border-color: #7a464b;
+}
+
 .port-main {
   min-width: 0;
 }

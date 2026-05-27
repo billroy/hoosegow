@@ -1695,6 +1695,20 @@ def create_app(
         socketio.emit("ports:updated", {"sandbox_id": slug, "ports": ports}, to="authenticated")
         return {"ok": True, "port": mapping, "ports": ports}
 
+    @socketio.on("port:reassign")
+    def toady_socket_reassign_port(payload):
+        payload = payload or {}
+        slug = payload.get("sandbox_id") or payload.get("id") or ""
+        try:
+            mapping = _sandbox_service().reassign_port(slug, payload)
+            ports = _sandbox_service().list_ports(slug)
+        except (SandboxServiceError, ValidationError, RuntimeError) as exc:
+            socketio.emit("sandbox:error", {"id": slug, "error": str(exc)}, to=request.sid)
+            return _sandbox_error_payload(exc)
+        _emit_sandboxes_updated()
+        socketio.emit("ports:updated", {"sandbox_id": slug, "ports": ports}, to="authenticated")
+        return {"ok": True, "port": mapping, "ports": ports}
+
     register_events(socketio, app)
 
     # Start time-based scheduler for each workspace

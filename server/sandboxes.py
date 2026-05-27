@@ -221,6 +221,61 @@ class SandboxService:
         self.store.save(manifest)
         return removed
 
+    def reassign_port(self, slug: str, payload: dict[str, Any]) -> dict[str, Any]:
+        manifest = self.store.get(validate_slug(slug))
+        if manifest is None:
+            raise SandboxServiceError(f"Unknown sandbox: {slug}")
+        old_host_port = parse_port("host port", payload.get("host_port") or payload.get("hostPort") or "")
+        host_value = payload.get("new_host_port") or payload.get("newHostPort")
+        new_host_port = parse_port("new host port", host_value) if host_value else self._allocate_port()
+        self._ensure_publishable_host_port(new_host_port)
+
+        updated_mapping: dict[str, Any] | None = None
+        next_mappings = []
+        for mapping in manifest.published_ports:
+            if int(mapping.get("host_port") or 0) != old_host_port:
+                next_mappings.append(mapping)
+                continue
+            updated_mapping = {
+                "guest_port": int(mapping.get("guest_port") or 0),
+                "host_port": new_host_port,
+                "status": "pending_restart" if manifest.last_status == "running" else "active",
+            }
+            next_mappings.append(updated_mapping)
+        if updated_mapping is None:
+            raise SandboxServiceError(f"Host port {old_host_port} is not published.")
+        manifest.published_ports = next_mappings
+        self.store.save(manifest)
+        return updated_mapping
+
+    def _mark_conflicting_published_ports(self, manifest: SandboxManifest, mappings: list[dict[str, Any]]) -> None:
+        conflicts = []
+        next_mappings = []
+        for mapping in manifest.published_ports:
+            if mapping not in mappings:
+                next_mappings.append(mapping)
+                continue
+            host_port = int(mapping.get("host_port") or 0)
+            if host_port and host_port_in_use(host_port):
+                owner = host_port_owner(host_port)
+                conflict = dict(mapping)
+                conflict["status"] = "conflict"
+                if owner:
+                    conflict["conflict"] = owner
+                conflicts.append(conflict)
+                next_mappings.append(conflict)
+            else:
+                clean = dict(mapping)
+                clean.pop("conflict", None)
+                next_mappings.append(clean)
+        if not conflicts:
+            return
+        manifest.published_ports = next_mappings
+        manifest.last_status = "error"
+        self.store.save(manifest)
+        detail = "; ".join(f":{mapping['host_port']} -> :{mapping['guest_port']}" for mapping in conflicts)
+        raise SandboxServiceError(f"Published port conflict for {manifest.slug}: {detail}. Reassign the port and start again.")
+
     async def start(self, slug: str) -> dict[str, Any]:
         manifest = self.store.get(validate_slug(slug))
         if manifest is None:
@@ -233,6 +288,13 @@ class SandboxService:
         if not host_port:
             raise SandboxServiceError("Sandbox controller host port allocation is not implemented yet.")
         ports = {int(host_port): guest_port}
+        active_mappings = [
+            mapping
+            for mapping in manifest.published_ports
+            if mapping.get("status") != "remove_on_restart"
+        ]
+        self._mark_conflicting_published_ports(manifest, active_mappings)
+        manifest = self.store.get(manifest.slug) or manifest
         active_mappings = [
             mapping
             for mapping in manifest.published_ports

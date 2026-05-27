@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -121,3 +122,49 @@ def test_sandbox_service_rejects_reserved_host_port(tmp_path, monkeypatch):
 
     with pytest.raises(SandboxServiceError):
         service.publish_port("demo", {"guest_port": 3000, "host_port": 63100})
+
+
+def test_sandbox_service_marks_published_port_conflict_on_start(tmp_path, monkeypatch):
+    occupied = set()
+    monkeypatch.setattr("server.sandboxes.host_port_in_use", lambda port: port in occupied)
+    monkeypatch.setattr("server.sandboxes.host_port_owner", lambda port: f"python 123 *:{port}")
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    service = SandboxService(
+        home=str(tmp_path / "state"),
+        browse_roots=[str(tmp_path)],
+        port_pool="63100-63105",
+    )
+    service.create_manifest({"name": "demo", "workspace_root": str(workspace)})
+    service.publish_port("demo", {"guest_port": 3000, "host_port": 63103})
+    occupied.add(63103)
+
+    with pytest.raises(SandboxServiceError, match="Published port conflict"):
+        asyncio.run(service.start("demo"))
+
+    manifest = service.store.get("demo")
+    assert manifest.last_status == "error"
+    assert manifest.published_ports[0]["status"] == "conflict"
+    assert "python 123" in manifest.published_ports[0]["conflict"]
+
+
+def test_sandbox_service_reassigns_conflicted_port(tmp_path, monkeypatch):
+    monkeypatch.setattr("server.sandboxes.host_port_in_use", lambda _port: False)
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    service = SandboxService(
+        home=str(tmp_path / "state"),
+        browse_roots=[str(tmp_path)],
+        port_pool="63100-63105",
+    )
+    service.create_manifest({"name": "demo", "workspace_root": str(workspace)})
+    service.publish_port("demo", {"guest_port": 3000, "host_port": 63103})
+    manifest = service.store.get("demo")
+    manifest.published_ports[0]["status"] = "conflict"
+    manifest.published_ports[0]["conflict"] = "python 123"
+    service.store.save(manifest)
+
+    mapping = service.reassign_port("demo", {"host_port": 63103})
+
+    assert mapping == {"guest_port": 3000, "host_port": 63101, "status": "active"}
+    assert service.list_ports("demo") == [mapping]
