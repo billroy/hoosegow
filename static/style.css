@@ -626,9 +626,68 @@ input:focus {
   white-space: nowrap;
 }
 
-.terminal-close {
-  width: 30px;
+.terminal-new {
   height: 30px;
+  padding: 0 10px;
+}
+
+.terminal-tabs {
+  display: flex;
+  gap: 6px;
+  min-height: 42px;
+  padding: 6px;
+  overflow-x: auto;
+  border-bottom: 1px solid #202730;
+  background: #0b0e13;
+}
+
+.terminal-tab {
+  display: inline-grid;
+  grid-template-columns: minmax(54px, auto) auto 22px;
+  align-items: center;
+  gap: 8px;
+  min-width: 132px;
+  height: 30px;
+  padding: 0 4px 0 10px;
+  border: 1px solid #26303a;
+  border-radius: 8px;
+  background: #111820;
+  color: #c5d1df;
+}
+
+.terminal-tab.active {
+  border-color: #3d8c84;
+  background: #152729;
+}
+
+.terminal-tab small {
+  color: #7d8c9f;
+  font-size: 11px;
+}
+
+.terminal-tab[data-status="exited"] small {
+  color: var(--amber);
+}
+
+.terminal-tab-close {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #96a4b4;
+}
+
+.terminal-tab-close:hover {
+  background: #26303a;
+  color: var(--text);
+}
+
+.terminal-tab-close svg {
+  width: 14px;
+  height: 14px;
 }
 
 .terminal-viewport {

@@ -48,13 +48,14 @@ createApp({
       status: 'closed',
       exit_code: null,
     });
+    const terminals = reactive([]);
     const terminalRef = ref(null);
     const terminal = ref(null);
     const terminalDataDisposable = ref(null);
     const terminalResizeDisposable = ref(null);
     const terminalResizeObserver = ref(null);
     const terminalFitTimer = ref(null);
-    const terminalTextDecoder = new TextDecoder();
+    const terminalTextDecoders = new Map();
 
     const selected = computed(() => sandboxes.find((sandbox) => sandbox.slug === selectedSlug.value) || sandboxes[0] || null);
     const sortedSandboxes = computed(() => [...sandboxes].sort((a, b) => a.slug.localeCompare(b.slug)));
@@ -66,6 +67,7 @@ createApp({
       && activeTerminal.sandbox_id === selected.value.slug
       && activeTerminal.status !== 'closed'
     ));
+    const selectedTerminals = computed(() => terminals.filter((item) => item.sandbox_id === selected.value?.slug));
 
     function setToast(message, tone = 'info') {
       toast.message = message;
@@ -82,11 +84,26 @@ createApp({
       });
     }
 
-    function decodeBase64Text(value) {
+    function currentTerminalRecord() {
+      return terminals.find((item) => item.id === activeTerminal.id) || null;
+    }
+
+    function syncActiveTerminal(record) {
+      activeTerminal.id = record?.id || '';
+      activeTerminal.sandbox_id = record?.sandbox_id || '';
+      activeTerminal.cwd = record?.cwd || '';
+      activeTerminal.status = record?.status || 'closed';
+      activeTerminal.exit_code = record?.exit_code ?? null;
+    }
+
+    function decodeBase64Text(value, terminalId) {
       const binary = window.atob(value || '');
       if (!binary) return '';
       const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-      return terminalTextDecoder.decode(bytes, { stream: true });
+      if (!terminalTextDecoders.has(terminalId)) {
+        terminalTextDecoders.set(terminalId, new TextDecoder());
+      }
+      return terminalTextDecoders.get(terminalId).decode(bytes, { stream: true });
     }
 
     function terminalCellSize() {
@@ -162,6 +179,8 @@ createApp({
       }
       window.addEventListener('resize', scheduleTerminalFit);
       await nextTick();
+      const record = currentTerminalRecord();
+      if (record?.transcript) terminal.value.write(record.transcript);
       fitTerminal();
       terminal.value.focus();
     }
@@ -257,8 +276,8 @@ createApp({
         setToast(baseStatus.message || 'Prepare the Microsandbox base before starting sandboxes.', 'error');
         return;
       }
-      if ((event === 'sandbox:stop' || event === 'sandbox:destroy') && activeTerminal.sandbox_id === sandbox.slug) {
-        await closeTerminal({ silent: true });
+      if (event === 'sandbox:stop' || event === 'sandbox:destroy') {
+        await closeSandboxTerminals(sandbox.slug, { silent: true });
       }
       busy.value = true;
       try {
@@ -277,13 +296,6 @@ createApp({
         setToast('Start the sandbox before opening a terminal.', 'error');
         return;
       }
-      if (activeTerminal.id && activeTerminal.sandbox_id === sandbox.slug && activeTerminal.status !== 'closed') {
-        await nextTick();
-        await ensureTerminal();
-        if (terminal.value) terminal.value.focus();
-        return;
-      }
-      if (activeTerminal.id) await closeTerminal({ silent: true });
       busy.value = true;
       try {
         const response = await call('sandbox:terminal:open', {
@@ -291,18 +303,20 @@ createApp({
           cols: 100,
           rows: 30,
         });
-        activeTerminal.id = response.terminal.id;
-        activeTerminal.sandbox_id = response.terminal.sandbox_id;
-        activeTerminal.cwd = response.terminal.cwd || '/workspace';
-        activeTerminal.status = 'running';
-        activeTerminal.exit_code = null;
+        const record = {
+          id: response.terminal.id,
+          sandbox_id: response.terminal.sandbox_id,
+          cwd: response.terminal.cwd || '/workspace',
+          status: 'running',
+          exit_code: null,
+          transcript: '',
+        };
+        terminals.push(record);
+        await focusTerminal(record.id);
         await nextTick();
         await ensureTerminal();
-        setToast(`Terminal opened for ${sandbox.slug}.`, 'success');
+        setToast(`Terminal ${selectedTerminals.value.length} opened for ${sandbox.slug}.`, 'success');
       } catch (error) {
-        activeTerminal.id = '';
-        activeTerminal.sandbox_id = '';
-        activeTerminal.status = 'closed';
         setToast(error.message, 'error');
       } finally {
         busy.value = false;
@@ -310,20 +324,51 @@ createApp({
       }
     }
 
+    async function focusTerminal(terminalId) {
+      const record = terminals.find((item) => item.id === terminalId);
+      if (!record) return;
+      if (activeTerminal.id === terminalId) {
+        if (terminal.value) terminal.value.focus();
+        return;
+      }
+      disposeTerminal();
+      syncActiveTerminal(record);
+      await nextTick();
+      await ensureTerminal();
+      refreshIcons();
+    }
+
     async function closeTerminal(options = {}) {
-      const terminalId = activeTerminal.id;
+      const terminalId = options.terminalId || activeTerminal.id;
       if (terminalId && options.remote !== false) {
         socket.emit('sandbox:terminal:close', { terminal_id: terminalId });
       }
-      disposeTerminal();
-      activeTerminal.id = '';
-      activeTerminal.sandbox_id = '';
-      activeTerminal.cwd = '';
-      activeTerminal.status = 'closed';
-      activeTerminal.exit_code = null;
+      const index = terminals.findIndex((item) => item.id === terminalId);
+      const wasActive = terminalId === activeTerminal.id;
+      const sandboxId = index >= 0 ? terminals[index].sandbox_id : activeTerminal.sandbox_id;
+      if (index >= 0) terminals.splice(index, 1);
+      terminalTextDecoders.delete(terminalId);
+      if (wasActive) {
+        disposeTerminal();
+        const nextRecord = terminals.find((item) => item.sandbox_id === sandboxId) || null;
+        syncActiveTerminal(nextRecord);
+        if (nextRecord) {
+          await nextTick();
+          await ensureTerminal();
+        }
+      }
       if (!options.silent) setToast('Terminal closed.', 'info');
       await nextTick();
       refreshIcons();
+    }
+
+    async function closeSandboxTerminals(sandboxId, options = {}) {
+      const ids = terminals
+        .filter((item) => item.sandbox_id === sandboxId)
+        .map((item) => item.id);
+      for (const terminalId of ids) {
+        await closeTerminal({ ...options, terminalId });
+      }
     }
 
     function portUrl(mapping) {
@@ -403,9 +448,7 @@ createApp({
       if (!sandbox) return;
       const confirmed = window.confirm(`Destroy ${sandbox.slug}?`);
       if (!confirmed) return;
-      if (activeTerminal.sandbox_id === sandbox.slug) {
-        await closeTerminal({ silent: true });
-      }
+      await closeSandboxTerminals(sandbox.slug, { silent: true });
       busy.value = true;
       try {
         await call('sandbox:destroy', { id: sandbox.slug, purge: true });
@@ -462,18 +505,29 @@ createApp({
       loadSandboxes().catch((error) => setToast(error.message, 'error'));
     });
     socket.on('sandbox:terminal:output', (payload) => {
-      if (!terminal.value || payload?.terminal_id !== activeTerminal.id) return;
+      const record = terminals.find((item) => item.id === payload?.terminal_id);
+      if (!record) return;
       try {
-        terminal.value.write(decodeBase64Text(payload.data));
+        const text = decodeBase64Text(payload.data, payload.terminal_id);
+        record.transcript = `${record.transcript || ''}${text}`;
+        if (record.transcript.length > 200000) record.transcript = record.transcript.slice(-200000);
+        if (terminal.value && payload.terminal_id === activeTerminal.id) terminal.value.write(text);
       } catch (error) {
         setToast(error.message, 'error');
       }
     });
     socket.on('sandbox:terminal:exit', (payload) => {
-      if (payload?.terminal_id !== activeTerminal.id) return;
-      activeTerminal.status = 'exited';
-      activeTerminal.exit_code = payload.exit_code;
-      if (terminal.value) terminal.value.write(`\r\n[terminal exited: ${payload.exit_code ?? 0}]\r\n`);
+      const record = terminals.find((item) => item.id === payload?.terminal_id);
+      if (!record) return;
+      record.status = 'exited';
+      record.exit_code = payload.exit_code;
+      const text = `\r\n[terminal exited: ${payload.exit_code ?? 0}]\r\n`;
+      record.transcript = `${record.transcript || ''}${text}`;
+      if (payload.terminal_id === activeTerminal.id) {
+        activeTerminal.status = 'exited';
+        activeTerminal.exit_code = payload.exit_code;
+        if (terminal.value) terminal.value.write(text);
+      }
     });
     socket.on('sandbox:terminal:error', (payload) => {
       if (payload?.terminal_id && payload.terminal_id !== activeTerminal.id) return;
@@ -484,8 +538,7 @@ createApp({
       setToast(message, 'error');
     });
     socket.on('sandbox:terminal:closed', (payload) => {
-      if (payload?.terminal_id !== activeTerminal.id) return;
-      closeTerminal({ silent: true, remote: false });
+      closeTerminal({ silent: true, remote: false, terminalId: payload?.terminal_id });
     });
     socket.on('ports:updated', (payload) => {
       const sandbox = sandboxes.find((item) => item.slug === payload?.sandbox_id);
@@ -528,12 +581,15 @@ createApp({
       portStatusText,
       portUrl,
       publishPort,
+      focusTerminal,
       requestBasePrepare,
       runSandboxAction,
       selected,
       selectedSlug,
+      selectedTerminals,
       sortedSandboxes,
       terminalRef,
+      terminals,
       terminalVisible,
       toast,
       unpublishPort,
@@ -635,7 +691,7 @@ createApp({
                 <i data-lucide="play"></i><span>Start</span>
               </button>
               <button class="primary-button" type="button" :disabled="!canOpenTerminal" @click="openTerminal(selected)">
-                <i data-lucide="terminal"></i><span>Terminal</span>
+                <i data-lucide="terminal"></i><span>New Terminal</span>
               </button>
               <button class="tool-button" type="button" :disabled="busy" @click="runSandboxAction('sandbox:stop', selected, 'Stopped.')">
                 <i data-lucide="square"></i><span>Stop</span>
@@ -714,9 +770,29 @@ createApp({
                 <span>Terminal</span>
                 <small v-if="terminalVisible">{{ activeTerminal.cwd }}</small>
               </span>
-              <button v-if="terminalVisible" class="icon-button terminal-close" type="button" title="Close terminal" @click="closeTerminal">
-                <i data-lucide="x"></i>
+              <button class="tool-button terminal-new" type="button" :disabled="!canOpenTerminal" @click="openTerminal(selected)">
+                <i data-lucide="plus"></i><span>New</span>
               </button>
+            </div>
+            <div v-if="selectedTerminals.length" class="terminal-tabs">
+              <div
+                v-for="(term, index) in selectedTerminals"
+                :key="term.id"
+                class="terminal-tab"
+                :class="{ active: term.id === activeTerminal.id }"
+                :data-status="term.status"
+                role="button"
+                tabindex="0"
+                @click="focusTerminal(term.id)"
+                @keydown.enter.prevent="focusTerminal(term.id)"
+                @keydown.space.prevent="focusTerminal(term.id)"
+              >
+                <span>Term {{ index + 1 }}</span>
+                <small>{{ term.status }}</small>
+                <button class="terminal-tab-close" type="button" title="Close terminal" @click.stop="closeTerminal({ terminalId: term.id })">
+                  <i data-lucide="x"></i>
+                </button>
+              </div>
             </div>
             <div v-if="terminalVisible" ref="terminalRef" class="terminal-viewport"></div>
             <div v-else class="terminal-placeholder">
