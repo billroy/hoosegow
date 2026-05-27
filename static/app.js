@@ -318,6 +318,10 @@ createApp({
         setToast('Name and workspace are required.', 'error');
         return;
       }
+      if (!baseStatus.prepared) {
+        setToast(baseStatus.message || 'Prepare the Microsandbox base before creating sandboxes.', 'error');
+        return;
+      }
       busy.value = true;
       try {
         const response = await call('sandbox:create', {
@@ -329,8 +333,11 @@ createApp({
         selectedSlug.value = response.sandbox.slug;
         form.name = '';
         form.workspace_root = '';
+        setToast(`Starting ${response.sandbox.slug}...`, 'info');
+        const started = await call('sandbox:start', { id: response.sandbox.slug });
         await loadSandboxes();
-        setToast(`Created ${response.sandbox.slug}.`, 'success');
+        await openTerminal(started.sandbox, { manageBusy: false });
+        setToast(`Created ${response.sandbox.slug} and opened a terminal.`, 'success');
       } catch (error) {
         setToast(error.message, 'error');
       } finally {
@@ -377,8 +384,13 @@ createApp({
       }
       busy.value = true;
       try {
-        await call(event, { id: sandbox.slug });
+        const response = await call(event, { id: sandbox.slug });
         await loadSandboxes();
+        if (event === 'sandbox:start' && response?.sandbox?.last_status === 'running') {
+          await openTerminal(response.sandbox, { manageBusy: false });
+          setToast('Started and opened a terminal.', 'success');
+          return;
+        }
         setToast(successMessage, 'success');
       } catch (error) {
         setToast(error.message, 'error');
@@ -387,12 +399,12 @@ createApp({
       }
     }
 
-    async function openTerminal(sandbox) {
+    async function openTerminal(sandbox, options = {}) {
       if (!sandbox || sandbox.last_status !== 'running') {
         setToast('Start the sandbox before opening a terminal.', 'error');
         return;
       }
-      busy.value = true;
+      if (options.manageBusy !== false) busy.value = true;
       try {
         const response = await call('sandbox:terminal:open', {
           sandbox_id: sandbox.slug,
@@ -407,7 +419,7 @@ createApp({
       } catch (error) {
         setToast(error.message, 'error');
       } finally {
-        busy.value = false;
+        if (options.manageBusy !== false) busy.value = false;
         refreshIcons();
       }
     }
@@ -805,9 +817,9 @@ createApp({
               <span>RAM MiB</span>
               <input v-model.number="form.memory_mib" type="number" min="512" step="512">
             </label>
-            <button class="primary-button" type="submit" :disabled="busy">
+            <button class="primary-button" type="submit" :disabled="busy || !baseStatus.prepared">
               <i data-lucide="plus"></i>
-              <span>Create</span>
+              <span>Create + Start</span>
             </button>
           </form>
           <div v-if="picker.open" class="picker-panel">
