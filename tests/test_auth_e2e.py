@@ -126,6 +126,8 @@ class TestHttpAuthEnabled:
         r = auth_client.get("/login")
         assert r.status_code == 200
         assert b"loginForm" in r.data
+        assert b"Toady" in r.data
+        assert b"Bullpen" not in r.data
 
     def test_login_page_public_without_session(self, auth_client):
         # A fresh client with no cookies must still get the login page.
