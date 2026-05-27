@@ -64,6 +64,10 @@ python3 scripts/microsandbox_port_smoke.py
 python3 scripts/pty_controller_microsandbox_smoke.py --verbose
 ```
 
+The Microsandbox scripts default to the Toady prepared base
+`toady-microsandbox-local`. Override with `--snapshot <name>` or
+`TOADY_MICROSANDBOX_BASE=<name>` when testing an alternate base.
+
 Observed Microsandbox PTY output included:
 
 ```text

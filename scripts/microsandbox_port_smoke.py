@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import inspect
+import os
 import socket
 import sys
 import tempfile
@@ -19,7 +20,7 @@ import microsandbox
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SNAPSHOT = "bullpen-microsandbox-local"
+SNAPSHOT_DEFAULT = "toady-microsandbox-local"
 
 
 async def maybe(value: Any) -> Any:
@@ -64,15 +65,15 @@ def wait_for_http(port: int, timeout: float = 20.0) -> str:
     raise TimeoutError(f"HTTP server did not answer at {url}: {last_error}")
 
 
-async def snapshot_path() -> str:
-    snapshot = await maybe(microsandbox.Snapshot.get(SNAPSHOT))
+async def snapshot_path(snapshot_name: str) -> str:
+    snapshot = await maybe(microsandbox.Snapshot.get(snapshot_name))
     path = getattr(snapshot, "path", None)
     if not path:
         opened = getattr(snapshot, "open", None)
         if callable(opened):
             path = getattr(await maybe(opened()), "path", None)
     if not path:
-        raise RuntimeError(f"snapshot {SNAPSHOT!r} has no path")
+        raise RuntimeError(f"snapshot {snapshot_name!r} has no path")
     return str(path)
 
 
@@ -85,7 +86,7 @@ async def run(args: argparse.Namespace) -> int:
         sandbox = await maybe(
             microsandbox.Sandbox.create(
                 sandbox_name,
-                snapshot=await snapshot_path(),
+                snapshot=await snapshot_path(args.snapshot),
                 detached=True,
                 replace=True,
                 cpus=1,
@@ -136,6 +137,7 @@ async def run(args: argparse.Namespace) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", default="toady-port-smoke")
+    parser.add_argument("--snapshot", default=os.environ.get("TOADY_MICROSANDBOX_BASE", SNAPSHOT_DEFAULT))
     parser.add_argument("--port", type=int)
     parser.add_argument("--timeout", type=float, default=20.0)
     parser.add_argument("--keep", action="store_true")

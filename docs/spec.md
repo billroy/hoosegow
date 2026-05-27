@@ -636,6 +636,9 @@ Verification gate:
   TCP failure mode and is expected to fail until Microsandbox behavior changes.
 - `python3 scripts/pty_controller_microsandbox_smoke.py --verbose`
 
+The real Microsandbox scripts default to `toady-microsandbox-local`; use
+`TOADY_MICROSANDBOX_BASE` or `--snapshot` to target another prepared base.
+
 ### P0 - Bullpen Excavation Baseline (0.5-1 day)
 
 Objective: create a Toady codebase by copying Bullpen and proving the copied

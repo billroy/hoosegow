@@ -107,6 +107,17 @@ pytest -q tests/test_auth.py tests/test_auth_e2e.py
 node --check static/app.js
 ```
 
+Real Microsandbox smokes use the prepared base `toady-microsandbox-local` by
+default:
+
+```bash
+python3 scripts/microsandbox_port_smoke.py
+python3 scripts/pty_controller_microsandbox_smoke.py --verbose
+```
+
+Set `TOADY_MICROSANDBOX_BASE` or pass `--snapshot` to test another base.
+The latest local run is recorded in `docs/release-smokes.md`.
+
 The repo still contains copied Bullpen modules and tests while excavation is in
 progress. See `docs/spec.md` and `docs/bullpen-excavation.md` for the current
 plan and provenance notes.

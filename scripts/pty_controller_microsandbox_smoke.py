@@ -21,7 +21,7 @@ from pty_controller_smoke import reserve_loopback_port
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SNAPSHOT = "bullpen-microsandbox-local"
+SNAPSHOT_DEFAULT = "toady-microsandbox-local"
 
 
 async def maybe(value: Any) -> Any:
@@ -53,14 +53,15 @@ async def run(args: argparse.Namespace) -> int:
     token = secrets.token_urlsafe(24)
     base_url = f"http://127.0.0.1:{host_port}"
 
-    snapshot = await maybe(microsandbox.Snapshot.get(SNAPSHOT))
+    snapshot_name = args.snapshot
+    snapshot = await maybe(microsandbox.Snapshot.get(snapshot_name))
     snapshot_path = getattr(snapshot, "path", None)
     if not snapshot_path:
         opened = getattr(snapshot, "open", None)
         if callable(opened):
             snapshot_path = getattr(await maybe(opened()), "path", None)
     if not snapshot_path:
-        raise RuntimeError(f"snapshot {SNAPSHOT!r} has no path")
+        raise RuntimeError(f"snapshot {snapshot_name!r} has no path")
 
     with tempfile.TemporaryDirectory(prefix="toady-msb-home-", dir="/private/tmp") as home:
         await stop_remove(sandbox_name)
@@ -127,6 +128,7 @@ async def run(args: argparse.Namespace) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", default="toady-ptyd-smoke")
+    parser.add_argument("--snapshot", default=os.environ.get("TOADY_MICROSANDBOX_BASE", SNAPSHOT_DEFAULT))
     parser.add_argument("--port", type=int)
     parser.add_argument("--keep", action="store_true")
     parser.add_argument("--verbose", action="store_true")

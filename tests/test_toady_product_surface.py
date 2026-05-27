@@ -141,3 +141,15 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "Publish :{{ portForm.guest_port }}" in app_js
     assert ".empty-state" in css
     assert ".base-banner-actions" in css
+
+
+def test_real_microsandbox_smokes_default_to_toady_base():
+    for relative in (
+        "scripts/microsandbox_port_smoke.py",
+        "scripts/microsandbox_raw_tcp_smoke.py",
+        "scripts/pty_controller_microsandbox_smoke.py",
+    ):
+        text = (ROOT / relative).read_text(encoding="utf-8")
+        assert 'SNAPSHOT_DEFAULT = "toady-microsandbox-local"' in text
+        assert "TOADY_MICROSANDBOX_BASE" in text
+        assert "bullpen-microsandbox-local" not in text
