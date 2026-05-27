@@ -43,11 +43,12 @@ class FakePtyDriver:
 
 class ReplayPtyDriver(FakePtyDriver):
     polled = set()
+    output = b"one\ntwo\nthree\nfour\n"
 
     def poll(self, terminal_id, *, since, timeout=1.0):
         if terminal_id not in self.polled:
             self.polled.add(terminal_id)
-            data = base64.b64encode(b"one\ntwo\nthree\nfour\n").decode("ascii")
+            data = base64.b64encode(self.output).decode("ascii")
             return {
                 "events": [{"event": "output", "data": data}],
                 "next_seq": since + 1,
@@ -240,6 +241,7 @@ def test_toady_terminal_can_be_rejoined_by_new_socket(tmp_path, monkeypatch):
 
 def test_toady_terminal_replay_is_line_bounded_and_marked(tmp_path, monkeypatch):
     ReplayPtyDriver.polled = set()
+    ReplayPtyDriver.output = b"one\ntwo\nthree\nfour\n"
     monkeypatch.setattr("server.app.PtyDriver", ReplayPtyDriver)
     monkeypatch.setattr("server.app._TERMINAL_REPLAY_LIMIT_LINES", 2)
     app = create_app(
@@ -279,3 +281,45 @@ def test_toady_terminal_replay_is_line_bounded_and_marked(tmp_path, monkeypatch)
     assert "two" not in replay
     assert "three" in replay
     assert "four" in replay
+
+
+def test_toady_terminal_replay_is_byte_bounded_and_marked(tmp_path, monkeypatch):
+    ReplayPtyDriver.polled = set()
+    ReplayPtyDriver.output = b"abcdef"
+    monkeypatch.setattr("server.app.PtyDriver", ReplayPtyDriver)
+    monkeypatch.setattr("server.app._TERMINAL_REPLAY_LIMIT_BYTES", 3)
+    app = create_app(
+        str(tmp_path),
+        no_browser=True,
+        global_dir=str(tmp_path / "state"),
+        start_without_project=True,
+    )
+    _running_sandbox(app, tmp_path)
+    first_client = socketio.test_client(app)
+    first_client.get_received()
+    opened = first_client.emit(
+        "sandbox:terminal:open",
+        {"sandbox_id": "demo", "cols": 80, "rows": 24},
+        callback=True,
+    )
+    terminal_id = opened["terminal"]["id"]
+
+    deadline = time.time() + 1
+    while time.time() < deadline:
+        with app.config["toady_terminals_lock"]:
+            session_info = app.config["toady_terminals"].get(terminal_id)
+            if session_info and session_info.get("replay_truncated"):
+                break
+        time.sleep(0.01)
+    first_client.disconnect()
+
+    second_client = socketio.test_client(app)
+    second_client.get_received()
+    joined = second_client.emit("sandbox:terminal:join", {"terminal_id": terminal_id}, callback=True)
+    second_client.disconnect()
+
+    replay = base64.b64decode(joined["replay"]["data"]).decode("utf-8")
+    assert joined["replay"]["truncated"] is True
+    assert "[Toady replay truncated]" in replay
+    assert "abc" not in replay
+    assert replay.endswith("def")
