@@ -638,7 +638,11 @@ createApp({
 
     async function destroySandbox(sandbox) {
       if (!sandbox) return;
-      const confirmed = window.confirm(`Destroy ${sandbox.slug}?`);
+      const confirmed = window.confirm(
+        `Destroy ${sandbox.slug}?\n\n`
+        + `Deletes sandbox home:\n${sandbox.home_path}\n\n`
+        + `Does not delete workspace root:\n${sandbox.canonical_workspace_path}`
+      );
       if (!confirmed) return;
       await closeSandboxTerminals(sandbox.slug, { silent: true });
       busy.value = true;
