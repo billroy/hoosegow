@@ -337,6 +337,11 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert app_js.count('<button class="menu-item') == app_js.count('class="menu-item-icon"')
     assert "New terminal" in app_js
     assert "terminal-tab-add" in app_js
+    assert "terminalStatusLabel" in app_js
+    assert "{{ term.status }}" not in app_js
+    assert 'terminalStatusLabel(term.status)' in app_js
+    assert '.terminal-tab[data-status="error"] small' in css
+    assert "grid-column: 3;" in css
     assert ':disabled="!canOpenTerminal"' in app_js
     assert '@click="openTerminal(selected)"' in app_js
     assert "Use + to open a terminal." not in app_js

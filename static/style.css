@@ -982,8 +982,13 @@ input:focus {
   color: var(--amber);
 }
 
+.terminal-tab[data-status="error"] small {
+  color: var(--danger);
+}
+
 .terminal-tab-close {
   display: grid;
+  grid-column: 3;
   width: 22px;
   height: 22px;
   place-items: center;

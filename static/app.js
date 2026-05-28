@@ -364,6 +364,12 @@ createApp({
       return record;
     }
 
+    function terminalStatusLabel(status) {
+      if (status === 'exited') return 'exited';
+      if (status === 'error') return 'error';
+      return '';
+    }
+
     function terminalCellSize() {
       const renderedCell = terminal.value?._core?._renderService?.dimensions?.css?.cell;
       if (renderedCell?.width > 0 && renderedCell?.height > 0) {
@@ -1018,6 +1024,9 @@ createApp({
       }
     });
     socket.on('sandbox:terminal:error', (payload) => {
+      const record = terminals.find((item) => item.id === payload?.terminal_id);
+      if (record) record.status = 'error';
+      if (payload?.terminal_id === activeTerminal.id) activeTerminal.status = 'error';
       if (payload?.terminal_id && payload.terminal_id !== activeTerminal.id) return;
       const message = payload?.error || 'Terminal error';
       if (terminal.value && payload?.terminal_id === activeTerminal.id) {
@@ -1258,7 +1267,7 @@ createApp({
                 @keydown.space.prevent="focusTerminal(term.id)"
               >
                 <span>Term {{ index + 1 }}</span>
-                <small>{{ term.status }}</small>
+                <small v-if="terminalStatusLabel(term.status)">{{ terminalStatusLabel(term.status) }}</small>
                 <button class="terminal-tab-close" type="button" title="Close terminal" @click.stop="closeTerminal({ terminalId: term.id })">
                   <i data-lucide="x"></i>
                 </button>
