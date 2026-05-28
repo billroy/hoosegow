@@ -74,6 +74,8 @@ _MAX_SESSION_DAYS = 365
 _TERMINAL_REPLAY_LIMIT_BYTES = 5 * 1024 * 1024
 _TERMINAL_REPLAY_LIMIT_LINES = 10_000
 _TERMINAL_REPLAY_TRUNCATED_MARKER = b"\r\n[Toady replay truncated]\r\n"
+_SERVER_LOG_MAX_BYTES = 10 * 1024 * 1024
+_SERVER_LOG_BACKUPS = 5
 _TEXTUAL_APPLICATION_MIME_PREFIXES = (
     "application/json",
     "application/ld+json",
@@ -84,6 +86,41 @@ _TEXTUAL_APPLICATION_MIME_PREFIXES = (
     "application/x-sh",
     "application/x-shellscript",
 )
+
+
+def _rotate_log_if_needed(path, *, max_bytes=_SERVER_LOG_MAX_BYTES, backups=_SERVER_LOG_BACKUPS):
+    try:
+        if not os.path.exists(path) or os.path.getsize(path) <= max_bytes:
+            return
+    except OSError:
+        return
+    for index in range(backups - 1, 0, -1):
+        src = f"{path}.{index}"
+        dst = f"{path}.{index + 1}"
+        if os.path.exists(src):
+            try:
+                os.replace(src, dst)
+            except OSError:
+                pass
+    try:
+        os.replace(path, f"{path}.1")
+    except OSError:
+        pass
+
+
+def _append_json_log(log_path, event, **fields):
+    try:
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        _rotate_log_if_needed(log_path)
+        record = {
+            "ts": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+            "event": event,
+        }
+        record.update({key: value for key, value in fields.items() if value is not None})
+        with open(log_path, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, sort_keys=True) + "\n")
+    except OSError:
+        return
 
 
 class ToadyStateManager:
@@ -392,6 +429,11 @@ def create_app(
     app.config["start_without_project"] = start_without_project
     app.config["no_browser"] = no_browser
 
+    def _server_log(event, **fields):
+        _append_json_log(os.path.join(manager.global_dir, "logs", "server.log"), event, **fields)
+
+    app.config["toady_server_log"] = _server_log
+
     login_failures = {}
 
     def _client_ip():
@@ -533,6 +575,24 @@ def create_app(
     )
 
     @app.before_request
+    def _assign_request_id():
+        request.environ["toady.request_id"] = uuid.uuid4().hex[:12]
+
+    @app.after_request
+    def _log_http_response(response):
+        request_id = request.environ.get("toady.request_id") or uuid.uuid4().hex[:12]
+        response.headers["X-Toady-Request-Id"] = request_id
+        _server_log(
+            "http_request",
+            request_id=request_id,
+            method=request.method,
+            path=request.path,
+            endpoint=request.endpoint or "",
+            status=response.status_code,
+        )
+        return response
+
+    @app.before_request
     def _gate_static_assets():
         """Gate static asset requests (served by Flask's built-in static
         handler since ``static_url_path=""``) on auth, except for the
@@ -583,6 +643,17 @@ def create_app(
 
     def _toady_terminal_error_payload(exc):
         return {"ok": False, "error": str(exc)}
+
+    def _log_socket_event(socket_event, *, sandbox_id=None, terminal_id=None, ok=True, error=None, **fields):
+        _server_log(
+            "socket_event",
+            socket_event=socket_event,
+            sandbox_id=sandbox_id,
+            terminal_id=terminal_id,
+            ok=bool(ok),
+            error=str(error) if error else None,
+            **fields,
+        )
 
     def _emit_sandboxes_updated():
         socketio.emit("sandboxes:updated", {"sandboxes": _sandbox_service().list()}, to="authenticated")
@@ -1626,9 +1697,11 @@ def create_app(
     def toady_socket_base_prepare(payload=None):
         state = app.config["base_prepare"]
         if state.get("running"):
+            _log_socket_event("base:prepare", ok=True, started=False)
             return {"ok": True, "started": False, "message": "Base preparation is already running."}
         rebuild = bool((payload or {}).get("rebuild"))
         socketio.start_background_task(_base_prepare_worker, rebuild)
+        _log_socket_event("base:prepare", ok=True, started=True, rebuild=rebuild)
         return {"ok": True, "started": True}
 
     @socketio.on("sandbox:create")
@@ -1636,7 +1709,9 @@ def create_app(
         try:
             manifest = _sandbox_service().create_manifest(payload or {})
         except (SandboxServiceError, ValidationError) as exc:
+            _log_socket_event("sandbox:create", ok=False, error=exc)
             return _sandbox_error_payload(exc)
+        _log_socket_event("sandbox:create", sandbox_id=manifest["slug"], ok=True, status=manifest["last_status"])
         _emit_sandboxes_updated()
         socketio.emit("sandbox:status", {"id": manifest["slug"], "status": manifest["last_status"]}, to="authenticated")
         return {"ok": True, "sandbox": manifest}
@@ -1678,8 +1753,10 @@ def create_app(
         try:
             manifest = asyncio.run(_sandbox_service().start(slug))
         except (SandboxServiceError, ValidationError, RuntimeError) as exc:
+            _log_socket_event("sandbox:start", sandbox_id=slug, ok=False, error=exc)
             socketio.emit("sandbox:error", {"id": slug, "error": str(exc)}, to=request.sid)
             return _sandbox_error_payload(exc)
+        _log_socket_event("sandbox:start", sandbox_id=manifest["slug"], ok=True, status=manifest["last_status"])
         _close_toady_sandbox_terminals(manifest["slug"])
         _emit_sandboxes_updated()
         socketio.emit("sandbox:status", {"id": manifest["slug"], "status": manifest["last_status"]}, to="authenticated")
@@ -1693,8 +1770,10 @@ def create_app(
         try:
             manifest = asyncio.run(_sandbox_service().stop(slug))
         except (SandboxServiceError, ValidationError, RuntimeError) as exc:
+            _log_socket_event("sandbox:stop", sandbox_id=slug, ok=False, error=exc)
             socketio.emit("sandbox:error", {"id": slug, "error": str(exc)}, to=request.sid)
             return _sandbox_error_payload(exc)
+        _log_socket_event("sandbox:stop", sandbox_id=manifest["slug"], ok=True, status=manifest["last_status"])
         _emit_sandboxes_updated()
         socketio.emit("sandbox:status", {"id": manifest["slug"], "status": manifest["last_status"]}, to="authenticated")
         return {"ok": True, "sandbox": manifest}
@@ -1708,10 +1787,13 @@ def create_app(
         try:
             deleted = asyncio.run(_sandbox_service().destroy(slug, purge_home=bool(payload.get("purge"))))
         except (SandboxServiceError, ValidationError, RuntimeError) as exc:
+            _log_socket_event("sandbox:destroy", sandbox_id=slug, ok=False, error=exc)
             socketio.emit("sandbox:error", {"id": slug, "error": str(exc)}, to=request.sid)
             return _sandbox_error_payload(exc)
         if not deleted:
+            _log_socket_event("sandbox:destroy", sandbox_id=slug, ok=False, error="Unknown sandbox")
             return {"ok": False, "error": "Unknown sandbox"}
+        _log_socket_event("sandbox:destroy", sandbox_id=slug, ok=True, purge=bool(payload.get("purge")))
         _close_toady_sandbox_terminals(slug)
         _emit_sandboxes_updated()
         socketio.emit("sandbox:destroyed", {"id": slug}, to="authenticated")
@@ -1757,11 +1839,13 @@ def create_app(
             join_room(_toady_terminal_room(terminal_id))
             socketio.start_background_task(_toady_terminal_poll, terminal_id)
             session_info = _toady_terminal_session(terminal_id)
+            _log_socket_event("sandbox:terminal:open", sandbox_id=manifest.slug, terminal_id=terminal_id, ok=True)
             return {
                 "ok": True,
                 "terminal": _toady_terminal_payload(session_info),
             }
         except (SandboxServiceError, ValidationError, PtyDriverError, ValueError) as exc:
+            _log_socket_event("sandbox:terminal:open", sandbox_id=slug, ok=False, error=exc)
             socketio.emit("sandbox:terminal:error", {"sandbox_id": slug, "error": str(exc)}, to=request.sid)
             return _toady_terminal_error_payload(exc)
 
@@ -1848,10 +1932,13 @@ def create_app(
         terminal_id = str(payload.get("terminal_id") or "")
         try:
             session_info = _toady_terminal_session(terminal_id)
+            sandbox_id = session_info.get("sandbox_id")
             session_info["alive"] = False
             _close_toady_terminal(terminal_id)
+            _log_socket_event("sandbox:terminal:close", sandbox_id=sandbox_id, terminal_id=terminal_id, ok=True)
             return {"ok": True}
         except (SandboxServiceError, PtyDriverError) as exc:
+            _log_socket_event("sandbox:terminal:close", terminal_id=terminal_id, ok=False, error=exc)
             socketio.emit("sandbox:terminal:error", {"terminal_id": terminal_id, "error": str(exc)}, to=request.sid)
             return _toady_terminal_error_payload(exc)
 
@@ -1871,8 +1958,16 @@ def create_app(
             mapping = _sandbox_service().publish_port(slug, payload)
             ports = _sandbox_service().list_ports(slug)
         except (SandboxServiceError, ValidationError, RuntimeError) as exc:
+            _log_socket_event("port:publish", sandbox_id=slug, ok=False, error=exc)
             socketio.emit("sandbox:error", {"id": slug, "error": str(exc)}, to=request.sid)
             return _sandbox_error_payload(exc)
+        _log_socket_event(
+            "port:publish",
+            sandbox_id=slug,
+            ok=True,
+            guest_port=mapping.get("guest_port"),
+            host_port=mapping.get("host_port"),
+        )
         _emit_sandboxes_updated()
         socketio.emit("ports:updated", {"sandbox_id": slug, "ports": ports}, to="authenticated")
         return {"ok": True, "port": mapping, "ports": ports}
@@ -1885,8 +1980,16 @@ def create_app(
             mapping = _sandbox_service().unpublish_port(slug, payload)
             ports = _sandbox_service().list_ports(slug)
         except (SandboxServiceError, ValidationError, RuntimeError) as exc:
+            _log_socket_event("port:unpublish", sandbox_id=slug, ok=False, error=exc)
             socketio.emit("sandbox:error", {"id": slug, "error": str(exc)}, to=request.sid)
             return _sandbox_error_payload(exc)
+        _log_socket_event(
+            "port:unpublish",
+            sandbox_id=slug,
+            ok=True,
+            guest_port=mapping.get("guest_port"),
+            host_port=mapping.get("host_port"),
+        )
         _emit_sandboxes_updated()
         socketio.emit("ports:updated", {"sandbox_id": slug, "ports": ports}, to="authenticated")
         return {"ok": True, "port": mapping, "ports": ports}
@@ -1899,8 +2002,16 @@ def create_app(
             mapping = _sandbox_service().reassign_port(slug, payload)
             ports = _sandbox_service().list_ports(slug)
         except (SandboxServiceError, ValidationError, RuntimeError) as exc:
+            _log_socket_event("port:reassign", sandbox_id=slug, ok=False, error=exc)
             socketio.emit("sandbox:error", {"id": slug, "error": str(exc)}, to=request.sid)
             return _sandbox_error_payload(exc)
+        _log_socket_event(
+            "port:reassign",
+            sandbox_id=slug,
+            ok=True,
+            guest_port=mapping.get("guest_port"),
+            host_port=mapping.get("host_port"),
+        )
         _emit_sandboxes_updated()
         socketio.emit("ports:updated", {"sandbox_id": slug, "ports": ports}, to="authenticated")
         return {"ok": True, "port": mapping, "ports": ports}

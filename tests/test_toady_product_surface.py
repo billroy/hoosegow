@@ -151,6 +151,50 @@ print(json.dumps([name for name in legacy_modules if name in sys.modules]))
     assert json.loads(result.stdout) == []
 
 
+def test_server_log_records_http_and_socket_events_without_secrets(tmp_path, monkeypatch):
+    monkeypatch.setattr("server.sandboxes.host_port_in_use", lambda _port: False)
+    workspace_root = tmp_path / "work"
+    workspace_root.mkdir()
+    state = tmp_path / "state"
+    app = create_app(
+        str(tmp_path),
+        no_browser=True,
+        global_dir=str(state),
+        start_without_project=True,
+    )
+    service = app.config["toady_sandboxes"]
+    service.browse_roots = [str(tmp_path)]
+    service.port_pool = (63100, 63105)
+
+    response = app.test_client().get("/health")
+    client = socketio.test_client(app)
+    created = client.emit(
+        "sandbox:create",
+        {"name": "demo", "workspace_root": str(workspace_root)},
+        callback=True,
+    )
+    client.disconnect()
+
+    log_path = state / "logs" / "server.log"
+    records = [
+        json.loads(line)
+        for line in log_path.read_text(encoding="utf-8").splitlines()
+    ]
+    body = log_path.read_text(encoding="utf-8")
+
+    assert response.headers["X-Toady-Request-Id"]
+    assert created["ok"] is True
+    assert any(record["event"] == "http_request" and record["path"] == "/health" for record in records)
+    assert any(
+        record["event"] == "socket_event"
+        and record["socket_event"] == "sandbox:create"
+        and record["sandbox_id"] == "demo"
+        for record in records
+    )
+    assert created["sandbox"]["controller"]["token"] not in body
+    assert str(workspace_root) not in body
+
+
 def test_base_logs_are_available_after_reconnect(tmp_path):
     app = create_app(
         str(tmp_path),
