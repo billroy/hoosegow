@@ -2,22 +2,34 @@
 
 Current release target: `0.1.0`.
 
-Toady runs coding-agent terminals inside Microsandbox microVMs. It gives you a
-local browser UI for creating sandboxes, opening persistent terminals, and
-publishing sandbox dev-server ports without exposing the rest of your host
-filesystem.
+Toady is a local terminal app for running coding agents inside Microsandbox
+microVMs. It gives you a browser UI with persistent sandbox terminals, shared
+workspace-root mounts, base-image preparation, sandbox logs, and local published
+ports for dev servers.
+
+The expected workflow is direct: create a sandbox, get a terminal, type
+`claude`, `codex`, `gemini`, `opencode`, or ordinary shell commands yourself.
+Toady does not orchestrate agents, tickets, workers, commits, or PRs.
 
 Toady is derived from Bullpen's proven Flask, Socket.IO, auth, terminal, and
-Microsandbox deployment work, but it is not a ticket/worker orchestration app.
-You type `claude`, `codex`, `gemini`, `opencode`, or ordinary shell commands
-inside sandbox terminals yourself.
+Microsandbox deployment work, including the hard-won runtime workarounds in the
+base-prep path. It is intentionally not a Bullpen worker/ticket UI.
 
 ## Current Status
 
-This is an active first-draft implementation. The local Microsandbox path covers
-prepare/create/start/terminal/port/log workflows, with create auto-starting the
-sandbox and opening the first terminal. Remaining v1 work is final release
-verification before `0.1.0`.
+This is an active first release candidate for `0.1.0`. The local
+Microsandbox path covers:
+
+- base prepare/rebuild and base logs
+- sandbox create, start, stop, destroy, details, and logs
+- shared workspace-root selection
+- automatic create -> start -> first terminal behavior
+- multiple persistent terminals per running sandbox
+- browser reattach to terminals while the Toady server keeps running
+- published localhost ports for sandbox dev servers
+- optional local authentication
+
+Remaining work is release verification and review before tagging.
 
 ## Quick Start
 
@@ -29,17 +41,113 @@ python3 toady.py --workspace-root /path/to/work
 
 Open `http://127.0.0.1:5858/` if the browser does not open automatically.
 
-The workspace root is a shared parent work tree mounted into each sandbox at
-`/workspace`. Multiple sandboxes can use the same workspace root at the same
-time. Toady never deletes the host workspace root when destroying a sandbox.
+`--workspace-root` should usually point at a shared parent work tree, not one
+specific project. For example, use `/Users/bill/aistuff` if that directory
+contains many repos. Toady mounts the selected root read-write inside each
+sandbox at `/workspace`.
+
+## What You See
+
+The UI is terminal-first.
+
+- The top bar has a minimal hamburger menu, the `Toady` title, a light/dark
+  toggle, and a green/red Socket.IO status dot.
+- The hamburger menu contains Microsandbox base readiness, prepare, rebuild,
+  and base logs.
+- The left pane is a compact sandbox list headed `Sandboxes (n)`. Its boundary
+  is draggable.
+- The left-pane `...` menu opens create, selected-sandbox details, published
+  ports, and sandbox logs.
+- Each sandbox row is one line with status, workspace-root basename, and its
+  own `...` action menu.
+- Sandbox row actions include start, new terminal, stop, details, published
+  ports, logs, and destroy.
+- The right pane is almost entirely terminal space: terminal tabs at the top,
+  active xterm.js viewport below.
+- Details, published ports, base logs, sandbox logs, and create are modals.
+- Menus use Lucide icons and dismiss when you click away.
 
 ## Common Flow
 
-1. Prepare the reusable Microsandbox base.
-2. Create a sandbox with a sandbox name and workspace root.
-3. Toady starts the sandbox automatically.
-4. Toady opens the first terminal automatically.
-5. Open more terminals or publish dev-server ports as needed.
+1. Prepare the reusable Microsandbox base from the CLI or hamburger menu.
+2. Choose **Sandboxes (...) -> Create sandbox**.
+3. Pick or type a workspace root and name the sandbox.
+4. Click **Create + Start**.
+5. Toady creates the sandbox, starts it, opens the first terminal, and focuses
+   that terminal automatically.
+6. Use the sandbox row `...` menu for more terminals, details, ports, logs,
+   stop, or destroy.
+
+If you select a running sandbox that has no terminal open in the UI, Toady opens
+and focuses one automatically. Creating a sandbox also implies starting it and
+opening the first terminal.
+
+## Workspaces And Sandboxes
+
+A workspace root is a canonical host directory mounted as `/workspace` inside
+the sandbox. Multiple sandboxes can share the same workspace root at the same
+time; this is expected to be the common configuration.
+
+Each sandbox also gets persistent scratch home storage mounted at
+`/home/agent`. Destroying a sandbox deletes the sandbox and its persistent home,
+after confirmation, but never deletes the host workspace root.
+
+Sandboxes persist across Toady server restarts. Terminals are owned by the
+currently running Toady server process: browser refresh/reconnect can reattach
+to existing terminals, but exiting the Toady server ends its PTY sessions unless
+you only care about the sandbox disk/home state.
+
+## Terminals
+
+Terminals are real PTYs inside the sandbox, rendered with xterm.js in the
+browser and bridged through Socket.IO to a token-protected in-sandbox
+`toady-ptyd` controller.
+
+- New terminals start directly in the shell at `/workspace`; Toady does not
+  inject auth/setup banner text into the terminal.
+- Multiple terminals per sandbox are supported. The default limit is 32 per
+  sandbox.
+- Terminal tabs persist while the server is running. If the browser reconnects,
+  Toady lists active PTYs, rejoins them, and replays bounded scrollback.
+- Closing a terminal checks for a foreground process when possible and asks for
+  confirmation before closing a busy PTY.
+- Stopping or destroying a sandbox closes its terminals.
+
+Agent CLI authentication is provided by the prepared base and persisted sandbox
+home where applicable. Run the agent command yourself from the terminal.
+
+## Published Ports
+
+Use **Published ports** from the Sandboxes menu or a sandbox row menu to expose
+a web server running inside the sandbox through `127.0.0.1` on the host.
+
+The default host-port pool is `3000-3099`. You can publish a guest port to an
+automatic host port or request a specific host port. Port rows include open,
+copy URL, reassign-conflict, and unpublish actions. Some mapping changes apply
+on sandbox restart, depending on current sandbox state.
+
+## Base Image
+
+The reusable base image is prepared from `node:22-bookworm` by default and is
+named `toady-microsandbox-local`.
+
+The base includes the runtime pieces Toady expects inside each sandbox:
+
+- Python and the Toady PTY controller
+- Node/npm tooling
+- git, gh, ripgrep, and common CLI dependencies
+- Claude/Codex/Gemini/opencode CLI setup hooks where available
+- Bullpen-derived file-descriptor, network-cap, CA, Codex auth, and Claude IPv6
+  workarounds
+
+Prepare or rebuild from the CLI:
+
+```bash
+python3 toady.py --prepare-base
+python3 toady.py --prepare-base --rebuild-base
+```
+
+You can also prepare, rebuild, and inspect base logs from the hamburger menu.
 
 ## CLI Options
 
@@ -48,23 +156,27 @@ time. Toady never deletes the host workspace root when destroying a sandbox.
 | `--port` | `5858` | UI port. |
 | `--host` | `127.0.0.1` | Bind address. Non-loopback binds require auth. |
 | `--home` | `~/.toady` | State directory. |
-| `--workspace-root PATH` | cwd and `$HOME` | Repeatable browse root for sandbox workspace roots. |
+| `--no-browser` | off | Do not open a browser on startup. |
+| `--workspace-root PATH` | cwd and `$HOME` | Repeatable browse root for sandbox workspace-root picker. |
 | `--prepare-base` | off | Build the reusable Microsandbox base snapshot and exit. |
 | `--rebuild-base` | off | Force rebuilding the base snapshot. |
-| `--base-image` | `node:22-bookworm` | OCI image used for base preparation. |
-| `--vcpus` | `4` | Default per-sandbox vCPU cap. |
-| `--memory-mib` | `4096` | Default per-sandbox memory cap. |
-| `--terminal-limit` | `32` | Maximum terminals per sandbox. |
-| `--port-pool` | `3000-3099` | Host ports used for published sandbox dev servers. |
-| `--host-nofile` | `12000` | Target host file-descriptor soft limit before Microsandbox operations. |
-| `--guest-nofile` | `65536` | Target in-sandbox `agent` user file-descriptor limit. |
-| `--network-max-connections` | `8192` | Microsandbox guest network connection cap. |
-| `--no-browser` | off | Do not open a browser on startup. |
+| `--base-image IMAGE` | `node:22-bookworm` | OCI image used for base preparation. |
+| `--vcpus N` | `4` | Default per-sandbox vCPU cap. |
+| `--memory-mib N` | `4096` | Default per-sandbox memory cap. |
+| `--max-sandboxes N` | `8` | Host-wide running-sandbox admission cap. |
+| `--max-total-vcpus N` | detected cores | Host-wide admitted vCPU cap. |
+| `--max-total-memory-mib N` | 75% host RAM | Host-wide admitted RAM cap. |
+| `--terminal-limit N` | `32` | Maximum terminals per sandbox. |
+| `--port-pool RANGE` | `3000-3099` | Host ports used for published sandbox dev servers. |
+| `--host-nofile N` | `12000` | Target host file-descriptor soft limit before Microsandbox operations. |
+| `--guest-nofile N` | `65536` | Target in-sandbox `agent` user file-descriptor limit. |
+| `--network-max-connections N` | `8192` | Microsandbox guest network connection cap. |
 | `--shutdown-sandboxes-on-exit` | off | Stop running sandboxes when Toady exits. |
-| `--websocket-debug` | off | Enable Socket.IO and Engine.IO logging. |
+| `--websocket-debug` / `--no-websocket-debug` | off | Enable or disable Socket.IO and Engine.IO logging. |
 | `--set-password [USERNAME]` | off | Set or update local login credentials, then exit. Repeatable. |
 | `--delete-user USERNAME` | off | Delete configured login users, then exit. Repeatable. |
 | `--bootstrap-credentials` | off | Create credentials from `TOADY_BOOTSTRAP_USER` and `TOADY_BOOTSTRAP_PASSWORD`, then exit. |
+| `--version` | n/a | Print the Toady version and exit. |
 
 ## Authentication
 
@@ -77,37 +189,55 @@ python3 toady.py --set-password admin
 ```
 
 Credentials are stored as password hashes under `~/.toady/.env` with a stable
-session secret. For network exposure, put TLS in front of Toady and set
-`TOADY_PRODUCTION=1` so secure cookies and forwarded proxy headers are handled.
+session secret.
 
-## Microsandbox Base
+Environment variables:
 
-The base image is prepared from `node:22-bookworm` by default and includes the
-runtime pieces Toady needs inside each sandbox:
+- `TOADY_PRODUCTION=1`: trust forwarded proxy headers and mark session cookies
+  `Secure` for TLS deployments.
+- `TOADY_ALLOWED_ORIGINS`: comma-separated extra allowed Socket.IO origins.
+- `TOADY_SESSION_DAYS`: persistent login duration, bounded to 1-365 days.
+- `TOADY_BOOTSTRAP_USER`: username for `--bootstrap-credentials`; default
+  `admin`.
+- `TOADY_BOOTSTRAP_PASSWORD`: password for `--bootstrap-credentials`.
+- `TOADY_BOOTSTRAP_FORCE=1`: overwrite existing bootstrapped credentials.
 
-- Python and the Toady PTY controller
-- Node/npm tooling
-- git, gh, ripgrep, and common CLI dependencies
-- Claude/Codex/Gemini/opencode CLI setup hooks where available
-- Bullpen-derived FD-limit, network-cap, CA, Codex auth, and Claude IPv6
-  workarounds
+For network exposure, put TLS in front of Toady and set `TOADY_PRODUCTION=1`.
+Toady is still designed as a local single-user developer tool, not a multi-user
+hosted service.
 
-The UI can prepare or rebuild the base. From the CLI:
+## State Layout
 
-```bash
-python3 toady.py --prepare-base
-python3 toady.py --prepare-base --rebuild-base
+Toady state lives under `~/.toady/` by default:
+
+```text
+~/.toady/
+  .env                   # auth users, secret key, production/session settings
+  config.json            # global settings
+  sandboxes/
+    <slug>.json          # sandbox manifest
+    <slug>/home/         # bind-mounted into sandbox as /home/agent
+  base/                  # base-prep artifacts, if any
+  logs/
+    server.log
+    sandbox-<slug>.log
 ```
+
+Sandbox manifests include workspace path, home path, resource caps, controller
+port/token, published ports, creation time, and last known status. Manifests are
+written atomically.
 
 ## Development
 
-Focused checks that currently cover the Toady path:
+Focused checks for the Toady path:
 
 ```bash
 pytest -q tests/test_toady_sandbox_service.py \
   tests/test_toady_sandbox_events.py \
-  tests/test_toady_terminal_events.py
-pytest -q tests/test_auth.py tests/test_auth_e2e.py
+  tests/test_toady_terminal_events.py \
+  tests/test_toady_product_surface.py \
+  tests/test_toady_cli.py \
+  tests/test_auth.py tests/test_auth_e2e.py
 node --check static/app.js
 ```
 
@@ -119,8 +249,8 @@ python3 scripts/microsandbox_port_smoke.py
 python3 scripts/pty_controller_microsandbox_smoke.py --verbose
 ```
 
-Set `TOADY_MICROSANDBOX_BASE` or pass `--snapshot` to test another base.
-The latest local run is recorded in `docs/release-smokes.md`.
+Set `TOADY_MICROSANDBOX_BASE` or pass `--snapshot` to test another base. The
+latest local run is recorded in `docs/release-smokes.md`.
 
 The same real smokes are available as an opt-in pytest target:
 
@@ -128,8 +258,8 @@ The same real smokes are available as an opt-in pytest target:
 TOADY_RUN_REAL_MICROSANDBOX=1 pytest -q -m real_microsandbox
 ```
 
-The private `0.1.0` tree intentionally keeps copied Bullpen modules and tests as
-excavation reference. Toady mode does not register the legacy product REST
+The private `0.1.0` tree intentionally keeps copied Bullpen modules and tests
+as excavation reference. Toady mode does not register the legacy product REST
 routes, serve legacy product static assets, or eagerly import the legacy product
 modules. See `docs/spec.md` and `docs/bullpen-excavation.md` for provenance
 notes.
