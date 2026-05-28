@@ -201,10 +201,6 @@ button:disabled {
   height: 15px;
 }
 
-.sidebar-toggle-button[data-collapsed="true"] {
-  color: var(--blue);
-}
-
 .icon-button.tiny {
   width: 28px;
   height: 28px;
@@ -387,6 +383,14 @@ button:disabled {
   display: inline-flex;
   align-items: center;
   gap: 7px;
+}
+
+.pane-toggle-button {
+  color: var(--muted);
+}
+
+.pane-toggle-button:hover {
+  color: var(--text);
 }
 
 .sandbox-row {
@@ -1027,6 +1031,7 @@ input:focus {
   height: 13px;
 }
 
+.terminal-sidebar-toggle,
 .terminal-tab-add {
   display: grid;
   flex: 0 0 26px;
@@ -1039,12 +1044,18 @@ input:focus {
   color: var(--terminal-muted);
 }
 
+.terminal-sidebar-toggle {
+  border-style: solid;
+}
+
+.terminal-sidebar-toggle:hover,
 .terminal-tab-add:hover {
   border-color: var(--primary);
   background: var(--terminal-tab-active);
   color: var(--text);
 }
 
+.terminal-sidebar-toggle svg,
 .terminal-tab-add svg {
   width: 14px;
   height: 14px;

@@ -422,6 +422,9 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "Hide sandboxes" in app_js
     assert "panel-left-open" in app_js
     assert "panel-left-close" in app_js
+    assert "sidebar-toggle-button" not in app_js
+    assert "pane-toggle-button" in app_js
+    assert "terminal-sidebar-toggle" in app_js
     assert "if (sidebarCollapsed.value) return;" in app_js
     assert "sidebar-collapsed" in css
     assert ".toady-shell.sidebar-collapsed .workspace" in css
@@ -435,6 +438,8 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "background: var(--primary);" in css
     assert "color: var(--primary-text);" in css
     assert ".sidebar-resizer" in css
+    assert ".pane-toggle-button" in css
+    assert ".terminal-sidebar-toggle" in css
     assert ".menu-panel .menu-item-icon" in css
     assert ".menu-panel .menu-item-label" in css
     assert ".menu-divider" in css

@@ -1234,16 +1234,6 @@ createApp({
               </button>
             </div>
           </div>
-          <button
-            class="icon-button header-icon-button sidebar-toggle-button"
-            type="button"
-            :title="sidebarCollapsed ? 'Show sandboxes' : 'Hide sandboxes'"
-            :aria-pressed="sidebarCollapsed ? 'true' : 'false'"
-            :data-collapsed="sidebarCollapsed ? 'true' : 'false'"
-            @click="toggleSidebar"
-          >
-            <i :data-lucide="sidebarCollapsed ? 'panel-left-open' : 'panel-left-close'"></i>
-          </button>
           <div>
             <h1>Toady</h1>
           </div>
@@ -1260,6 +1250,15 @@ createApp({
         <div class="sidebar-heading">
           <h2>Sandboxes ({{ sortedSandboxes.length }})</h2>
           <span class="sidebar-heading-actions">
+            <button
+              class="icon-button tiny pane-toggle-button"
+              type="button"
+              title="Hide sandboxes"
+              aria-pressed="false"
+              @click="toggleSidebar"
+            >
+              <i data-lucide="panel-left-close"></i>
+            </button>
             <span class="menu-wrap">
               <button class="icon-button tiny" type="button" title="Sandbox menu" @click.stop="toggleSandboxMenu">
                 <i data-lucide="ellipsis"></i>
@@ -1329,7 +1328,17 @@ createApp({
       <main class="workspace">
         <section class="detail" v-if="selected">
           <div class="terminal-surface">
-            <div v-if="selectedTerminals.length" class="terminal-tabs">
+            <div v-if="selectedTerminals.length || sidebarCollapsed" class="terminal-tabs">
+              <button
+                v-if="sidebarCollapsed"
+                class="terminal-sidebar-toggle"
+                type="button"
+                title="Show sandboxes"
+                aria-pressed="true"
+                @click="toggleSidebar"
+              >
+                <i data-lucide="panel-left-open"></i>
+              </button>
               <div
                 v-for="term in selectedTerminals"
                 :key="term.id"
