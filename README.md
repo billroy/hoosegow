@@ -125,6 +125,44 @@ browser and bridged through Socket.IO to a token-protected in-sandbox
 Agent CLI authentication is provided by the prepared base and persisted sandbox
 home where applicable. Run the agent command yourself from the terminal.
 
+## MSB Passthrough Wrapper
+
+Toady also ships a tiny Toady-independent wrapper around `msb exec` for tools
+that want to run an agent command inside an existing sandbox without opening the
+browser UI or talking to the Toady server.
+
+Dry run the generated Microsandbox command:
+
+```bash
+scripts/toady-msb --sandbox demo --no-tty --dry-run -- claude -p 'say model slug'
+```
+
+Run a non-interactive command:
+
+```bash
+scripts/toady-msb --sandbox demo --no-tty -- claude -p 'say model slug'
+```
+
+Run from a guest subworkspace:
+
+```bash
+scripts/toady-msb --sandbox demo --workspace /workspace/my-repo --no-tty -- pwd
+```
+
+Run an interactive command or auth flow:
+
+```bash
+scripts/toady-msb --sandbox demo --tty -- claude
+```
+
+Defaults are `--user agent` and `--workspace /workspace`. Without `--tty` or
+`--no-tty`, the wrapper auto-allocates a PTY only when stdin and stdout are both
+terminals. This wrapper does not enforce Toady auth or policy; it uses the same
+local Microsandbox authority as `msb exec`.
+
+See `docs/passthrough.md` for the Phase 0 passthrough spec and deferred
+Toady-mediated options.
+
 ## Published Ports
 
 Use **Published ports** from the Sandboxes menu or a sandbox row menu to expose
@@ -254,7 +292,7 @@ pytest -q tests/test_toady_sandbox_service.py \
   tests/test_toady_sandbox_events.py \
   tests/test_toady_terminal_events.py \
   tests/test_toady_product_surface.py \
-  tests/test_toady_cli.py \
+  tests/test_toady_cli.py tests/test_msb_passthrough.py \
   tests/test_auth.py tests/test_auth_e2e.py
 node --check static/app.js
 ```
