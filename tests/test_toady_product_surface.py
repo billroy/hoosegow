@@ -354,8 +354,9 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "Term {{ index + 1 }}" not in app_js
     assert 'terminalStatusLabel(term.status)' in app_js
     assert "terminalStatusLabel,\n      terminals," in app_js
-    assert "grid-template-columns: max-content 22px;" in css
-    assert "grid-template-columns: max-content max-content 22px;" in css
+    assert "grid-template-columns: max-content 20px;" in css
+    assert "grid-template-columns: max-content max-content 20px;" in css
+    assert "min-height: 32px;" in css
     assert ".terminal-tab > span" in css
     assert "white-space: nowrap;" in css
     assert ".terminal-tab.has-status" in css
