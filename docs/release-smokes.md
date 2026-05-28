@@ -31,6 +31,15 @@ Notes:
 - The same command passed when rerun with the approved external execution path,
   which is required for localhost port-binding real smokes.
 
+Browser smoke:
+
+- URL: `http://127.0.0.1:5855/`
+- Verified app title/body loads as Toady.
+- Verified sandbox list or empty sandbox state is visible.
+- Verified selected sandbox `Logs` action opens the `Sandbox Logs` modal.
+- Verified xterm loads from `/vendor/xterm/xterm.js`.
+- Verified the old `/manager/vendor/xterm/xterm.js` script path is not used.
+
 ## 2026-05-27
 
 Host: local Apple Silicon development machine.
