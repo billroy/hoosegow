@@ -1228,11 +1228,8 @@ createApp({
 
         <section class="detail empty-detail" v-else>
           <div class="empty-state">
-            <i data-lucide="box"></i>
-            <h2>No Sandboxes</h2>
-            <p>Workspace root required</p>
-            <button class="primary-button" type="button" @click="browseWorkspace(form.workspace_root)">
-              <i data-lucide="folder-open"></i><span>Workspace Root</span>
+            <button class="primary-button" type="button" @click="openCreateModal">
+              <i data-lucide="plus"></i><span>Create Sandbox</span>
             </button>
           </div>
         </section>

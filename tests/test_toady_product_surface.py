@@ -282,8 +282,10 @@ def test_toady_shell_has_clear_empty_and_error_states():
     css = (ROOT / "static" / "style.css").read_text(encoding="utf-8")
 
     assert "baseStatus.error" in app_js
-    assert "No Sandboxes" in app_js
-    assert "Workspace Root" in app_js
+    assert "No Sandboxes" not in app_js
+    assert "Workspace root required" not in app_js
+    assert '<i data-lucide="plus"></i><span>Create Sandbox</span>' in app_js
+    assert '<span>Workspace root</span>' in app_js
     assert "Publish :{{ portForm.guest_port }}" in app_js
     assert "Sandbox Runtime" in app_js
     assert "Runtime logs" in app_js
