@@ -107,6 +107,10 @@ createApp({
     });
     const operationBySandbox = reactive({});
     const toast = reactive({ message: '', tone: 'info' });
+    const authState = reactive({
+      authenticated: false,
+      csrf_token: '',
+    });
     const activeTerminal = reactive({
       id: '',
       sandbox_id: '',
@@ -199,6 +203,42 @@ createApp({
       closeMenus();
       scheduleTerminalFit();
       refreshIcons();
+    }
+
+    async function loadAuthState() {
+      try {
+        const response = await fetch('/login/csrf', {
+          headers: { Accept: 'application/json' },
+          credentials: 'same-origin',
+        });
+        if (!response.ok) return;
+        const payload = await response.json();
+        authState.authenticated = Boolean(payload.auth_enabled);
+        authState.csrf_token = payload.csrf_token || '';
+      } catch (_error) {
+        authState.authenticated = false;
+        authState.csrf_token = '';
+      }
+    }
+
+    function openGithub() {
+      closeMenus();
+      window.open('https://github.com/billroy/toady', '_blank', 'noopener,noreferrer');
+    }
+
+    function logout() {
+      closeMenus();
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = '/logout';
+      form.style.display = 'none';
+      const csrf = document.createElement('input');
+      csrf.type = 'hidden';
+      csrf.name = 'csrf_token';
+      csrf.value = authState.csrf_token || '';
+      form.appendChild(csrf);
+      document.body.appendChild(form);
+      form.submit();
     }
 
     function openCreateModal() {
@@ -1063,6 +1103,7 @@ createApp({
 
     onMounted(() => {
       document.addEventListener('click', closeMenusOnOutsideClick);
+      loadAuthState();
     });
 
     onBeforeUnmount(() => {
@@ -1075,6 +1116,7 @@ createApp({
     return {
       activeTerminal,
       actionState,
+      authState,
       basename,
       baseLogViewer,
       baseStatus,
@@ -1105,6 +1147,7 @@ createApp({
       openCreateModal,
       openDetailsModal,
       openBaseLogs,
+      openGithub,
       openPortsModal,
       openSandboxLogs,
       operationBySandbox,
@@ -1140,6 +1183,7 @@ createApp({
       toggleSandboxMenu,
       toggleSandboxActionMenu,
       toast,
+      logout,
       unpublishPort,
       mainMenuOpen,
       portsModalOpen,
@@ -1163,6 +1207,13 @@ createApp({
               </button>
               <button class="menu-item" type="button" @click="openBaseLogs">
                 <i class="menu-item-icon" data-lucide="scroll-text"></i><span class="menu-item-label">Runtime logs</span>
+              </button>
+              <div class="menu-divider" aria-hidden="true"></div>
+              <button class="menu-item" type="button" @click="openGithub">
+                <i class="menu-item-icon" data-lucide="github"></i><span class="menu-item-label">Toady on GitHub</span>
+              </button>
+              <button class="menu-item" v-if="authState.authenticated" type="button" @click="logout">
+                <i class="menu-item-icon" data-lucide="log-out"></i><span class="menu-item-label">Logout</span>
               </button>
             </div>
           </div>

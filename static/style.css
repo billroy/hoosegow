@@ -304,6 +304,12 @@ button:disabled {
   background: var(--panel-2);
 }
 
+.menu-divider {
+  height: 1px;
+  margin: 8px 4px;
+  background: var(--line);
+}
+
 .menu-panel .menu-item-icon {
   width: 18px;
   height: 18px;

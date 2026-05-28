@@ -332,6 +332,17 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "toggleMainMenu" in app_js
     assert "toggleSandboxMenu" in app_js
     assert "sandboxActionMenuSlug" in app_js
+    assert "loadAuthState" in app_js
+    assert "authState.authenticated" in app_js
+    assert "fetch('/login/csrf'" in app_js
+    assert "openGithub" in app_js
+    assert "https://github.com/billroy/toady" in app_js
+    assert "Toady on GitHub" in app_js
+    assert 'data-lucide="github"' in app_js
+    assert 'data-lucide="log-out"' in app_js
+    assert '<span class="menu-item-label">Logout</span>' in app_js
+    assert "form.action = '/logout'" in app_js
+    assert "csrf.name = 'csrf_token'" in app_js
     assert "menu-item-icon" in app_js
     assert "menu-item-label" in app_js
     assert app_js.count('<button class="menu-item') == app_js.count('class="menu-item-icon"')
@@ -401,6 +412,7 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert ".sidebar-resizer" in css
     assert ".menu-panel .menu-item-icon" in css
     assert ".menu-panel .menu-item-label" in css
+    assert ".menu-divider" in css
     assert ".sidebar-heading > span" in css
     assert ".sidebar-heading span {" not in css
     assert "grid-template-columns: 20px minmax(0, 1fr);" in css
