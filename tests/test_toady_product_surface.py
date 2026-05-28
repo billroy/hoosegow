@@ -349,6 +349,25 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert app_js.count('<button class="menu-item') == app_js.count('class="menu-item-icon"')
     assert "New terminal" in app_js
     assert "Update agent CLIs" in app_js
+    row_menu = app_js[
+        app_js.index('<div v-if="sandboxActionMenuSlug === sandbox.slug" class="menu-panel row-action-menu">') :
+        app_js.index('<div v-if="!sortedSandboxes.length" class="empty-list">No sandboxes</div>')
+    ]
+    expected_row_order = [
+        "New terminal",
+        "Start",
+        "Stop",
+        "Details",
+        "Published ports",
+        "Logs",
+        "Update agent CLIs",
+        "Destroy",
+    ]
+    last_index = -1
+    for label in expected_row_order:
+        label_index = row_menu.index(label)
+        assert label_index > last_index
+        last_index = label_index
     assert "Refresh runtime dependencies" not in app_js
     assert "sandbox:refresh-runtime" in app_js
     assert 'data-lucide="package-check"' in app_js

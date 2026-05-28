@@ -1293,18 +1293,16 @@ createApp({
               <i data-lucide="ellipsis"></i>
             </button>
             <div v-if="sandboxActionMenuSlug === sandbox.slug" class="menu-panel row-action-menu">
-              <button class="menu-item" type="button" :disabled="!baseStatus.prepared || busy || sandbox.last_status === 'running'" @click="closeMenus(); runSandboxAction('sandbox:start', sandbox, 'Start requested.')">
-                <i class="menu-item-icon" data-lucide="play"></i><span class="menu-item-label">Start</span>
-              </button>
               <button class="menu-item" type="button" :disabled="sandbox.last_status !== 'running' || busy" @click="closeMenus(); openTerminal(sandbox)">
                 <i class="menu-item-icon" data-lucide="terminal"></i><span class="menu-item-label">New terminal</span>
+              </button>
+              <button class="menu-item" type="button" :disabled="!baseStatus.prepared || busy || sandbox.last_status === 'running'" @click="closeMenus(); runSandboxAction('sandbox:start', sandbox, 'Start requested.')">
+                <i class="menu-item-icon" data-lucide="play"></i><span class="menu-item-label">Start</span>
               </button>
               <button class="menu-item" type="button" :disabled="busy || sandbox.last_status !== 'running'" @click="closeMenus(); runSandboxAction('sandbox:stop', sandbox, 'Stopped.')">
                 <i class="menu-item-icon" data-lucide="square"></i><span class="menu-item-label">Stop</span>
               </button>
-              <button class="menu-item" type="button" :disabled="busy" @click="closeMenus(); runSandboxAction('sandbox:refresh-runtime', sandbox, 'Agent CLIs are current.')">
-                <i class="menu-item-icon" data-lucide="package-check"></i><span class="menu-item-label">Update agent CLIs</span>
-              </button>
+              <div class="menu-divider" aria-hidden="true"></div>
               <button class="menu-item" type="button" @click="openDetailsModal(sandbox)">
                 <i class="menu-item-icon" data-lucide="info"></i><span class="menu-item-label">Details</span>
               </button>
@@ -1313,6 +1311,10 @@ createApp({
               </button>
               <button class="menu-item" type="button" @click="openSandboxLogs(sandbox)">
                 <i class="menu-item-icon" data-lucide="scroll-text"></i><span class="menu-item-label">Logs</span>
+              </button>
+              <div class="menu-divider" aria-hidden="true"></div>
+              <button class="menu-item" type="button" :disabled="busy" @click="closeMenus(); runSandboxAction('sandbox:refresh-runtime', sandbox, 'Agent CLIs are current.')">
+                <i class="menu-item-icon" data-lucide="package-check"></i><span class="menu-item-label">Update agent CLIs</span>
               </button>
               <button class="menu-item menu-item-danger" type="button" :disabled="busy" @click="closeMenus(); destroySandbox(sandbox)">
                 <i class="menu-item-icon" data-lucide="trash-2"></i><span class="menu-item-label">Destroy</span>
