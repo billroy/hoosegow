@@ -339,7 +339,7 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "openGithub" in app_js
     assert "https://github.com/billroy/toady" in app_js
     assert "Toady on GitHub" in app_js
-    assert 'data-lucide="github"' in app_js
+    assert 'data-lucide="external-link"' in app_js
     assert 'data-lucide="log-out"' in app_js
     assert '<span class="menu-item-label">Logout</span>' in app_js
     assert "form.action = '/logout'" in app_js

@@ -1227,7 +1227,7 @@ createApp({
               </button>
               <div class="menu-divider" aria-hidden="true"></div>
               <button class="menu-item" type="button" @click="openGithub">
-                <i class="menu-item-icon" data-lucide="github"></i><span class="menu-item-label">Toady on GitHub</span>
+                <i class="menu-item-icon" data-lucide="external-link"></i><span class="menu-item-label">Toady on GitHub</span>
               </button>
               <button class="menu-item" v-if="authState.authenticated" type="button" @click="logout">
                 <i class="menu-item-icon" data-lucide="log-out"></i><span class="menu-item-label">Logout</span>
