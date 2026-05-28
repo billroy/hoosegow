@@ -161,16 +161,19 @@ def test_base_dependency_refresh_detects_missing_or_changed_metadata():
     ) is True
 
 
-def test_latest_agent_cli_versions_queries_npm_packages(monkeypatch):
+def test_latest_agent_cli_versions_queries_npm_packages(tmp_path, monkeypatch):
     calls = []
+    envs = []
 
-    def fake_run(argv, **_kwargs):
+    def fake_run(argv, **kwargs):
         calls.append(argv)
+        envs.append(kwargs["env"])
         return SimpleNamespace(returncode=0, stdout=f"{argv[2]}-version\n", stderr="")
 
     monkeypatch.setattr(toady_base.subprocess, "run", fake_run)
 
-    versions = toady_base.latest_agent_cli_versions()
+    cache_dir = tmp_path / "npm-cache"
+    versions = toady_base.latest_agent_cli_versions(cache_dir=cache_dir)
 
     assert versions == {
         "claude": "@anthropic-ai/claude-code-version",
@@ -184,6 +187,8 @@ def test_latest_agent_cli_versions_queries_npm_packages(monkeypatch):
         ["npm", "view", "@google/gemini-cli", "version"],
         ["npm", "view", "opencode-ai", "version"],
     ]
+    assert all(env["npm_config_cache"] == str(cache_dir.resolve()) for env in envs)
+    assert all(env["npm_config_update_notifier"] == "false" for env in envs)
 
 
 def test_base_status_opens_snapshot_when_path_is_lazy(monkeypatch):

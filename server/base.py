@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -58,29 +60,45 @@ def write_base_metadata(
     return metadata
 
 
-def latest_agent_cli_versions() -> dict[str, str]:
+def latest_agent_cli_versions(cache_dir: str | Path | None = None) -> dict[str, str]:
     versions = {}
-    for name, package in AGENT_CLI_PACKAGES.items():
-        try:
-            result = subprocess.run(
-                ["npm", "view", package, "version"],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=30,
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            raise ToadyRuntimeError(f"Could not check latest {name} package version: {exc}") from exc
-        if result.returncode != 0:
-            detail = (result.stderr or result.stdout or "").strip()
-            raise ToadyRuntimeError(
-                f"Could not check latest {name} package version with npm view {package}."
-                + (f" {detail}" if detail else "")
-            )
-        version = result.stdout.strip()
-        if not version:
-            raise ToadyRuntimeError(f"npm view {package} returned an empty version.")
-        versions[name] = version
+    cache_context = tempfile.TemporaryDirectory(prefix="toady-npm-cache-") if cache_dir is None else None
+    try:
+        npm_cache = Path(cache_dir or cache_context.name).expanduser().resolve()
+        npm_cache.mkdir(parents=True, exist_ok=True)
+        env = {
+            **os.environ,
+            "npm_config_cache": str(npm_cache),
+            "npm_config_audit": "false",
+            "npm_config_fund": "false",
+            "npm_config_progress": "false",
+            "npm_config_update_notifier": "false",
+        }
+        for name, package in AGENT_CLI_PACKAGES.items():
+            try:
+                result = subprocess.run(
+                    ["npm", "view", package, "version"],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=30,
+                    env=env,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                raise ToadyRuntimeError(f"Could not check latest {name} package version: {exc}") from exc
+            if result.returncode != 0:
+                detail = (result.stderr or result.stdout or "").strip()
+                raise ToadyRuntimeError(
+                    f"Could not check latest {name} package version with npm view {package}."
+                    + (f" {detail}" if detail else "")
+                )
+            version = result.stdout.strip()
+            if not version:
+                raise ToadyRuntimeError(f"npm view {package} returned an empty version.")
+            versions[name] = version
+    finally:
+        if cache_context is not None:
+            cache_context.cleanup()
     return versions
 
 
