@@ -91,7 +91,7 @@ The UI is terminal-first.
 5. Toady creates the sandbox, starts it, opens the first terminal, and focuses
    that terminal automatically.
 6. Use the sandbox row `...` menu for more terminals, details, ports, logs,
-   stop, or destroy.
+   runtime refresh, stop, or destroy.
 
 If you select a running sandbox that has no terminal open in the UI, Toady opens
 and focuses one automatically. Creating a sandbox also implies starting it and
@@ -130,6 +130,20 @@ browser and bridged through Socket.IO to a token-protected in-sandbox
 
 Agent CLI authentication is provided by the prepared base and persisted sandbox
 home where applicable. Run the agent command yourself from the terminal.
+
+## Runtime Refresh
+
+Agent CLIs such as Claude, Codex, Gemini, and opencode update frequently. Use a
+sandbox row `...` menu and choose **Refresh runtime dependencies** to check npm
+for newer CLI versions and apply them to that sandbox only.
+
+- Toady checks package versions first and rebuilds the shared prepared base only
+  when an update is available or base metadata is missing.
+- The selected sandbox is then refreshed onto the current base without changing
+  its workspace root, persistent home, resources, or published ports.
+- Running sandboxes restart and reopen a terminal.
+- Stopped sandboxes stay stopped, so sandboxes can remain frozen until you
+  explicitly refresh them.
 
 ## MSB Passthrough Wrapper
 

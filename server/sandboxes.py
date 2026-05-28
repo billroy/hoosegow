@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from server import base as toady_base
 from server.microsandbox_runtime import (
     BASE_DEFAULT,
     GUEST_NOFILE_DEFAULT,
@@ -116,6 +117,9 @@ class SandboxService:
         self.max_total_memory_mib = _positive_int_or_none(max_total_memory_mib) or (
             max(int(host_memory_mib * 0.75), self.default_memory_mib) if host_memory_mib else None
         )
+
+    def _base_metadata_path(self) -> Path:
+        return toady_base.base_metadata_path(self.home, self.base)
 
     def _sandbox_log_path(self, slug: str) -> str:
         return os.path.join(self.home, "logs", f"sandbox-{slug}.log")
@@ -522,6 +526,141 @@ class SandboxService:
             manifest.updated_at = time.time()
             self.store.save(manifest)
         return controller
+
+    def _base_spec(self) -> ToadySandboxSpec:
+        return ToadySandboxSpec(
+            sandbox_name="toady-base-prepare",
+            workspace=self.source_root,
+            source_root=self.source_root,
+            sandbox_home=Path(self.home) / "base" / "home",
+            base=self.base,
+            vcpus=self.default_vcpus,
+            memory_mib=self.default_memory_mib,
+            host_nofile=self.host_nofile,
+            guest_nofile=self.guest_nofile,
+            network_max_connections=self.network_max_connections,
+        )
+
+    def _record_manifest_runtime(self, manifest: SandboxManifest, metadata: dict[str, Any]) -> SandboxManifest:
+        manifest.runtime_generation = str(metadata.get("generation") or "")
+        manifest.runtime_versions = dict(metadata.get("agent_versions") or {})
+        return self.store.save(manifest)
+
+    async def _remove_runtime_instance(self, runtime: MicrosandboxRuntime, slug: str) -> None:
+        await runtime.stop(slug)
+        last_error: Exception | None = None
+        for attempt in range(6):
+            try:
+                await runtime.remove(slug)
+                return
+            except Exception as exc:
+                last_error = exc
+                message = str(exc).lower()
+                if "not found" in message or "no such" in message or "does not exist" in message:
+                    return
+                if "still running" not in message or attempt == 5:
+                    break
+                await asyncio.sleep(0.5)
+                await runtime.stop(slug)
+        if last_error is not None:
+            raise last_error
+
+    async def refresh_runtime_dependencies(self, slug: str) -> dict[str, Any]:
+        manifest = self.store.get(validate_slug(slug))
+        if manifest is None:
+            raise SandboxServiceError(f"Unknown sandbox: {slug}")
+
+        latest_versions = toady_base.latest_agent_cli_versions()
+        metadata_path = self._base_metadata_path()
+        metadata = toady_base.read_base_metadata(metadata_path)
+        runtime = MicrosandboxRuntime()
+        await runtime.ensure_installed()
+        base_exists = await runtime.prepared_base_exists(self.base)
+        rebuilt_base = False
+        if not base_exists or toady_base.base_needs_dependency_refresh(metadata, latest_versions):
+            await toady_base.prepare_base(
+                runtime,
+                self._base_spec(),
+                source=self.source_root,
+                force=True,
+                metadata_path=metadata_path,
+                dependency_versions=latest_versions,
+            )
+            metadata = toady_base.read_base_metadata(metadata_path)
+            rebuilt_base = True
+        if not metadata:
+            raise SandboxServiceError("Sandbox runtime refresh did not produce base metadata.")
+
+        target_generation = str(metadata.get("generation") or "")
+        was_running = manifest.last_status == "running"
+        already_current = bool(target_generation and manifest.runtime_generation == target_generation)
+        if already_current:
+            self._log_sandbox_event(
+                manifest.slug,
+                "runtime_refresh_skipped",
+                rebuilt_base=rebuilt_base,
+                reason="already_current",
+            )
+            return {
+                "sandbox": manifest.to_dict(),
+                "restarted": False,
+                "rebuilt_base": rebuilt_base,
+                "updated": False,
+                "base": metadata,
+                "message": f"{manifest.slug} is already on the current sandbox runtime.",
+            }
+
+        self._log_sandbox_event(
+            manifest.slug,
+            "runtime_refresh_started",
+            status=manifest.last_status,
+            rebuilt_base=rebuilt_base,
+            target_generation=target_generation,
+        )
+        await self._remove_runtime_instance(runtime, manifest.slug)
+        if was_running:
+            started = await self.start(manifest.slug)
+            refreshed = self.store.get(manifest.slug)
+            if refreshed is None:
+                raise SandboxServiceError(f"Unknown sandbox after refresh: {manifest.slug}")
+            saved = self._record_manifest_runtime(refreshed, metadata).to_dict()
+            self._log_sandbox_event(
+                manifest.slug,
+                "runtime_refreshed",
+                status=saved["last_status"],
+                restarted=True,
+                rebuilt_base=rebuilt_base,
+                target_generation=target_generation,
+            )
+            return {
+                "sandbox": saved,
+                "restarted": True,
+                "rebuilt_base": rebuilt_base,
+                "updated": True,
+                "base": metadata,
+                "message": f"Refreshed runtime dependencies and restarted {manifest.slug}.",
+            }
+
+        refreshed = self.store.get(manifest.slug)
+        if refreshed is None:
+            raise SandboxServiceError(f"Unknown sandbox after refresh: {manifest.slug}")
+        saved = self._record_manifest_runtime(refreshed, metadata).to_dict()
+        self._log_sandbox_event(
+            manifest.slug,
+            "runtime_refreshed",
+            status=saved["last_status"],
+            restarted=False,
+            rebuilt_base=rebuilt_base,
+            target_generation=target_generation,
+        )
+        return {
+            "sandbox": saved,
+            "restarted": False,
+            "rebuilt_base": rebuilt_base,
+            "updated": True,
+            "base": metadata,
+            "message": f"Refreshed runtime dependencies for {manifest.slug}; sandbox remains {saved['last_status']}.",
+        }
 
     async def start(self, slug: str) -> dict[str, Any]:
         manifest = self.store.get(validate_slug(slug))

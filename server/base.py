@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
+from server.persistence import read_json, write_json
 from server.microsandbox_runtime import (
     SOURCE_IMAGE_DEFAULT,
     MicrosandboxRuntime,
@@ -12,6 +15,80 @@ from server.microsandbox_runtime import (
     ToadySandboxSpec,
 )
 from server.sandbox_bootstrap import run_sandbox_shell
+
+
+AGENT_CLI_PACKAGES = {
+    "claude": "@anthropic-ai/claude-code",
+    "codex": "@openai/codex",
+    "gemini": "@google/gemini-cli",
+    "opencode": "opencode-ai",
+}
+
+
+def base_metadata_path(home: str | Path, base: str = "toady-microsandbox-local") -> Path:
+    return Path(home).expanduser().resolve() / "base" / f"{base}-metadata.json"
+
+
+def read_base_metadata(path: str | Path) -> dict[str, Any] | None:
+    try:
+        data = read_json(str(path))
+    except (OSError, ValueError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    return data
+
+
+def write_base_metadata(
+    path: str | Path,
+    *,
+    base: str,
+    source_image: str,
+    versions: dict[str, str],
+) -> dict[str, Any]:
+    metadata = {
+        "schema_version": 1,
+        "base": base,
+        "source_image": source_image,
+        "generation": str(time.time()),
+        "prepared_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "agent_versions": dict(sorted(versions.items())),
+    }
+    write_json(str(path), metadata)
+    return metadata
+
+
+def latest_agent_cli_versions() -> dict[str, str]:
+    versions = {}
+    for name, package in AGENT_CLI_PACKAGES.items():
+        try:
+            result = subprocess.run(
+                ["npm", "view", package, "version"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=30,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ToadyRuntimeError(f"Could not check latest {name} package version: {exc}") from exc
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or "").strip()
+            raise ToadyRuntimeError(
+                f"Could not check latest {name} package version with npm view {package}."
+                + (f" {detail}" if detail else "")
+            )
+        version = result.stdout.strip()
+        if not version:
+            raise ToadyRuntimeError(f"npm view {package} returned an empty version.")
+        versions[name] = version
+    return versions
+
+
+def base_needs_dependency_refresh(metadata: dict[str, Any] | None, latest_versions: dict[str, str]) -> bool:
+    if not metadata:
+        return True
+    current_versions = dict(metadata.get("agent_versions") or {})
+    return any(current_versions.get(name) != version for name, version in latest_versions.items())
 
 
 async def base_status(base: str = "toady-microsandbox-local") -> dict[str, Any]:
@@ -136,6 +213,8 @@ async def prepare_base(
     source_image: str = SOURCE_IMAGE_DEFAULT,
     source: Path | None = None,
     force: bool = True,
+    metadata_path: str | Path | None = None,
+    dependency_versions: dict[str, str] | None = None,
 ) -> None:
     """Prepare a reusable Toady Microsandbox base snapshot.
 
@@ -224,6 +303,13 @@ PY
         print(f"==> Creating local snapshot {spec.base}", flush=True)
         await runtime.create_snapshot(prepare_name, spec.base)
         await validate_prepared_base_snapshot(runtime, spec)
+        if metadata_path is not None:
+            write_base_metadata(
+                metadata_path,
+                base=spec.base,
+                source_image=source_image,
+                versions=dependency_versions or latest_agent_cli_versions(),
+            )
         print(f"Prepared Microsandbox base: {spec.base}")
     finally:
         try:

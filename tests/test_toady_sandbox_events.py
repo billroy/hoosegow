@@ -141,3 +141,47 @@ def test_socket_lifecycle_smoke_create_start_terminal_port_destroy(tmp_path, mon
     assert closed["ok"] is True
     assert destroyed["ok"] is True
     assert service.get("smoke") is None
+
+
+def test_socket_refresh_runtime_event_preserves_payload(tmp_path, monkeypatch):
+    workspace_root = tmp_path / "work"
+    workspace_root.mkdir()
+    app = create_app(
+        str(tmp_path),
+        no_browser=True,
+        global_dir=str(tmp_path / "state"),
+        start_without_project=True,
+    )
+    service = app.config["toady_sandboxes"]
+    service.browse_roots = [str(tmp_path)]
+    service.port_pool = (63100, 63110)
+    client = socketio.test_client(app)
+    client.get_received()
+    created = client.emit(
+        "sandbox:create",
+        {"name": "smoke", "workspace_root": str(workspace_root)},
+        callback=True,
+    )
+
+    async def fake_refresh(slug):
+        manifest = service.store.get(slug).to_dict()
+        manifest["runtime_generation"] = "generation-1"
+        return {
+            "sandbox": manifest,
+            "restarted": False,
+            "rebuilt_base": False,
+            "updated": True,
+            "base": {"generation": "generation-1"},
+            "message": "Refreshed runtime dependencies for smoke; sandbox remains configured.",
+        }
+
+    monkeypatch.setattr(service, "refresh_runtime_dependencies", fake_refresh)
+
+    refreshed = client.emit("sandbox:refresh-runtime", {"id": "smoke"}, callback=True)
+
+    client.disconnect()
+    assert created["ok"] is True
+    assert refreshed["ok"] is True
+    assert refreshed["updated"] is True
+    assert refreshed["restarted"] is False
+    assert refreshed["sandbox"]["runtime_generation"] == "generation-1"

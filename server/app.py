@@ -919,6 +919,36 @@ def create_app(
         socketio.emit("sandbox:status", {"id": manifest["slug"], "status": manifest["last_status"]}, to="authenticated")
         return {"ok": True, "sandbox": manifest}
 
+    @socketio.on("sandbox:refresh-runtime")
+    def toady_socket_refresh_sandbox_runtime(payload):
+        import asyncio
+
+        slug = (payload or {}).get("slug") or (payload or {}).get("id") or ""
+        if app.config["base_prepare"].get("running"):
+            exc = SandboxServiceError("Sandbox runtime setup is already running. Try refresh again when it finishes.")
+            return _sandbox_error_payload(exc)
+        _close_toady_sandbox_terminals(slug)
+        socketio.emit("sandbox:status", {"id": slug, "status": "refreshing"}, to="authenticated")
+        try:
+            result = asyncio.run(_sandbox_service().refresh_runtime_dependencies(slug))
+        except (SandboxServiceError, ValidationError, RuntimeError) as exc:
+            _log_socket_event("sandbox:refresh-runtime", sandbox_id=slug, ok=False, error=exc)
+            socketio.emit("sandbox:error", {"id": slug, "error": str(exc)}, to=request.sid)
+            return _sandbox_error_payload(exc)
+        manifest = result["sandbox"]
+        _log_socket_event(
+            "sandbox:refresh-runtime",
+            sandbox_id=manifest["slug"],
+            ok=True,
+            status=manifest["last_status"],
+            restarted=bool(result.get("restarted")),
+            rebuilt_base=bool(result.get("rebuilt_base")),
+            updated=bool(result.get("updated")),
+        )
+        _emit_sandboxes_updated()
+        socketio.emit("sandbox:status", {"id": manifest["slug"], "status": manifest["last_status"]}, to="authenticated")
+        return {"ok": True, **result}
+
     @socketio.on("sandbox:destroy")
     def toady_socket_destroy_sandbox(payload):
         import asyncio

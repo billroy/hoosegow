@@ -739,19 +739,36 @@ createApp({
         setToast(baseStatus.message || 'Sandbox runtime is setting up automatically.', 'info');
         return;
       }
-      if (event === 'sandbox:stop' || event === 'sandbox:destroy') {
+      if (event === 'sandbox:stop' || event === 'sandbox:destroy' || event === 'sandbox:refresh-runtime') {
         await closeSandboxTerminals(sandbox.slug, { silent: true });
       }
       busy.value = true;
       try {
         if (event === 'sandbox:start') setAction(`Starting ${sandbox.slug}...`, sandbox.slug, 'A terminal will open when it is ready.');
         if (event === 'sandbox:stop') setAction(`Stopping ${sandbox.slug}...`, sandbox.slug);
+        if (event === 'sandbox:refresh-runtime') {
+          setAction(
+            `Refreshing ${sandbox.slug} runtime...`,
+            sandbox.slug,
+            'Checks agent CLI versions first and rebuilds only when updates are available.'
+          );
+        }
         const response = await call(event, { id: sandbox.slug });
         await loadSandboxes();
         if (event === 'sandbox:start' && response?.sandbox?.last_status === 'running') {
           setAction(`Opening terminal for ${sandbox.slug}...`, sandbox.slug);
           await openTerminal(response.sandbox, { manageBusy: false, manageAction: false });
           setToast('Started and opened a terminal.', 'success');
+          return;
+        }
+        if (event === 'sandbox:refresh-runtime' && response?.sandbox?.last_status === 'running') {
+          setAction(`Opening terminal for ${sandbox.slug}...`, sandbox.slug);
+          await openTerminal(response.sandbox, { manageBusy: false, manageAction: false });
+          setToast(response.message || 'Runtime refreshed and terminal reopened.', 'success');
+          return;
+        }
+        if (event === 'sandbox:refresh-runtime') {
+          setToast(response.message || successMessage, 'success');
           return;
         }
         setToast(successMessage, 'success');
@@ -1284,6 +1301,9 @@ createApp({
               </button>
               <button class="menu-item" type="button" :disabled="busy || sandbox.last_status !== 'running'" @click="closeMenus(); runSandboxAction('sandbox:stop', sandbox, 'Stopped.')">
                 <i class="menu-item-icon" data-lucide="square"></i><span class="menu-item-label">Stop</span>
+              </button>
+              <button class="menu-item" type="button" :disabled="busy" @click="closeMenus(); runSandboxAction('sandbox:refresh-runtime', sandbox, 'Runtime dependencies are current.')">
+                <i class="menu-item-icon" data-lucide="package-check"></i><span class="menu-item-label">Refresh runtime dependencies</span>
               </button>
               <button class="menu-item" type="button" @click="openDetailsModal(sandbox)">
                 <i class="menu-item-icon" data-lucide="info"></i><span class="menu-item-label">Details</span>

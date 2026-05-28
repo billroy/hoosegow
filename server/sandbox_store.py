@@ -30,6 +30,8 @@ class SandboxManifest:
     updated_at: float = field(default_factory=time.time)
     last_status: str = "configured"
     microsandbox_id: str | None = None
+    runtime_generation: str = ""
+    runtime_versions: dict[str, str] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
 
     @classmethod
@@ -49,6 +51,8 @@ class SandboxManifest:
             updated_at=float(data.get("updated_at") or time.time()),
             last_status=str(data.get("last_status") or "configured"),
             microsandbox_id=data.get("microsandbox_id"),
+            runtime_generation=str(data.get("runtime_generation") or ""),
+            runtime_versions=dict(data.get("runtime_versions") or {}),
             warnings=list(data.get("warnings") or []),
         )
 

@@ -283,7 +283,7 @@ def run_server(args: argparse.Namespace, home: str) -> int:
 
 
 async def run_prepare_base(args: argparse.Namespace, home: str) -> int:
-    from server.base import prepare_base
+    from server.base import base_metadata_path, latest_agent_cli_versions, prepare_base
     from server.microsandbox_runtime import (
         BASE_DEFAULT,
         MicrosandboxRuntime,
@@ -312,7 +312,16 @@ async def run_prepare_base(args: argparse.Namespace, home: str) -> int:
     try:
         runtime = MicrosandboxRuntime()
         await runtime.ensure_installed()
-        await prepare_base(runtime, spec, source_image=args.base_image, source=root, force=True)
+        dependency_versions = latest_agent_cli_versions()
+        await prepare_base(
+            runtime,
+            spec,
+            source_image=args.base_image,
+            source=root,
+            force=True,
+            metadata_path=base_metadata_path(home, BASE_DEFAULT),
+            dependency_versions=dependency_versions,
+        )
     except ToadyRuntimeError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1

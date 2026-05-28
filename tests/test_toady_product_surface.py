@@ -347,6 +347,9 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "menu-item-label" in app_js
     assert app_js.count('<button class="menu-item') == app_js.count('class="menu-item-icon"')
     assert "New terminal" in app_js
+    assert "Refresh runtime dependencies" in app_js
+    assert "sandbox:refresh-runtime" in app_js
+    assert 'data-lucide="package-check"' in app_js
     assert "terminal-tab-add" in app_js
     assert "terminalStatusLabel" in app_js
     assert "{{ term.status }}" not in app_js
