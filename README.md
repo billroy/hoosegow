@@ -1,6 +1,8 @@
 # Toady
 
-Current release target: `0.1.0`.
+Current release: `0.1.0`.
+
+Public repository: <https://github.com/billroy/toady>
 
 Toady is a local terminal app for running coding agents inside Microsandbox
 microVMs. It gives you a browser UI with persistent sandbox terminals, shared
@@ -17,8 +19,7 @@ base-prep path. It is intentionally not a Bullpen worker/ticket UI.
 
 ## Current Status
 
-This is an active first release candidate for `0.1.0`. The local
-Microsandbox path covers:
+`0.1.0` is the first public Toady release. The local Microsandbox path covers:
 
 - automatic sandbox-runtime setup, rebuild, and logs
 - sandbox create, start, stop, destroy, details, and logs
@@ -29,11 +30,19 @@ Microsandbox path covers:
 - published localhost ports for sandbox dev servers
 - optional local authentication
 
-Remaining work is release verification and review before tagging.
+Known constraints for this release:
+
+- Toady is a local single-user developer tool.
+- Real Microsandbox behavior depends on the host Microsandbox runtime and the
+  prepared `toady-microsandbox-local` base.
+- Running sandboxes remain alive when Toady exits unless you pass
+  `--shutdown-sandboxes-on-exit`.
 
 ## Quick Start
 
 ```bash
+git clone https://github.com/billroy/toady.git
+cd toady
 pip install -r requirements.txt
 python3 toady.py --workspace-root /path/to/work
 ```
@@ -267,8 +276,8 @@ The same real smokes are available as an opt-in pytest target:
 TOADY_RUN_REAL_MICROSANDBOX=1 pytest -q -m real_microsandbox
 ```
 
-The private `0.1.0` tree has removed the copied Bullpen product modules and
-legacy deploy script after extracting the Microsandbox runtime workarounds into
-Toady modules. Toady mode does not register the legacy product REST routes,
-serve legacy product static assets, or eagerly import legacy product modules.
-See `docs/spec.md` and `docs/bullpen-excavation.md` for provenance notes.
+The `0.1.0` tree has removed the copied Bullpen product modules and legacy
+deploy script after extracting the Microsandbox runtime workarounds into Toady
+modules. Toady mode does not register the legacy product REST routes, serve
+legacy product static assets, or eagerly import legacy product modules. See
+`docs/spec.md` and `docs/bullpen-excavation.md` for provenance notes.
