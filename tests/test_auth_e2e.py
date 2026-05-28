@@ -9,14 +9,12 @@ we write a ``.env`` file into that patched directory *before* calling
 
 import os
 import tempfile
-import json
 from datetime import timedelta
 
 import pytest
 
 import server.workspace_manager as wm
 from server import auth
-from server import mcp_auth
 from server.app import create_app, socketio
 
 
@@ -246,34 +244,26 @@ class TestHttpAuthEnabled:
         r = auth_client.get("/logout")
         assert r.status_code == 405
 
-    def test_api_files_unauthenticated_returns_401_when_xhr(self, auth_client):
+    def test_app_js_unauthenticated_returns_401_when_xhr(self, auth_client):
         r = auth_client.get(
-            "/api/files",
+            "/app.js",
             headers={"X-Requested-With": "XMLHttpRequest"},
         )
         assert r.status_code == 401
 
-    def test_api_files_unauthenticated_redirects_when_browser(self, auth_client):
-        r = auth_client.get("/api/files")
+    def test_app_js_unauthenticated_redirects_when_browser(self, auth_client):
+        r = auth_client.get("/app.js")
         assert r.status_code == 302
         assert "/login" in r.headers["Location"]
-
-    def test_file_write_unauthenticated_rejected(self, auth_client):
-        r = auth_client.put(
-            "/api/files/foo.txt",
-            data="hi",
-            headers={"X-Requested-With": "XMLHttpRequest"},
-        )
-        assert r.status_code == 401
 
     def test_next_param_preserved(self, auth_client):
         r = auth_client.get("/")
         loc = r.headers["Location"]
         assert "next=/" in loc
 
-    def test_authenticated_can_hit_api(self, auth_client):
+    def test_authenticated_can_load_app_js(self, auth_client):
         _login(auth_client)
-        r = auth_client.get("/api/files")
+        r = auth_client.get("/app.js")
         assert r.status_code == 200
 
     def test_authenticated_index_200(self, auth_client):
@@ -302,34 +292,8 @@ class TestSocketIoAuthEnabled:
         sio_client = socketio.test_client(auth_app, flask_test_client=http)
         assert sio_client.is_connected() is True
         events = sio_client.get_received()
-        names = [e["name"] for e in events]
-        assert "state:init" in names
+        assert [e["name"] for e in events] == []
         sio_client.disconnect()
-
-    def test_socketio_connect_mcp_token_accepted_without_session(self, auth_app):
-        token = mcp_auth.read_workspace_mcp_token(auth_app.config["bp_dir"])
-
-        client = socketio.test_client(auth_app, auth={"mcp_token": token})
-        assert client.is_connected() is True
-        events = client.get_received()
-        assert [e["name"] for e in events] == ["state:init"]
-        client.disconnect()
-
-    def test_socketio_rotated_mcp_token_invalidates_old_connects(self, auth_app):
-        old_token = mcp_auth.read_workspace_mcp_token(auth_app.config["bp_dir"])
-
-        new_token = mcp_auth.rotate_workspace_mcp_token(
-            auth_app.config["bp_dir"],
-            host=auth_app.config["host"],
-            port=auth_app.config["port"],
-        )
-
-        rejected = socketio.test_client(auth_app, auth={"mcp_token": old_token})
-        assert rejected.is_connected() is False
-
-        accepted = socketio.test_client(auth_app, auth={"mcp_token": new_token})
-        assert accepted.is_connected() is True
-        accepted.disconnect()
 
 
 # ---------------------------------------------------------------------------
@@ -347,8 +311,8 @@ class TestAuthDisabled:
         r = noauth_client.get("/")
         assert r.status_code == 200
 
-    def test_no_auth_api_files(self, noauth_client):
-        r = noauth_client.get("/api/files")
+    def test_no_auth_app_js_accessible(self, noauth_client):
+        r = noauth_client.get("/app.js")
         assert r.status_code == 200
 
     def test_no_auth_login_page_redirects_to_index(self, noauth_client):

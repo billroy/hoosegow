@@ -99,6 +99,30 @@ Completed after the unused-code review:
   later parity-checked removal because the deploy script still validates
   Bullpen source layout and holds historical Microsandbox workaround context.
 
+## Checkpoint: Phase 2 App Surface Cut
+
+Completed after the first artifact-removal pass:
+
+- Removed legacy Bullpen workspace/project branching from `server/app.py`; the
+  app factory now always uses the Toady sandbox-state holder.
+- Removed legacy Bullpen REST route implementations from the Toady app:
+  commits, file browser/editor, worker transfer, export/import, and service
+  preview.
+- Removed Bullpen Socket.IO startup wiring from the app factory:
+  project `state:init`, MCP-token socket auth, legacy terminal manager,
+  `server.events` registration, and per-workspace schedulers.
+- Removed app-level helper functions that only supported the deleted Bullpen
+  routes: deploy-label sync, import/export zip helpers, file-tree building,
+  startup reconciliation, and full Bullpen state loading.
+- Kept a small explicit 404 guard for removed Bullpen `/api/*` product routes
+  so old clients fail clearly instead of falling through to Flask static-route
+  method handling.
+- Updated auth tests to target the current Toady static/socket surface rather
+  than removed `/api/files` and MCP-token behavior.
+- Removed app-route-specific tests for deleted commits/files/deploy-label
+  helpers and pruned old Socket.IO/service-preview/terminal-manager cases that
+  depended on deleted app registrations.
+
 ## Checkpoint: Toady Entrypoint Seed
 
 Completed in the first Build Go pass:

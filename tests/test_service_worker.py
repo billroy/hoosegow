@@ -245,68 +245,6 @@ def test_suggest_service_port_skips_reserved_worker_ports(monkeypatch):
     assert suggested == 3003
 
 
-def test_service_preview_api_merges_unsaved_procfile_fields(tmp_workspace):
-    bp_dir = init_workspace(tmp_workspace)
-    _write_script(os.path.join(tmp_workspace, "Procfile"), "web: python3 app.py --port=$PORT\n")
-    _install_service_worker(bp_dir, tmp_workspace, command="python3 old.py")
-    app = create_app(tmp_workspace, no_browser=True)
-    client = app.test_client()
-
-    resp = client.post(
-        "/api/service/preview",
-        json={
-            "workspaceId": app.config["startup_workspace_id"],
-            "slot": 0,
-            "fields": {
-                "command_source": "procfile",
-                "procfile_process": "web",
-                "port": 3200,
-            },
-        },
-    )
-
-    assert resp.status_code == 200
-    data = resp.get_json()
-    assert data["command_source"] == "procfile"
-    assert data["selected_process"] == "web"
-    assert data["suggested_port"] is None
-    assert data["resolved_command"] == "python3 app.py --port=3200"
-
-
-def test_service_preview_api_suggests_open_port_when_none_configured(tmp_workspace, monkeypatch):
-    bp_dir = init_workspace(tmp_workspace)
-    _write_script(os.path.join(tmp_workspace, "Procfile"), "web: python3 app.py --port=$PORT\n")
-    _install_service_worker(
-        bp_dir,
-        tmp_workspace,
-        command="",
-        command_source="procfile",
-        procfile_process="web",
-    )
-    layout = read_json(os.path.join(bp_dir, "layout.json"))
-    layout["slots"].append({"type": "service", "name": "Taken", "port": 3000})
-    write_json(os.path.join(bp_dir, "layout.json"), layout)
-    app = create_app(tmp_workspace, no_browser=True)
-    client = app.test_client()
-    monkeypatch.setattr("server.service_worker._port_is_bindable", lambda port: port not in {3001, 3002})
-
-    resp = client.post(
-        "/api/service/preview",
-        json={
-            "workspaceId": app.config["startup_workspace_id"],
-            "slot": 0,
-            "fields": {
-                "command_source": "procfile",
-                "procfile_process": "web",
-            },
-        },
-    )
-
-    assert resp.status_code == 200
-    data = resp.get_json()
-    assert data["suggested_port"] == 3003
-
-
 def test_procfile_service_restart_rereads_procfile(tmp_workspace):
     bp_dir = init_workspace(tmp_workspace)
     output_path = os.path.join(tmp_workspace, "procfile-run.txt")

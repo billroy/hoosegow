@@ -19,6 +19,7 @@ def _isolate_global_registry(tmp_path, monkeypatch):
     import server.workspace_manager as wm
     test_global = str(tmp_path / "bullpen_global")
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("TOADY_HOME", test_global)
     monkeypatch.setattr(wm, "GLOBAL_DIR", test_global)
     monkeypatch.setattr(wm, "REGISTRY_PATH", os.path.join(test_global, "projects.json"))
 

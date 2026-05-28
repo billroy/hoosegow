@@ -13,7 +13,6 @@ import server.workers as workers_mod
 
 from server.init import init_workspace
 from server.persistence import read_json, write_json
-from server.app import reconcile
 from server.tasks import create_task, list_tasks, read_task, update_task
 from server.worktrees import remove_worktree, reconcile_worktrees, setup_worktree
 from server.workers import (
@@ -413,69 +412,6 @@ class TestAssignTask:
 
 
 class TestWorkerReconcile:
-    def test_reconcile_removes_stale_idle_queue_entries(self, bp_dir, worker_slot):
-        task = create_task(bp_dir, "Stale queue task")
-        update_task(bp_dir, task["id"], {"status": "review", "assigned_to": ""})
-
-        layout = _load_layout(bp_dir)
-        layout["slots"][worker_slot]["task_queue"] = [task["id"]]
-        write_json(os.path.join(bp_dir, "layout.json"), layout)
-
-        reconcile(bp_dir)
-
-        updated_layout = _load_layout(bp_dir)
-        assert updated_layout["slots"][worker_slot]["task_queue"] == []
-        updated_task = read_task(bp_dir, task["id"])
-        assert updated_task["status"] == "review"
-        assert updated_task["assigned_to"] == ""
-
-    def test_reconcile_rebuilds_queue_from_assigned_ticket(self, bp_dir, worker_slot):
-        task = create_task(bp_dir, "Assigned missing queue task")
-        update_task(bp_dir, task["id"], {"status": "assigned", "assigned_to": str(worker_slot)})
-
-        layout = _load_layout(bp_dir)
-        layout["slots"][worker_slot]["task_queue"] = []
-        write_json(os.path.join(bp_dir, "layout.json"), layout)
-
-        reconcile(bp_dir)
-
-        updated_layout = _load_layout(bp_dir)
-        assert updated_layout["slots"][worker_slot]["task_queue"] == [task["id"]]
-
-    def test_reconcile_rebuilds_queue_by_priority(self, bp_dir, worker_slot):
-        normal = create_task(bp_dir, "Assigned normal", priority="normal")
-        urgent = create_task(bp_dir, "Assigned urgent", priority="urgent")
-        update_task(bp_dir, normal["id"], {"status": "assigned", "assigned_to": str(worker_slot)})
-        update_task(bp_dir, urgent["id"], {"status": "assigned", "assigned_to": str(worker_slot)})
-
-        layout = _load_layout(bp_dir)
-        layout["slots"][worker_slot]["task_queue"] = []
-        write_json(os.path.join(bp_dir, "layout.json"), layout)
-
-        reconcile(bp_dir)
-
-        updated_layout = _load_layout(bp_dir)
-        assert updated_layout["slots"][worker_slot]["task_queue"] == [urgent["id"], normal["id"]]
-
-    def test_reconcile_blocks_interrupted_in_progress_ticket(self, bp_dir, worker_slot):
-        task = create_task(bp_dir, "Interrupted task")
-        update_task(bp_dir, task["id"], {"status": "in_progress", "assigned_to": str(worker_slot)})
-
-        layout = _load_layout(bp_dir)
-        layout["slots"][worker_slot]["state"] = "idle"
-        layout["slots"][worker_slot]["task_queue"] = [task["id"]]
-        write_json(os.path.join(bp_dir, "layout.json"), layout)
-
-        reconcile(bp_dir)
-
-        updated_layout = _load_layout(bp_dir)
-        assert updated_layout["slots"][worker_slot]["state"] == "idle"
-        assert updated_layout["slots"][worker_slot]["task_queue"] == []
-        updated_task = read_task(bp_dir, task["id"])
-        assert updated_task["status"] == "blocked"
-        assert updated_task["assigned_to"] == ""
-        assert "Bullpen restarted while this task was in progress" in updated_task["body"]
-
     def test_yank_uses_assigned_to_when_queue_reference_is_missing(self, bp_dir, worker_slot):
         task = create_task(bp_dir, "Assigned missing queue yank")
         update_task(bp_dir, task["id"], {"status": "in_progress", "assigned_to": str(worker_slot)})

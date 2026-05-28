@@ -25,6 +25,9 @@
 - The first cleanup pass has removed copied Bullpen profile seeds, legacy
   component UI assets, the Bullpen manager surface, non-Toady remote deployment
   scaffolding, and their legacy-only tests.
+- The second cleanup pass has removed legacy Bullpen REST routes, project
+  Socket.IO startup, MCP-token socket auth, legacy terminal-manager wiring, and
+  Bullpen app-state helpers from `server/app.py`.
 - Remaining copied Bullpen reference code should be removed in dependency-aware
   slices after each workaround is covered by Toady tests.
 - Base-prep duration was not remeasured because a forced rebuild is optional
