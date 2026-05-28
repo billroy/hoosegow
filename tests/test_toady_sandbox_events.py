@@ -172,7 +172,7 @@ def test_socket_refresh_runtime_event_preserves_payload(tmp_path, monkeypatch):
             "rebuilt_base": False,
             "updated": True,
             "base": {"generation": "generation-1"},
-            "message": "Refreshed runtime dependencies for smoke; sandbox remains configured.",
+            "message": "Updated agent CLIs for smoke; sandbox remains configured.",
         }
 
     monkeypatch.setattr(service, "refresh_runtime_dependencies", fake_refresh)

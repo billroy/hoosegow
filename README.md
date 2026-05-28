@@ -6,7 +6,7 @@ Public repository: <https://github.com/billroy/toady>
 
 Toady is a local terminal app for running coding agents inside Microsandbox
 microVMs. It gives you a browser UI with persistent sandbox terminals, shared
-workspace-root mounts, automatic runtime setup, sandbox logs, and local published
+workspace-root mounts, automatic base-image setup, sandbox logs, and local published
 ports for dev servers.
 
 The expected workflow is direct: create a sandbox, get a terminal, type
@@ -21,7 +21,7 @@ base-prep path. It is intentionally not a Bullpen worker/ticket UI.
 
 `0.1.0` is the first public Toady release. The local Microsandbox path covers:
 
-- automatic sandbox-runtime setup, rebuild, and logs
+- automatic base-image setup, rebuild, and logs
 - sandbox create, start, stop, destroy, details, and logs
 - shared workspace-root selection
 - automatic create -> start -> first terminal behavior
@@ -66,8 +66,8 @@ The UI is terminal-first.
 
 - The top bar has a minimal hamburger menu, the `Toady` title, a light/dark
   toggle, and a green/red Socket.IO status dot.
-- The hamburger menu contains sandbox runtime readiness, rebuild, retry after
-  setup errors, and runtime logs.
+- The hamburger menu contains base-image rebuild, retry after setup errors, and
+  base logs.
 - The left pane is a compact sandbox list headed `Sandboxes (n)`. Its boundary
   is draggable.
 - The left-pane `...` menu opens create, selected-sandbox details, published
@@ -86,12 +86,12 @@ The UI is terminal-first.
 1. Choose **Sandboxes (...) -> Create sandbox**.
 2. Pick or type a workspace root and name the sandbox.
 3. Click **Create + Start**.
-4. If the reusable sandbox runtime is not ready yet, Toady sets it up
+4. If the reusable base image is not ready yet, Toady sets it up
    automatically and creation waits until setup finishes.
 5. Toady creates the sandbox, starts it, opens the first terminal, and focuses
    that terminal automatically.
 6. Use the sandbox row `...` menu for more terminals, details, ports, logs,
-   runtime refresh, stop, or destroy.
+   agent CLI updates, stop, or destroy.
 
 If you select a running sandbox that has no terminal open in the UI, Toady opens
 and focuses one automatically. Creating a sandbox also implies starting it and
@@ -131,11 +131,11 @@ browser and bridged through Socket.IO to a token-protected in-sandbox
 Agent CLI authentication is provided by the prepared base and persisted sandbox
 home where applicable. Run the agent command yourself from the terminal.
 
-## Runtime Refresh
+## Agent CLI Updates
 
 Agent CLIs such as Claude, Codex, Gemini, and opencode update frequently. Use a
-sandbox row `...` menu and choose **Refresh runtime dependencies** to check npm
-for newer CLI versions and apply them to that sandbox only.
+sandbox row `...` menu and choose **Update agent CLIs** to check npm for newer
+CLI versions and apply them to that sandbox only.
 
 - Toady checks package versions first and rebuilds the shared prepared base only
   when an update is available or base metadata is missing.
@@ -198,7 +198,7 @@ on sandbox restart, depending on current sandbox state.
 The reusable base image is prepared automatically from `node:22-bookworm` by
 default and is named `toady-microsandbox-local`.
 
-The base includes the runtime pieces Toady expects inside each sandbox:
+The base includes the shared pieces Toady expects inside each sandbox:
 
 - Python and the Toady PTY controller
 - Node/npm tooling
@@ -210,7 +210,7 @@ The base includes the runtime pieces Toady expects inside each sandbox:
 Normal users do not need to prepare it manually. On first launch, the UI asks
 for base status, the server notices a missing snapshot, and setup starts in the
 background. While that happens, sandbox creation shows a short setup delay and
-runtime logs are available from the hamburger menu.
+base logs are available from the hamburger menu.
 
 Manual setup and rebuild commands remain available for diagnostics:
 
@@ -219,7 +219,7 @@ python3 toady.py --prepare-base
 python3 toady.py --prepare-base --rebuild-base
 ```
 
-You can also rebuild and inspect runtime logs from the hamburger menu. If setup
+You can also rebuild the base image and inspect base logs from the hamburger menu. If setup
 fails, the menu exposes a retry action.
 
 ## CLI Options

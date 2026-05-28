@@ -65,7 +65,7 @@ createApp({
       prepared: false,
       state: 'checking',
       name: 'toady-microsandbox-local',
-      message: 'Checking sandbox runtime...',
+      message: 'Checking base image...',
     });
     const baseLogs = reactive([]);
     const baseLogViewer = reactive({
@@ -659,7 +659,7 @@ createApp({
         return;
       }
       if (!baseStatus.prepared) {
-        setToast(baseStatus.message || 'Sandbox runtime is setting up automatically.', 'info');
+        setToast(baseStatus.message || 'Base image is setting up automatically.', 'info');
         return;
       }
       busy.value = true;
@@ -736,7 +736,7 @@ createApp({
     async function runSandboxAction(event, sandbox, successMessage) {
       if (!sandbox) return;
       if (event === 'sandbox:start' && !baseStatus.prepared) {
-        setToast(baseStatus.message || 'Sandbox runtime is setting up automatically.', 'info');
+        setToast(baseStatus.message || 'Base image is setting up automatically.', 'info');
         return;
       }
       if (event === 'sandbox:stop' || event === 'sandbox:destroy' || event === 'sandbox:refresh-runtime') {
@@ -748,9 +748,9 @@ createApp({
         if (event === 'sandbox:stop') setAction(`Stopping ${sandbox.slug}...`, sandbox.slug);
         if (event === 'sandbox:refresh-runtime') {
           setAction(
-            `Refreshing ${sandbox.slug} runtime...`,
+            `Updating ${sandbox.slug} agent CLIs...`,
             sandbox.slug,
-            'Checks agent CLI versions first and rebuilds only when updates are available.'
+            'Checks CLI versions first and rebuilds the shared base only when needed.'
           );
         }
         const response = await call(event, { id: sandbox.slug });
@@ -764,7 +764,7 @@ createApp({
         if (event === 'sandbox:refresh-runtime' && response?.sandbox?.last_status === 'running') {
           setAction(`Opening terminal for ${sandbox.slug}...`, sandbox.slug);
           await openTerminal(response.sandbox, { manageBusy: false, manageAction: false });
-          setToast(response.message || 'Runtime refreshed and terminal reopened.', 'success');
+          setToast(response.message || 'Agent CLIs updated and terminal reopened.', 'success');
           return;
         }
         if (event === 'sandbox:refresh-runtime') {
@@ -1022,7 +1022,7 @@ createApp({
           Object.assign(baseStatus, {
             prepared: false,
             state: 'preparing',
-            message: rebuild ? 'Rebuilding Microsandbox base...' : 'Preparing Microsandbox base...',
+            message: rebuild ? 'Rebuilding base image...' : 'Preparing base image...',
           });
         } else {
           setToast(response.message || 'Base preparation is already running.', 'info');
@@ -1220,10 +1220,10 @@ createApp({
                 <i class="menu-item-icon" data-lucide="hammer"></i><span class="menu-item-label">Retry setup</span>
               </button>
               <button class="menu-item" type="button" :disabled="basePreparing" @click="requestBasePrepare(true)">
-                <i class="menu-item-icon" data-lucide="refresh-ccw"></i><span class="menu-item-label">Rebuild runtime</span>
+                <i class="menu-item-icon" data-lucide="refresh-ccw"></i><span class="menu-item-label">Rebuild base image</span>
               </button>
               <button class="menu-item" type="button" @click="openBaseLogs">
-                <i class="menu-item-icon" data-lucide="scroll-text"></i><span class="menu-item-label">Runtime logs</span>
+                <i class="menu-item-icon" data-lucide="scroll-text"></i><span class="menu-item-label">Base logs</span>
               </button>
               <div class="menu-divider" aria-hidden="true"></div>
               <button class="menu-item" type="button" @click="openGithub">
@@ -1302,8 +1302,8 @@ createApp({
               <button class="menu-item" type="button" :disabled="busy || sandbox.last_status !== 'running'" @click="closeMenus(); runSandboxAction('sandbox:stop', sandbox, 'Stopped.')">
                 <i class="menu-item-icon" data-lucide="square"></i><span class="menu-item-label">Stop</span>
               </button>
-              <button class="menu-item" type="button" :disabled="busy" @click="closeMenus(); runSandboxAction('sandbox:refresh-runtime', sandbox, 'Runtime dependencies are current.')">
-                <i class="menu-item-icon" data-lucide="package-check"></i><span class="menu-item-label">Refresh runtime dependencies</span>
+              <button class="menu-item" type="button" :disabled="busy" @click="closeMenus(); runSandboxAction('sandbox:refresh-runtime', sandbox, 'Agent CLIs are current.')">
+                <i class="menu-item-icon" data-lucide="package-check"></i><span class="menu-item-label">Update agent CLIs</span>
               </button>
               <button class="menu-item" type="button" @click="openDetailsModal(sandbox)">
                 <i class="menu-item-icon" data-lucide="info"></i><span class="menu-item-label">Details</span>
@@ -1381,7 +1381,7 @@ createApp({
           <div class="modal-body">
             <div class="base-banner" :data-state="baseStatus.state" v-if="!baseStatus.prepared">
               <div>
-                <strong>{{ baseStatus.message || 'Setting up sandbox runtime...' }}</strong>
+                <strong>{{ baseStatus.message || 'Setting up base image...' }}</strong>
                 <span v-if="baseStatus.error">{{ baseStatus.error }}</span>
                 <span v-else>Toady is doing this automatically. Sandbox creation will be available when setup finishes.</span>
               </div>
@@ -1566,7 +1566,7 @@ createApp({
         <section class="modal-panel log-viewer">
           <header class="modal-header">
             <div>
-              <h2>Runtime Logs</h2>
+              <h2>Base Logs</h2>
               <p>
                 <span v-if="basePreparing">Preparing now</span>
                 <span v-else-if="baseLogViewer.returncode !== null">Exit {{ baseLogViewer.returncode }}</span>
@@ -1586,7 +1586,7 @@ createApp({
           <div v-if="baseLogs.length" class="log-output">
             <div v-for="(line, index) in baseLogs" :key="index">{{ line }}</div>
           </div>
-          <div v-else class="log-empty">No runtime setup logs in this server session.</div>
+          <div v-else class="log-empty">No base setup logs in this server session.</div>
         </section>
       </div>
 

@@ -589,7 +589,7 @@ class SandboxService:
             metadata = toady_base.read_base_metadata(metadata_path)
             rebuilt_base = True
         if not metadata:
-            raise SandboxServiceError("Sandbox runtime refresh did not produce base metadata.")
+            raise SandboxServiceError("Agent CLI update did not produce base metadata.")
 
         target_generation = str(metadata.get("generation") or "")
         was_running = manifest.last_status == "running"
@@ -607,7 +607,7 @@ class SandboxService:
                 "rebuilt_base": rebuilt_base,
                 "updated": False,
                 "base": metadata,
-                "message": f"{manifest.slug} is already on the current sandbox runtime.",
+                "message": f"{manifest.slug} already has the current agent CLIs.",
             }
 
         self._log_sandbox_event(
@@ -638,7 +638,7 @@ class SandboxService:
                 "rebuilt_base": rebuilt_base,
                 "updated": True,
                 "base": metadata,
-                "message": f"Refreshed runtime dependencies and restarted {manifest.slug}.",
+                "message": f"Updated agent CLIs and restarted {manifest.slug}.",
             }
 
         refreshed = self.store.get(manifest.slug)
@@ -659,7 +659,7 @@ class SandboxService:
             "rebuilt_base": rebuilt_base,
             "updated": True,
             "base": metadata,
-            "message": f"Refreshed runtime dependencies for {manifest.slug}; sandbox remains {saved['last_status']}.",
+            "message": f"Updated agent CLIs for {manifest.slug}; sandbox remains {saved['last_status']}.",
         }
 
     async def start(self, slug: str) -> dict[str, Any]:

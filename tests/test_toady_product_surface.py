@@ -267,7 +267,7 @@ def test_base_status_auto_starts_missing_base_setup(tmp_path, monkeypatch):
     assert response["ok"] is True
     assert started == [("_base_prepare_worker", (False, True))]
     assert response["base"]["state"] == "preparing"
-    assert response["base"]["message"] == "Setting up sandbox runtime..."
+    assert response["base"]["message"] == "Setting up base image..."
     assert response["base"]["prepare"]["running"] is True
     assert response["base"]["prepare"]["automatic"] is True
 
@@ -311,7 +311,8 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "menu-section" not in app_js
     assert ".menu-section" not in css
     assert ".menu-label" not in css
-    assert "Runtime logs" in app_js
+    assert "Base logs" in app_js
+    assert "Runtime logs" not in app_js
     assert "Waiting for setup" in app_js
     assert "Toady is doing this automatically." in app_js
     assert "Prepare the base from the main menu" not in app_js
@@ -347,7 +348,8 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "menu-item-label" in app_js
     assert app_js.count('<button class="menu-item') == app_js.count('class="menu-item-icon"')
     assert "New terminal" in app_js
-    assert "Refresh runtime dependencies" in app_js
+    assert "Update agent CLIs" in app_js
+    assert "Refresh runtime dependencies" not in app_js
     assert "sandbox:refresh-runtime" in app_js
     assert 'data-lucide="package-check"' in app_js
     assert "terminal-tab-add" in app_js

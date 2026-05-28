@@ -615,10 +615,10 @@ def create_app(
 
     def _base_prepare_status_message(rebuild=False, automatic=False):
         if rebuild:
-            return "Rebuilding sandbox runtime..."
+            return "Rebuilding base image..."
         if automatic:
-            return "Setting up sandbox runtime..."
-        return "Setting up sandbox runtime..."
+            return "Setting up base image..."
+        return "Setting up base image..."
 
     def _set_base_prepare_started(*, rebuild=False, automatic=False):
         state = app.config["base_prepare"]
@@ -925,7 +925,7 @@ def create_app(
 
         slug = (payload or {}).get("slug") or (payload or {}).get("id") or ""
         if app.config["base_prepare"].get("running"):
-            exc = SandboxServiceError("Sandbox runtime setup is already running. Try refresh again when it finishes.")
+            exc = SandboxServiceError("Base image setup is already running. Try the update again when it finishes.")
             return _sandbox_error_payload(exc)
         _close_toady_sandbox_terminals(slug)
         socketio.emit("sandbox:status", {"id": slug, "status": "refreshing"}, to="authenticated")
