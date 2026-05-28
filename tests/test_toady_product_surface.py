@@ -266,6 +266,11 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "document.addEventListener('click', closeMenusOnOutsideClick)" in app_js
     assert "if (!focused && sandbox.last_status === 'running')" in app_js
     assert "silent: true" in app_js
+    assert "terminalReplayMuted" in app_js
+    assert "terminalReplayToken" in app_js
+    assert "if (terminalReplayMuted.value) return;" in app_js
+    assert "await writeTerminalReplay(record.transcript)" in app_js
+    assert "if (terminalReplayToken.value === replayToken) terminalReplayMuted.value = false;" in app_js
     assert "connection-dot" in app_js
     assert "Connected" not in app_js
     assert 'title="Refresh"' not in app_js

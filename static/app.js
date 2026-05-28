@@ -86,6 +86,8 @@ createApp({
     const terminalResizeDisposable = ref(null);
     const terminalResizeObserver = ref(null);
     const terminalFitTimer = ref(null);
+    const terminalReplayMuted = ref(false);
+    const terminalReplayToken = ref(0);
     const terminalTextDecoders = new Map();
     const mainMenuOpen = ref(false);
     const sandboxMenuOpen = ref(false);
@@ -366,6 +368,7 @@ createApp({
       });
       terminal.value.open(terminalRef.value);
       terminalDataDisposable.value = terminal.value.onData((data) => {
+        if (terminalReplayMuted.value) return;
         if (!activeTerminal.id || activeTerminal.status !== 'running') return;
         socket.emit('sandbox:terminal:input', { terminal_id: activeTerminal.id, data });
       });
@@ -380,12 +383,33 @@ createApp({
       window.addEventListener('resize', scheduleTerminalFit);
       await nextTick();
       const record = currentTerminalRecord();
-      if (record?.transcript) terminal.value.write(record.transcript);
+      if (record?.transcript) await writeTerminalReplay(record.transcript);
       fitTerminal();
       terminal.value.focus();
     }
 
+    function writeTerminalReplay(transcript) {
+      if (!terminal.value || !transcript) return Promise.resolve();
+      const replayTerminal = terminal.value;
+      const replayToken = terminalReplayToken.value + 1;
+      terminalReplayToken.value = replayToken;
+      terminalReplayMuted.value = true;
+      return new Promise((resolve, reject) => {
+        try {
+          replayTerminal.write(transcript, () => {
+            if (terminalReplayToken.value === replayToken) terminalReplayMuted.value = false;
+            resolve();
+          });
+        } catch (error) {
+          if (terminalReplayToken.value === replayToken) terminalReplayMuted.value = false;
+          reject(error);
+        }
+      });
+    }
+
     function disposeTerminal() {
+      terminalReplayToken.value += 1;
+      terminalReplayMuted.value = false;
       if (terminalResizeObserver.value) {
         terminalResizeObserver.value.disconnect();
         terminalResizeObserver.value = null;
