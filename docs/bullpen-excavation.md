@@ -205,3 +205,23 @@ Implemented baseline:
   exposed through the UI Logs action.
 - Terminal replay is bounded by both byte and line limits and returns a
   truncation marker on rejoin when output was dropped.
+
+## Checkpoint: Phase 3 Legacy Server Module Removal
+
+Completed after the app-surface cleanup:
+
+- Removed the detached Bullpen agent, event, MCP, model-catalog, task, team,
+  terminal, transfer, usage, worker, worktree, scheduler, profile, validation,
+  and service-worker server modules.
+- Removed their legacy-only pytest coverage.
+- Simplified `server/workspace_manager.py` to a temporary compatibility shim
+  that only exposes the old global auth directory constants for the remaining
+  legacy `bullpen.py` and `deploy-sandbox.py` entry points.
+- Updated auth tests to seed credentials through `TOADY_HOME` instead of
+  patching the removed workspace manager.
+
+Next cleanup target:
+
+- Remove `bullpen.py`, `deploy-sandbox.py`, and the remaining deploy-sandbox
+  tests after confirming every Microsandbox workaround they preserve is covered
+  by the extracted Toady runtime modules.

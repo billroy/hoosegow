@@ -28,6 +28,9 @@
 - The second cleanup pass has removed legacy Bullpen REST routes, project
   Socket.IO startup, MCP-token socket auth, legacy terminal-manager wiring, and
   Bullpen app-state helpers from `server/app.py`.
+- The third cleanup pass has removed detached Bullpen server modules and
+  legacy-only tests, leaving `server/workspace_manager.py` only as a temporary
+  auth-directory compatibility shim for the remaining deploy-era scripts.
 - Remaining copied Bullpen reference code should be removed in dependency-aware
   slices after each workaround is covered by Toady tests.
 - Base-prep duration was not remeasured because a forced rebuild is optional

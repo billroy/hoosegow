@@ -1,10 +1,9 @@
 """End-to-end tests for HTTP + Socket.IO authentication gating.
 
-The test harness relies on the autouse ``_isolate_global_registry``
-fixture in ``tests/conftest.py`` to patch ``server.workspace_manager.GLOBAL_DIR``
-to a per-test throwaway directory. For each test that needs auth enabled
-we write a ``.env`` file into that patched directory *before* calling
-``create_app`` so the app picks up the credential.
+The test harness relies on the autouse ``_isolate_global_registry`` fixture in
+``tests/conftest.py`` to set ``TOADY_HOME`` to a per-test throwaway directory.
+For each test that needs auth enabled we write a ``.env`` file into that
+directory *before* calling ``create_app`` so the app picks up the credential.
 """
 
 import os
@@ -13,7 +12,6 @@ from datetime import timedelta
 
 import pytest
 
-import server.workspace_manager as wm
 from server import auth
 from server.app import create_app, socketio
 
@@ -40,6 +38,10 @@ def _seed_credentials(global_dir, users=None):
     )
 
 
+def _test_home():
+    return os.environ["TOADY_HOME"]
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -48,7 +50,7 @@ def _seed_credentials(global_dir, users=None):
 @pytest.fixture
 def auth_app(tmp_path):
     """Flask app with auth ENABLED via a seeded env file."""
-    _seed_credentials(wm.GLOBAL_DIR)
+    _seed_credentials(_test_home())
     with tempfile.TemporaryDirectory(prefix="bullpen_auth_") as ws:
         app = create_app(ws, no_browser=True)
         yield app
@@ -63,8 +65,8 @@ def auth_client(auth_app):
 @pytest.fixture
 def noauth_app(tmp_path):
     """Flask app with auth DISABLED (no env file written)."""
-    # Sanity: the conftest fixture patched GLOBAL_DIR, and we do NOT seed.
-    assert not os.path.exists(auth.env_path(wm.GLOBAL_DIR))
+    # Sanity: the conftest fixture set TOADY_HOME, and we do NOT seed.
+    assert not os.path.exists(auth.env_path(_test_home()))
     with tempfile.TemporaryDirectory(prefix="bullpen_noauth_") as ws:
         app = create_app(ws, no_browser=True)
         yield app
@@ -163,7 +165,7 @@ class TestHttpAuthEnabled:
         assert "SameSite=Lax" in cookie
 
     def test_authenticated_cookie_survives_app_restart(self):
-        _seed_credentials(wm.GLOBAL_DIR)
+        _seed_credentials(_test_home())
         with tempfile.TemporaryDirectory(prefix="bullpen_auth_restart_") as ws:
             first_app = create_app(ws, no_browser=True)
             first_client = first_app.test_client()
@@ -181,7 +183,7 @@ class TestHttpAuthEnabled:
 
     def test_session_lifetime_uses_bounded_env_setting(self, monkeypatch):
         monkeypatch.setenv("BULLPEN_SESSION_DAYS", "7")
-        _seed_credentials(wm.GLOBAL_DIR)
+        _seed_credentials(_test_home())
         with tempfile.TemporaryDirectory(prefix="bullpen_auth_lifetime_") as ws:
             app = create_app(ws, no_browser=True)
             assert app.config["PERMANENT_SESSION_LIFETIME"] == timedelta(days=7)
