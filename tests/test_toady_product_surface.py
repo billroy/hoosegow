@@ -354,7 +354,10 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "background: var(--primary);" in css
     assert "color: var(--primary-text);" in css
     assert ".sidebar-resizer" in css
-    assert ".menu-item-icon" in css
+    assert ".menu-panel .menu-item-icon" in css
+    assert ".menu-panel .menu-item-label" in css
+    assert ".sidebar-heading > span" in css
+    assert ".sidebar-heading span {" not in css
     assert "grid-template-columns: 20px minmax(0, 1fr);" in css
     assert "font-size: 15px;" in css
     assert "width: 18px;" in css

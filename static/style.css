@@ -314,14 +314,14 @@ button:disabled {
   background: var(--panel-2);
 }
 
-.menu-item-icon {
+.menu-panel .menu-item-icon {
   width: 18px;
   height: 18px;
   color: var(--muted);
   pointer-events: none;
 }
 
-.menu-item-label {
+.menu-panel .menu-item-label {
   min-width: 0;
   color: var(--text);
   font: inherit;
@@ -372,7 +372,7 @@ button:disabled {
   text-transform: uppercase;
 }
 
-.sidebar-heading span {
+.sidebar-heading > span {
   color: var(--subtle);
   font-size: 13px;
 }
