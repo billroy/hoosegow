@@ -1,5 +1,36 @@
 # Release Smoke Notes
 
+## 2026-05-28
+
+Host: local Apple Silicon development machine.
+
+Prepared base:
+
+- Name: `toady-microsandbox-local`
+- Path: `/Users/bill/.microsandbox/snapshots/toady-microsandbox-local`
+- Size: `1.1G` as last measured on 2026-05-27
+- Prep duration: not remeasured in this pass.
+
+Passing real Microsandbox smokes:
+
+```bash
+TOADY_RUN_REAL_MICROSANDBOX=1 pytest -q -m real_microsandbox
+```
+
+Observed output:
+
+```text
+2 passed, 1090 deselected in 3.67s
+```
+
+Notes:
+
+- The first attempt inside Codex's default sandbox failed before Microsandbox
+  because binding an ephemeral localhost port raised `PermissionError: [Errno
+  1] Operation not permitted`.
+- The same command passed when rerun with the approved external execution path,
+  which is required for localhost port-binding real smokes.
+
 ## 2026-05-27
 
 Host: local Apple Silicon development machine.
