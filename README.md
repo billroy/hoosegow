@@ -14,9 +14,11 @@ inside sandbox terminals yourself.
 
 ## Current Status
 
-This is an active first-draft implementation. The local Microsandbox path is
-usable for prepare/create/start/terminal/port workflows, but release hardening
-and Bullpen product-surface cleanup are still in progress.
+This is an active first-draft implementation. The local Microsandbox path covers
+prepare/create/start/terminal/port/log workflows, with create auto-starting the
+sandbox and opening the first terminal. Remaining v1 work is release hardening:
+final real-Microsandbox/browser smokes, server-log polish, and deciding whether
+to delete or keep the copied Bullpen reference modules before `0.1.0`.
 
 ## Quick Start
 
@@ -127,6 +129,7 @@ The same real smokes are available as an opt-in pytest target:
 TOADY_RUN_REAL_MICROSANDBOX=1 pytest -q -m real_microsandbox
 ```
 
-The repo still contains copied Bullpen modules and tests while excavation is in
-progress. See `docs/spec.md` and `docs/bullpen-excavation.md` for the current
-plan and provenance notes.
+The repo still contains copied Bullpen modules and tests as excavation
+reference. Toady mode does not register the legacy product REST routes, serve
+legacy product static assets, or eagerly import the legacy product modules.
+See `docs/spec.md` and `docs/bullpen-excavation.md` for provenance notes.

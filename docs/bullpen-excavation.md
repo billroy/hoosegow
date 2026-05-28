@@ -67,10 +67,13 @@ From the P-1 Toady spike:
 
 ## Next Excavation Pass
 
-1. Split `deploy-sandbox.py` into runtime/base/bootstrap modules while keeping
-   tests close to the copied behavior.
-2. Delete the Bullpen product surface only after the Toady shell, auth, health,
-   and Socket.IO startup path are stable.
+1. Decide whether copied Bullpen reference modules/tests/static assets should
+   be deleted before `0.1.0` or kept as private excavation reference.
+2. If deleting now, remove the legacy product modules in dependency-aware
+   slices and archive or delete the corresponding Bullpen tests.
+3. If keeping now, keep the Toady-mode quarantine tests strict: no legacy REST
+   routes, no legacy product static assets, and no eager imports of legacy
+   product modules on the Toady startup path.
 
 ## Checkpoint: Toady Entrypoint Seed
 
@@ -80,18 +83,19 @@ Completed in the first Build Go pass:
 - Removed visible Bullpen product subcommands from the Toady CLI (`mcp`,
   `mcp-token`, `ticket`, `model-catalog`).
 - Set the default Toady web port to `5858`.
-- Added the v1 CLI flag surface from the spec, with base preparation currently
-  returning an explicit "not wired yet" error until `deploy-sandbox.py` is
-  extracted.
+- Added the v1 CLI flag surface from the spec and wired
+  `--prepare-base` / `--rebuild-base` to the extracted base-prep path.
 - Switched the copied global state default from `~/.bullpen` to `~/.toady`.
 - Switched auth/env naming to `TOADY_*`, preserving `BULLPEN_*` reads only as
   migration/debug fallbacks inside copied modules.
 
-Still intentionally not done:
+Current residue:
 
-- The copied Flask app still contains Bullpen product routes/modules. They stay
-  until the Toady shell and sandbox lifecycle modules exist, so server startup
-  can remain testable during excavation.
+- The repository still contains copied Bullpen product modules, static files,
+  and tests as excavation reference.
+- Toady mode no longer registers legacy product REST routes, serves legacy
+  product static assets, constructs the legacy workspace manager, or eagerly
+  imports the legacy product event/MCP/service-worker/terminal modules.
 - `bullpen.py` remains as an imported reference file and should not be used as
   the Toady entrypoint.
 
@@ -110,14 +114,15 @@ Started in the first Build Go pass:
 - Added `server/base.py` for the Bullpen-style prepare-sandbox -> snapshot ->
   validation flow, including Codex native package integrity checks.
 - Wired `python3 toady.py --prepare-base` / `--rebuild-base` to the extracted
-  base-prep code path. This path has not been run yet in Build Go because it is
-  an expensive real Microsandbox build with dependency downloads.
+  base-prep code path.
 
 Verification so far:
 
 - Extracted modules compile.
 - Basic runtime-env import probe confirms `/home/agent` and controller env.
-- The copied Flask baseline still starts and `/health` returns `200` after the
+- The prepared base `toady-microsandbox-local` exists locally and the latest
+  recorded size is in `docs/release-smokes.md`.
+- The Toady Flask/Socket.IO app starts and `/health` returns `200` after the
   extraction.
 
 ## Checkpoint: Sandbox Control Plane Direction
@@ -138,8 +143,17 @@ Implemented baseline:
 
 - Added manifest-backed `SandboxService` plus Socket.IO commands:
   `sandbox:list`, `sandbox:create`, `sandbox:get`, `sandbox:start`,
-  `sandbox:stop`, and `sandbox:destroy`.
+  `sandbox:stop`, `sandbox:destroy`, and `sandbox:logs`.
 - Added broadcasts: `sandboxes:updated`, `sandbox:status`, `sandbox:error`,
   and `sandbox:destroyed`.
 - Removed the new sandbox REST routes from the Build Go pass before treating
   them as product API.
+- Added Socket.IO commands for workspace browsing, base status/preparation/logs,
+  dev-port publish/unpublish/reassign, and terminal open/list/join/status/input/
+  resize/close.
+- Create now implies start, and successful start opens the first terminal in
+  the UI.
+- Added per-sandbox lifecycle logs under `~/.toady/logs/sandbox-<slug>.log`,
+  exposed through the UI Logs action.
+- Terminal replay is bounded by both byte and line limits and returns a
+  truncation marker on rejoin when output was dropped.
