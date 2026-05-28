@@ -962,6 +962,29 @@ input:focus {
   height: 14px;
 }
 
+.terminal-tab-add {
+  display: grid;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px dashed #3a4855;
+  border-radius: 8px;
+  background: transparent;
+  color: #9ba9b8;
+}
+
+.terminal-tab-add:hover {
+  border-color: #3d8c84;
+  background: #152729;
+  color: var(--text);
+}
+
+.terminal-tab-add svg {
+  width: 15px;
+  height: 15px;
+}
+
 .terminal-viewport {
   position: relative;
   flex: 1 1 auto;

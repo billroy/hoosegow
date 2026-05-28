@@ -1205,10 +1205,13 @@ createApp({
                   <i data-lucide="x"></i>
                 </button>
               </div>
+              <button class="terminal-tab-add" type="button" title="New terminal" :disabled="!canOpenTerminal" @click="openTerminal(selected)">
+                <i data-lucide="plus"></i>
+              </button>
             </div>
             <div v-if="terminalVisible" ref="terminalRef" class="terminal-viewport"></div>
             <div v-else class="terminal-placeholder">
-              <span v-if="selected.last_status === 'running'">Use the sandbox row menu to open a terminal.</span>
+              <span v-if="selected.last_status === 'running'">Use + to open a terminal.</span>
               <span v-else>{{ selected.last_status === 'configured' ? 'Sandbox is configured.' : 'Sandbox is stopped.' }}</span>
             </div>
           </div>

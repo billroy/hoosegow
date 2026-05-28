@@ -303,6 +303,10 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "menu-item-label" in app_js
     assert app_js.count('<button class="menu-item') == app_js.count('class="menu-item-icon"')
     assert "New terminal" in app_js
+    assert "terminal-tab-add" in app_js
+    assert ':disabled="!canOpenTerminal"' in app_js
+    assert '@click="openTerminal(selected)"' in app_js
+    assert "Use + to open a terminal." in app_js
     assert "Sandboxes ({{ sortedSandboxes.length }})" in app_js
     assert "closeMenusOnOutsideClick" in app_js
     assert "document.addEventListener('click', closeMenusOnOutsideClick)" in app_js
@@ -326,6 +330,7 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert ".menu-panel" in css
     assert ".sidebar-resizer" in css
     assert ".menu-item-icon" in css
+    assert ".terminal-tab-add" in css
 
 
 def test_real_microsandbox_smokes_default_to_toady_base():
