@@ -15,9 +15,20 @@ from server.microsandbox_runtime import (
 )
 
 
+MICROSANDBOX_OK_VERSION = "0.5.2"
+
+
 @dataclass
 class DataNetwork:
     max_connections: int
+
+
+def allow_supported_microsandbox_version(monkeypatch):
+    monkeypatch.setattr(
+        microsandbox_runtime,
+        "microsandbox_distribution_version",
+        lambda module=None: MICROSANDBOX_OK_VERSION,
+    )
 
 
 def test_network_with_max_connections_preserves_dataclass_type():
@@ -96,6 +107,7 @@ def test_runtime_create_uses_prepared_snapshot_bullpen_volumes_and_small_env(tmp
         Network=FakeNetwork,
     )
     monkeypatch.setattr(importlib, "import_module", lambda name: module)
+    allow_supported_microsandbox_version(monkeypatch)
     monkeypatch.setattr(microsandbox_runtime, "ensure_host_nofile", lambda target: (target, target))
 
     workspace = tmp_path / "workspace"
@@ -156,6 +168,7 @@ def test_prepared_base_snapshot_path_opens_lazy_snapshot(monkeypatch):
         Network=object,
     )
     monkeypatch.setattr(importlib, "import_module", lambda name: module)
+    allow_supported_microsandbox_version(monkeypatch)
 
     path = asyncio.run(MicrosandboxRuntime().prepared_base_snapshot_path("base"))
 
@@ -181,6 +194,7 @@ def test_ensure_installed_runs_sdk_installer_when_missing(monkeypatch):
         install=install,
     )
     monkeypatch.setattr(importlib, "import_module", lambda name: module)
+    allow_supported_microsandbox_version(monkeypatch)
 
     asyncio.run(MicrosandboxRuntime().ensure_installed())
 
@@ -189,6 +203,25 @@ def test_ensure_installed_runs_sdk_installer_when_missing(monkeypatch):
 
 def test_runtime_init_reports_missing_sdk_api(monkeypatch):
     monkeypatch.setattr(importlib, "import_module", lambda name: SimpleNamespace(Sandbox=object))
+    allow_supported_microsandbox_version(monkeypatch)
 
     with pytest.raises(ToadyRuntimeError, match="missing the expected SDK API"):
+        MicrosandboxRuntime()
+
+
+def test_runtime_init_rejects_stale_microsandbox_distribution(monkeypatch):
+    module = SimpleNamespace(
+        Sandbox=object,
+        Snapshot=object,
+        Volume=object,
+        Network=object,
+    )
+    monkeypatch.setattr(importlib, "import_module", lambda name: module)
+    monkeypatch.setattr(
+        microsandbox_runtime,
+        "microsandbox_distribution_version",
+        lambda module=None: "0.4.4",
+    )
+
+    with pytest.raises(ToadyRuntimeError, match="published-port TCP stall fix"):
         MicrosandboxRuntime()

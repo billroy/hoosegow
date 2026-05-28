@@ -12,6 +12,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass, field, replace as dataclass_replace
+from importlib import metadata
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,7 @@ except ImportError:  # pragma: no cover - unsupported host path.
 
 BASE_DEFAULT = "toady-microsandbox-local"
 SOURCE_IMAGE_DEFAULT = "node:22-bookworm"
+MICROSANDBOX_MIN_VERSION = "0.5.2"
 VCPUS_DEFAULT = 4
 MEMORY_MIB_DEFAULT = 4096
 HOST_NOFILE_DEFAULT = 12000
@@ -55,6 +57,42 @@ async def maybe(value: Any) -> Any:
     if inspect.isawaitable(value):
         return await value
     return value
+
+
+def comparable_version(value: str) -> tuple[int, int, int]:
+    numeric = []
+    for part in value.split("."):
+        digits = ""
+        for char in part:
+            if not char.isdigit():
+                break
+            digits += char
+        if not digits:
+            break
+        numeric.append(int(digits))
+    return tuple((numeric + [0, 0, 0])[:3])
+
+
+def microsandbox_distribution_version(module: Any | None = None) -> str:
+    try:
+        return metadata.version("microsandbox")
+    except metadata.PackageNotFoundError:
+        version = getattr(module, "__version__", "")
+        return str(version) if version else ""
+
+
+def validate_microsandbox_version(version: str) -> None:
+    if not version:
+        raise ToadyRuntimeError(
+            "Could not determine the installed microsandbox package version. "
+            "Install the pinned runtime with: python3 -m pip install -r requirements.txt"
+        )
+    if comparable_version(version) < comparable_version(MICROSANDBOX_MIN_VERSION):
+        raise ToadyRuntimeError(
+            f"Toady requires microsandbox >= {MICROSANDBOX_MIN_VERSION} because older releases "
+            "are missing the published-port TCP stall fix. "
+            f"Installed version: {version}. Upgrade with: python3 -m pip install -r requirements.txt"
+        )
 
 
 def detect_supported_host() -> bool:
@@ -216,8 +254,9 @@ class MicrosandboxRuntime:
         except ImportError as exc:
             raise ToadyRuntimeError(
                 "The microsandbox Python package is required. Install it with: "
-                "python3 -m pip install microsandbox"
+                "python3 -m pip install -r requirements.txt"
             ) from exc
+        validate_microsandbox_version(microsandbox_distribution_version(self.module))
 
         try:
             self.Sandbox = getattr(self.module, "Sandbox")

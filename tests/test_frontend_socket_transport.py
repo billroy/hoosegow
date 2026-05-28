@@ -16,5 +16,6 @@ def test_frontend_prefers_websocket_with_polling_fallback():
 def test_requirements_include_threading_websocket_dependency():
     requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
     assert "simple-websocket" in requirements
+    assert "microsandbox==0.5.2" in requirements
     assert "websocket-client" not in requirements
     assert "eventlet" not in requirements

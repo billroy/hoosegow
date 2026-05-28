@@ -3,6 +3,9 @@
 ## Verified
 
 - CLI version: `python3 toady.py --version` reports `toady 0.1.0`.
+- Host Microsandbox dependency is pinned in `requirements.txt` as
+  `microsandbox==0.5.2`; this includes the published-port TCP stall fix needed
+  by Toady.
 - Focused Toady/auth suite passes: latest run `99 passed in 6.83s`.
 - Frontend syntax check passes: `node --check static/app.js`.
 - Local health smoke passes: `http://127.0.0.1:5855/health` returns
