@@ -306,7 +306,12 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "terminal-tab-add" in app_js
     assert ':disabled="!canOpenTerminal"' in app_js
     assert '@click="openTerminal(selected)"' in app_js
-    assert "Use + to open a terminal." in app_js
+    assert "Use + to open a terminal." not in app_js
+    assert "Opening terminal..." in app_js
+    assert "shouldAutoReplace" in app_js
+    assert "options.autoReplace !== false" in app_js
+    assert "await openTerminal(selectedSandbox, { manageBusy: false, manageAction: false, silent: true })" in app_js
+    assert "await closeTerminal({ ...options, autoReplace: false, terminalId })" in app_js
     assert "Sandboxes ({{ sortedSandboxes.length }})" in app_js
     assert "closeMenusOnOutsideClick" in app_js
     assert "document.addEventListener('click', closeMenusOnOutsideClick)" in app_js

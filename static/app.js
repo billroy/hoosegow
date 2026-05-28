@@ -719,6 +719,7 @@ createApp({
 
     async function closeTerminal(options = {}) {
       const terminalId = options.terminalId || activeTerminal.id;
+      const selectedSandbox = selected.value;
       if (terminalId && options.remote !== false && !options.force) {
         const foreground = await foregroundProcessForTerminal(terminalId);
         if (foreground) {
@@ -737,6 +738,11 @@ createApp({
       const wasActive = terminalId === activeTerminal.id;
       const sandboxId = index >= 0 ? terminals[index].sandbox_id : activeTerminal.sandbox_id;
       if (index >= 0) terminals.splice(index, 1);
+      const shouldAutoReplace = options.autoReplace !== false
+        && sandboxId
+        && sandboxId === selectedSandbox?.slug
+        && selectedSandbox.last_status === 'running'
+        && !terminals.some((item) => item.sandbox_id === sandboxId);
       terminalTextDecoders.delete(terminalId);
       if (wasActive) {
         disposeTerminal();
@@ -746,6 +752,9 @@ createApp({
           await nextTick();
           await ensureTerminal();
         }
+      }
+      if (shouldAutoReplace) {
+        await openTerminal(selectedSandbox, { manageBusy: false, manageAction: false, silent: true });
       }
       if (!options.silent) setToast('Terminal closed.', 'info');
       await nextTick();
@@ -757,7 +766,7 @@ createApp({
         .filter((item) => item.sandbox_id === sandboxId)
         .map((item) => item.id);
       for (const terminalId of ids) {
-        await closeTerminal({ ...options, terminalId });
+        await closeTerminal({ ...options, autoReplace: false, terminalId });
       }
     }
 
@@ -1211,7 +1220,7 @@ createApp({
             </div>
             <div v-if="terminalVisible" ref="terminalRef" class="terminal-viewport"></div>
             <div v-else class="terminal-placeholder">
-              <span v-if="selected.last_status === 'running'">Use + to open a terminal.</span>
+              <span v-if="selected.last_status === 'running'">Opening terminal...</span>
               <span v-else>{{ selected.last_status === 'configured' ? 'Sandbox is configured.' : 'Sandbox is stopped.' }}</span>
             </div>
           </div>
