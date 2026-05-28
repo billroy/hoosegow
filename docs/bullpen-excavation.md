@@ -67,13 +67,16 @@ From the P-1 Toady spike:
 
 ## Next Excavation Pass
 
-1. Decide whether copied Bullpen reference modules/tests/static assets should
-   be deleted before `0.1.0` or kept as private excavation reference.
-2. If deleting now, remove the legacy product modules in dependency-aware
-   slices and archive or delete the corresponding Bullpen tests.
-3. If keeping now, keep the Toady-mode quarantine tests strict: no legacy REST
-   routes, no legacy product static assets, and no eager imports of legacy
-   product modules on the Toady startup path.
+Decision for private `0.1.0`: keep copied Bullpen reference modules/tests/static
+assets in the tree, but keep them quarantined from the Toady runtime surface.
+
+Next pass after `0.1.0`:
+
+1. Remove the legacy product modules in dependency-aware slices.
+2. Archive or delete the corresponding Bullpen tests.
+3. Keep the Toady-mode quarantine tests strict until deletion is complete: no
+   legacy REST routes, no legacy product static assets, and no eager imports of
+   legacy product modules on the Toady startup path.
 
 ## Checkpoint: Toady Entrypoint Seed
 

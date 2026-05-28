@@ -14,12 +14,8 @@
 
 ## Remaining Before Tag
 
-- Decide whether copied Bullpen reference modules/tests/static assets stay in
-  the private `0.1.0` tree or are deleted first.
-- If keeping them, keep README/spec language explicit that they are quarantined
-  reference code, not product surface.
-- If deleting them, remove in dependency-aware slices and rerun the focused
-  Toady/auth suite plus real/browser smokes.
+- Keep copied Bullpen reference modules/tests/static assets in the private
+  `0.1.0` tree as quarantined reference code, not product surface.
 - Optionally remeasure base-prep duration with a forced rebuild; current base
   size is recorded, but prep duration is not.
 - Re-run final commands immediately before tagging:
