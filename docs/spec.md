@@ -76,7 +76,8 @@ There is no step 6.
   path, status, and an action menu for start, new terminal, stop, details,
   ports, logs, and destroy. The pane boundary is draggable.
 - **Main pane**: terminal-first surface with terminal tabs and the active
-  xterm.js viewport.
+  xterm.js viewport. Selecting a running sandbox with no open terminal starts
+  and focuses a terminal automatically.
 - **Top bar**: app title, hamburger menu for base-image status/actions, a
   light/dark toggle, and a Socket.IO status dot.
 - **Optional Files panel** (stretch): read-only browser of files under the

@@ -233,7 +233,10 @@ def test_toady_shell_has_theme_toggle_assets():
     assert "toggleTheme" in app_js
     assert ':data-lucide="theme ===' in app_js
     assert 'title="Toggle theme"' in app_js
+    assert "header-icon-button" in app_js
+    assert "header-menu-button" in app_js
     assert '<span class="menu-item-label">Toggle theme</span>' not in app_js
+    assert "{{ selected ? selected.slug" not in app_js
     assert 'html[data-theme="light"]' in css
 
 
@@ -254,7 +257,13 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "sandboxActionMenuSlug" in app_js
     assert "menu-item-icon" in app_js
     assert "menu-item-label" in app_js
+    assert app_js.count('<button class="menu-item') == app_js.count('class="menu-item-icon"')
     assert "New terminal" in app_js
+    assert "Sandboxes ({{ sortedSandboxes.length }})" in app_js
+    assert "closeMenusOnOutsideClick" in app_js
+    assert "document.addEventListener('click', closeMenusOnOutsideClick)" in app_js
+    assert "if (!focused && sandbox.last_status === 'running')" in app_js
+    assert "silent: true" in app_js
     assert "connection-dot" in app_js
     assert "Connected" not in app_js
     assert 'title="Refresh"' not in app_js

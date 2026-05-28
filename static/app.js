@@ -1,4 +1,4 @@
-const { createApp, computed, nextTick, reactive, ref, watch } = Vue;
+const { createApp, computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } = Vue;
 
 function formatDate(seconds) {
   if (!seconds) return '';
@@ -127,6 +127,11 @@ createApp({
       mainMenuOpen.value = false;
       sandboxMenuOpen.value = false;
       sandboxActionMenuSlug.value = '';
+    }
+
+    function closeMenusOnOutsideClick(event) {
+      if (event.target?.closest?.('.menu-wrap')) return;
+      closeMenus();
     }
 
     function toggleSandboxActionMenu(slug) {
@@ -448,6 +453,10 @@ createApp({
         await joinTerminal(terminalInfo, { focus: !focused });
         focused = true;
       }
+      if (!focused && sandbox.last_status === 'running') {
+        await openTerminal(sandbox, { manageBusy: false, manageAction: false, silent: true });
+        return;
+      }
       if (activeTerminal.id && !terminals.some((item) => item.id === activeTerminal.id)) {
         syncActiveTerminal(null);
         disposeTerminal();
@@ -630,7 +639,9 @@ createApp({
         await focusTerminal(record.id);
         await nextTick();
         await ensureTerminal();
-        setToast(`Terminal ${selectedTerminals.value.length} opened for ${sandbox.slug}.`, 'success');
+        if (!options.silent) {
+          setToast(`Terminal ${selectedTerminals.value.length} opened for ${sandbox.slug}.`, 'success');
+        }
       } catch (error) {
         setToast(error.message, 'error');
       } finally {
@@ -937,6 +948,14 @@ createApp({
       loadTerminalSessions().catch((error) => setToast(error.message, 'error'));
     });
 
+    onMounted(() => {
+      document.addEventListener('click', closeMenusOnOutsideClick);
+    });
+
+    onBeforeUnmount(() => {
+      document.removeEventListener('click', closeMenusOnOutsideClick);
+    });
+
     applyTheme();
     refreshIcons();
 
@@ -956,6 +975,7 @@ createApp({
       canStartSelected,
       closeTerminal,
       closeMenus,
+      closeMenusOnOutsideClick,
       connected,
       createModalOpen,
       createSandbox,
@@ -1013,7 +1033,7 @@ createApp({
       <header class="topbar">
         <div class="brand">
           <div class="menu-wrap">
-            <button class="icon-button" type="button" title="Main menu" @click="mainMenuOpen = !mainMenuOpen; sandboxMenuOpen = false">
+            <button class="icon-button header-menu-button" type="button" title="Main menu" @click="mainMenuOpen = !mainMenuOpen; sandboxMenuOpen = false; sandboxActionMenuSlug = ''">
               <i data-lucide="menu"></i>
             </button>
             <div v-if="mainMenuOpen" class="menu-panel main-menu">
@@ -1035,11 +1055,10 @@ createApp({
           </div>
           <div>
             <h1>Toady</h1>
-            <p>{{ selected ? selected.slug : 'Microsandbox terminals' }}</p>
           </div>
         </div>
         <div class="topbar-actions">
-          <button class="icon-button" type="button" title="Toggle theme" @click="toggleTheme">
+          <button class="icon-button header-icon-button" type="button" title="Toggle theme" @click="toggleTheme">
             <i :data-lucide="theme === 'dark' ? 'sun' : 'moon'"></i>
           </button>
           <span class="connection-dot" :class="{ online: connected }" :title="connected ? 'Socket connected' : 'Socket offline'"></span>
@@ -1048,9 +1067,8 @@ createApp({
 
       <aside class="sidebar">
         <div class="sidebar-heading">
-          <h2>Sandboxes</h2>
+          <h2>Sandboxes ({{ sortedSandboxes.length }})</h2>
           <span class="sidebar-heading-actions">
-            <span>{{ sortedSandboxes.length }}</span>
             <span class="menu-wrap">
               <button class="icon-button tiny" type="button" title="Sandbox menu" @click="sandboxMenuOpen = !sandboxMenuOpen; mainMenuOpen = false">
                 <i data-lucide="ellipsis"></i>

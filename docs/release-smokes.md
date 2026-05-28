@@ -36,7 +36,7 @@ Browser smoke:
 - URL: `http://127.0.0.1:5855/`
 - Final refresh:
   - `pytest -q tests/test_toady_sandbox_service.py tests/test_toady_sandbox_events.py tests/test_toady_terminal_events.py tests/test_toady_product_surface.py tests/test_toady_cli.py tests/test_auth.py tests/test_auth_e2e.py`
-    returned `98 passed in 6.84s`.
+    returned `98 passed in 7.63s`.
   - `node --check static/app.js` passed.
   - `python3 scripts/pty_controller_http_smoke.py` passed outside the command
     sandbox, where temporary localhost binding is allowed.
@@ -46,10 +46,19 @@ Browser smoke:
 - Verified hamburger menu exposes base readiness, base prepare/rebuild, base
   logs.
 - Verified theme toggle is in the header, not the hamburger menu.
+- Verified header height is 44px, the hamburger button is visually bare, and
+  no selected-sandbox subtitle appears under `Toady`.
+- Verified left-pane heading renders the count inline as `Sandboxes (n)`.
 - Verified Sandboxes menu exposes create sandbox, sandbox details, published
   ports, and sandbox logs.
 - Verified per-sandbox row menu exposes start, new terminal, stop, details,
   ports, logs, and destroy with Lucide menu icons.
+- Verified every command in the hamburger, Sandboxes, and row action menus has
+  a Lucide menu icon.
+- Verified hamburger, Sandboxes, and row action menus all dismiss when clicking
+  outside them.
+- Verified selecting a running sandbox with no terminal opens and focuses a
+  terminal automatically.
 - Verified create, details, and published-port modals open with existing
   sandbox state.
 - Verified terminal-focused workspace has no top-level refresh button and no
