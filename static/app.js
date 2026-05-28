@@ -87,6 +87,18 @@ createApp({
     const terminalResizeObserver = ref(null);
     const terminalFitTimer = ref(null);
     const terminalTextDecoders = new Map();
+    const mainMenuOpen = ref(false);
+    const sandboxMenuOpen = ref(false);
+    const createModalOpen = ref(false);
+    const detailsModalOpen = ref(false);
+    const portsModalOpen = ref(false);
+    const storedSidebarWidth = Number(window.localStorage.getItem('toady-sidebar-width') || 308);
+    const sidebarWidth = ref(Math.max(220, Math.min(460, storedSidebarWidth || 308)));
+    const sidebarResize = reactive({
+      active: false,
+      startX: 0,
+      startWidth: 0,
+    });
 
     const selected = computed(() => sandboxes.find((sandbox) => sandbox.slug === selectedSlug.value) || sandboxes[0] || null);
     const sortedSandboxes = computed(() => [...sandboxes].sort((a, b) => a.slug.localeCompare(b.slug)));
@@ -108,6 +120,58 @@ createApp({
       setToast._timer = window.setTimeout(() => {
         toast.message = '';
       }, 4200);
+    }
+
+    function closeMenus() {
+      mainMenuOpen.value = false;
+      sandboxMenuOpen.value = false;
+    }
+
+    function openCreateModal() {
+      closeMenus();
+      if (!form.name.trim()) form.name = nextSandboxName();
+      createModalOpen.value = true;
+      refreshIcons();
+    }
+
+    function openDetailsModal() {
+      if (!selected.value) return;
+      closeMenus();
+      detailsModalOpen.value = true;
+      refreshIcons();
+    }
+
+    function openPortsModal() {
+      if (!selected.value) return;
+      closeMenus();
+      portsModalOpen.value = true;
+      refreshIcons();
+    }
+
+    function beginSidebarResize(event) {
+      sidebarResize.active = true;
+      sidebarResize.startX = event.clientX;
+      sidebarResize.startWidth = sidebarWidth.value;
+      window.addEventListener('pointermove', updateSidebarResize);
+      window.addEventListener('pointerup', endSidebarResize);
+      event.currentTarget?.setPointerCapture?.(event.pointerId);
+      event.preventDefault();
+    }
+
+    function updateSidebarResize(event) {
+      if (!sidebarResize.active) return;
+      const nextWidth = sidebarResize.startWidth + event.clientX - sidebarResize.startX;
+      sidebarWidth.value = Math.max(220, Math.min(460, Math.round(nextWidth)));
+      scheduleTerminalFit();
+    }
+
+    function endSidebarResize() {
+      if (!sidebarResize.active) return;
+      sidebarResize.active = false;
+      window.removeEventListener('pointermove', updateSidebarResize);
+      window.removeEventListener('pointerup', endSidebarResize);
+      window.localStorage.setItem('toady-sidebar-width', String(sidebarWidth.value));
+      scheduleTerminalFit();
     }
 
     function setAction(label, sandboxId = '', detail = '') {
@@ -398,6 +462,7 @@ createApp({
     }
 
     async function openBaseLogs() {
+      closeMenus();
       baseLogViewer.open = true;
       await loadBaseLogs();
     }
@@ -415,6 +480,7 @@ createApp({
 
     async function openSandboxLogs(sandbox = selected.value) {
       if (!sandbox?.slug) return;
+      closeMenus();
       sandboxLogViewer.open = true;
       await loadSandboxLogs(sandbox);
     }
@@ -457,6 +523,8 @@ createApp({
         await loadSandboxes();
         setAction(`Opening terminal for ${response.sandbox.slug}...`, response.sandbox.slug, 'Create opens the first terminal automatically.');
         await openTerminal(started.sandbox, { manageBusy: false, manageAction: false });
+        createModalOpen.value = false;
+        picker.open = false;
         setToast(`Created ${response.sandbox.slug} and opened a terminal.`, 'success');
       } catch (error) {
         if (!options.confirmedSensitiveWorkspace && error.message.includes('Workspace confirmation required')) {
@@ -754,6 +822,7 @@ createApp({
 
     async function requestBasePrepare(rebuild = false) {
       try {
+        closeMenus();
         const response = await call('base:prepare', { rebuild: Boolean(rebuild) });
         if (response.started) {
           baseLogs.splice(0, baseLogs.length);
@@ -868,14 +937,18 @@ createApp({
       baseStatus,
       basePreparing,
       baseLogs,
+      beginSidebarResize,
       sandboxLogViewer,
       sandboxLogs,
       busy,
       canOpenTerminal,
       canStartSelected,
       closeTerminal,
+      closeMenus,
       connected,
+      createModalOpen,
       createSandbox,
+      detailsModalOpen,
       destroySandbox,
       form,
       formatDate,
@@ -885,7 +958,10 @@ createApp({
       loadSandboxLogs,
       loadTerminalSessions,
       openTerminal,
+      openCreateModal,
+      openDetailsModal,
       openBaseLogs,
+      openPortsModal,
       openSandboxLogs,
       operationBySandbox,
       copyPortUrl,
@@ -900,10 +976,12 @@ createApp({
       focusTerminal,
       requestBasePrepare,
       runSandboxAction,
+      sandboxMenuOpen,
       selected,
       selectedSlug,
       selectWorkspacePath,
       selectedTerminals,
+      sidebarWidth,
       sortedSandboxes,
       terminalRef,
       terminals,
@@ -912,46 +990,74 @@ createApp({
       toggleTheme,
       toast,
       unpublishPort,
+      mainMenuOpen,
+      portsModalOpen,
       picker,
     };
   },
   template: `
-    <div class="toady-shell">
+    <div class="toady-shell" :style="{ '--sidebar-width': sidebarWidth + 'px' }">
       <header class="topbar">
         <div class="brand">
-          <div class="brand-mark">T</div>
+          <div class="menu-wrap">
+            <button class="icon-button" type="button" title="Main menu" @click="mainMenuOpen = !mainMenuOpen; sandboxMenuOpen = false">
+              <i data-lucide="menu"></i>
+            </button>
+            <div v-if="mainMenuOpen" class="menu-panel main-menu">
+              <div class="menu-section">
+                <span class="menu-label">Microsandbox Base</span>
+                <strong>{{ baseStatus.prepared ? 'Ready' : 'Not ready' }}</strong>
+                <small>{{ baseStatus.message || baseStatus.name }}</small>
+              </div>
+              <button class="menu-item" type="button" :disabled="basePreparing" @click="requestBasePrepare(false)">
+                <i data-lucide="hammer"></i><span>{{ baseStatus.prepared ? 'Prepare again' : 'Prepare base' }}</span>
+              </button>
+              <button class="menu-item" type="button" :disabled="basePreparing" @click="requestBasePrepare(true)">
+                <i data-lucide="refresh-ccw"></i><span>Rebuild base</span>
+              </button>
+              <button class="menu-item" type="button" @click="openBaseLogs">
+                <i data-lucide="scroll-text"></i><span>Base logs</span>
+              </button>
+              <button class="menu-item" type="button" @click="toggleTheme(); closeMenus()">
+                <i :data-lucide="theme === 'dark' ? 'sun' : 'moon'"></i><span>Toggle theme</span>
+              </button>
+            </div>
+          </div>
           <div>
             <h1>Toady</h1>
-            <p>Microsandbox terminals</p>
+            <p>{{ selected ? selected.slug : 'Microsandbox terminals' }}</p>
           </div>
         </div>
         <div class="topbar-actions">
-          <span class="base-chip" :data-state="baseStatus.state">
-            <i data-lucide="box"></i>
-            {{ baseStatus.prepared ? 'Base ready' : 'Base missing' }}
-          </span>
-          <button v-if="baseStatus.prepared" class="tool-button base-rebuild" type="button" title="Rebuild base" :disabled="basePreparing" @click="requestBasePrepare(true)">
-            <i data-lucide="hammer"></i><span>Rebuild</span>
-          </button>
-          <button class="icon-button" type="button" title="Base logs" @click="openBaseLogs">
-            <i data-lucide="scroll-text"></i>
-          </button>
-          <button class="icon-button" type="button" title="Toggle theme" @click="toggleTheme">
-            <i :data-lucide="theme === 'dark' ? 'sun' : 'moon'"></i>
-          </button>
-          <span class="connection" :class="{ online: connected }">
-            <span class="dot"></span>{{ connected ? 'Connected' : 'Offline' }}
-          </span>
-          <button class="icon-button" type="button" title="Refresh" @click="loadSandboxes">
-            <i data-lucide="refresh-cw"></i>
-          </button>
+          <span class="connection-dot" :class="{ online: connected }" :title="connected ? 'Socket connected' : 'Socket offline'"></span>
         </div>
       </header>
 
       <aside class="sidebar">
         <div class="sidebar-heading">
           <h2>Sandboxes</h2>
-          <span>{{ sortedSandboxes.length }}</span>
+          <span class="sidebar-heading-actions">
+            <span>{{ sortedSandboxes.length }}</span>
+            <span class="menu-wrap">
+              <button class="icon-button tiny" type="button" title="Sandbox menu" @click="sandboxMenuOpen = !sandboxMenuOpen; mainMenuOpen = false">
+                <i data-lucide="ellipsis"></i>
+              </button>
+              <div v-if="sandboxMenuOpen" class="menu-panel sandbox-menu">
+                <button class="menu-item" type="button" @click="openCreateModal">
+                  <i data-lucide="plus"></i><span>Create sandbox</span>
+                </button>
+                <button class="menu-item" type="button" :disabled="!selected" @click="openDetailsModal">
+                  <i data-lucide="info"></i><span>Sandbox details</span>
+                </button>
+                <button class="menu-item" type="button" :disabled="!selected" @click="openPortsModal">
+                  <i data-lucide="radio-tower"></i><span>Published ports</span>
+                </button>
+                <button class="menu-item" type="button" :disabled="!selected" @click="openSandboxLogs(selected)">
+                  <i data-lucide="scroll-text"></i><span>Sandbox logs</span>
+                </button>
+              </div>
+            </span>
+          </span>
         </div>
         <button
           v-for="sandbox in sortedSandboxes"
@@ -972,97 +1078,9 @@ createApp({
         </button>
         <div v-if="!sortedSandboxes.length" class="empty-list">No sandboxes</div>
       </aside>
+      <div class="sidebar-resizer" role="separator" title="Resize sidebar" @pointerdown="beginSidebarResize"></div>
 
       <main class="workspace">
-        <section class="create-band">
-          <div class="base-banner" :data-state="baseStatus.state" v-if="!baseStatus.prepared">
-            <div>
-              <strong>{{ baseStatus.message || 'Microsandbox base is not prepared.' }}</strong>
-              <span v-if="baseStatus.error">{{ baseStatus.error }}</span>
-              <span v-else>Prepare the base before starting sandboxes.</span>
-            </div>
-            <span class="base-banner-actions">
-              <button v-if="baseStatus.state === 'error'" class="tool-button" type="button" @click="openBaseLogs">
-                <i data-lucide="scroll-text"></i><span>Logs</span>
-              </button>
-              <button class="tool-button" type="button" :disabled="basePreparing" @click="requestBasePrepare(false)">
-                <i data-lucide="hammer"></i><span>Prepare</span>
-              </button>
-            </span>
-          </div>
-          <div class="base-log" v-if="baseLogs.length">
-            <div v-for="(line, index) in baseLogs" :key="index">{{ line }}</div>
-          </div>
-          <form class="create-form" @submit.prevent="createSandbox">
-            <label>
-              <span>Sandbox name</span>
-              <input v-model="form.name" autocomplete="off" placeholder="sandbox">
-            </label>
-            <label class="path-input">
-              <span>Workspace root</span>
-              <span class="path-control">
-                <input v-model="form.workspace_root" autocomplete="off" placeholder="/Users/bill/aistuff">
-                <button class="icon-button" type="button" title="Browse workspace roots" @click="browseWorkspace(form.workspace_root)">
-                  <i data-lucide="folder-open"></i>
-                </button>
-              </span>
-            </label>
-            <label>
-              <span>vCPU</span>
-              <input v-model.number="form.vcpus" type="number" min="1" max="32">
-            </label>
-            <label>
-              <span>RAM MiB</span>
-              <input v-model.number="form.memory_mib" type="number" min="512" step="512">
-            </label>
-            <button class="primary-button" type="submit" :disabled="busy || !baseStatus.prepared">
-              <i data-lucide="plus"></i>
-              <span>Create + Start</span>
-            </button>
-          </form>
-          <div v-if="actionState.active" class="operation-strip">
-            <i data-lucide="loader-circle"></i>
-            <span>
-              <strong>{{ actionState.label }}</strong>
-              <small v-if="actionState.detail">{{ actionState.detail }}</small>
-            </span>
-          </div>
-          <div v-if="picker.open" class="picker-panel">
-            <div class="picker-toolbar">
-              <div>
-                <strong>{{ picker.path || 'Workspace roots' }}</strong>
-                <span v-if="picker.truncated">First 500 directories shown</span>
-                <span v-else>Select the top-level work tree to mount at /workspace.</span>
-              </div>
-              <button class="icon-button" type="button" title="Close picker" @click="picker.open = false">
-                <i data-lucide="x"></i>
-              </button>
-            </div>
-            <div class="picker-roots" v-if="picker.roots.length">
-              <button v-for="root in picker.roots" :key="root.path" type="button" class="tool-button" @click="browseWorkspace(root.path)">
-                <i data-lucide="hard-drive"></i><span>{{ root.path }}</span>
-              </button>
-            </div>
-            <div class="picker-actions">
-              <button class="tool-button" type="button" :disabled="!picker.parent || picker.loading" @click="browseWorkspace(picker.parent)">
-                <i data-lucide="corner-up-left"></i><span>Parent</span>
-              </button>
-              <button class="primary-button" type="button" :disabled="!picker.path || picker.loading" @click="selectWorkspacePath(picker.path)">
-                <i data-lucide="check"></i><span>Select</span>
-              </button>
-            </div>
-            <div v-if="picker.error" class="picker-error">{{ picker.error }}</div>
-            <div v-else-if="picker.loading" class="picker-empty">Loading...</div>
-            <div v-else-if="!picker.entries.length" class="picker-empty">No child directories</div>
-            <div v-else class="picker-list">
-              <button v-for="entry in picker.entries" :key="entry.path" type="button" class="picker-row" @click="browseWorkspace(entry.path)">
-                <i data-lucide="folder"></i>
-                <span>{{ entry.name }}</span>
-              </button>
-            </div>
-          </div>
-        </section>
-
         <section class="detail" v-if="selected">
           <div class="detail-header">
             <div>
@@ -1079,83 +1097,11 @@ createApp({
               <button class="tool-button" type="button" :disabled="busy" @click="runSandboxAction('sandbox:stop', selected, 'Stopped.')">
                 <i data-lucide="square"></i><span>Stop</span>
               </button>
-              <button class="tool-button" type="button" @click="openSandboxLogs(selected)">
-                <i data-lucide="scroll-text"></i><span>Logs</span>
-              </button>
               <button class="danger-button" type="button" :disabled="busy" @click="destroySandbox(selected)">
                 <i data-lucide="trash-2"></i><span>Destroy</span>
               </button>
             </div>
           </div>
-
-          <div class="metric-grid">
-            <div class="metric">
-              <span>Status</span>
-              <strong>{{ operationBySandbox[selected.slug] || selected.last_status }}</strong>
-            </div>
-            <div class="metric">
-              <span>vCPU</span>
-              <strong>{{ selected.vcpus }}</strong>
-            </div>
-            <div class="metric">
-              <span>RAM</span>
-              <strong>{{ selected.memory_mib }} MiB</strong>
-            </div>
-            <div class="metric">
-              <span>Controller</span>
-              <strong>:{{ selected.controller?.host_port || '-' }}</strong>
-            </div>
-          </div>
-
-          <section class="ports-panel">
-            <div class="ports-header">
-              <div>
-                <h3>Published Ports</h3>
-                <p>Expose a sandbox web server through a local host port.</p>
-              </div>
-              <form class="port-form" @submit.prevent="publishPort(selected)">
-                <label>
-                  <span>Guest</span>
-                  <input v-model.number="portForm.guest_port" type="number" min="1" max="65535">
-                </label>
-                <label>
-                  <span>Host</span>
-                  <input v-model="portForm.host_port" inputmode="numeric" placeholder="auto">
-                </label>
-                <button class="tool-button" type="submit" :disabled="busy">
-                  <i data-lucide="radio-tower"></i><span>Publish</span>
-                </button>
-              </form>
-            </div>
-            <div v-if="selected.published_ports?.length" class="port-list">
-              <div v-for="mapping in selected.published_ports" :key="mapping.host_port" class="port-row" :data-status="mapping.status">
-                <span class="port-main">
-                  <strong>{{ portUrl(mapping) }}</strong>
-                  <small>:{{ mapping.host_port }} -> :{{ mapping.guest_port }} / {{ portStatusText(mapping) }}</small>
-                </span>
-                <span class="port-actions">
-                  <button class="icon-button" type="button" title="Open port" :disabled="!portIsLive(mapping, selected)" @click="openPort(mapping)">
-                    <i data-lucide="external-link"></i>
-                  </button>
-                  <button class="icon-button" type="button" title="Copy URL" @click="copyPortUrl(mapping)">
-                    <i data-lucide="copy"></i>
-                  </button>
-                  <button v-if="mapping.status === 'conflict'" class="icon-button" type="button" title="Reassign port" :disabled="busy" @click="reassignPort(selected, mapping)">
-                    <i data-lucide="shuffle"></i>
-                  </button>
-                  <button class="icon-button" type="button" title="Unpublish" :disabled="busy" @click="unpublishPort(selected, mapping)">
-                    <i data-lucide="x"></i>
-                  </button>
-                </span>
-              </div>
-            </div>
-            <div v-else class="port-empty">
-              <span>No published ports</span>
-              <button class="tool-button" type="button" :disabled="busy" @click="publishPort(selected)">
-                <i data-lucide="radio-tower"></i><span>Publish :{{ portForm.guest_port }}</span>
-              </button>
-            </div>
-          </section>
 
           <div class="terminal-surface">
             <div class="terminal-title">
@@ -1193,18 +1139,12 @@ createApp({
               <button v-if="selected.last_status === 'running'" class="primary-button" type="button" :disabled="busy" @click="openTerminal(selected)">
                 <i data-lucide="terminal"></i><span>Open Terminal</span>
               </button>
-              <span v-else>{{ selected.last_status === 'configured' ? 'Sandbox is configured.' : 'Sandbox is stopped.' }}</span>
+                <span v-else>{{ selected.last_status === 'configured' ? 'Sandbox is configured.' : 'Sandbox is stopped.' }}</span>
               <button v-if="selected.last_status !== 'running'" class="tool-button" type="button" :disabled="!canStartSelected" @click="runSandboxAction('sandbox:start', selected, 'Start requested.')">
                 <i data-lucide="play"></i><span>Start</span>
               </button>
             </div>
           </div>
-
-          <dl class="manifest">
-            <div><dt>Slug</dt><dd>{{ selected.slug }}</dd></div>
-            <div><dt>Home</dt><dd>{{ selected.home_path }}</dd></div>
-            <div><dt>Created</dt><dd>{{ formatDate(selected.created_at) }}</dd></div>
-          </dl>
         </section>
 
         <section class="detail empty-detail" v-else>
@@ -1218,6 +1158,201 @@ createApp({
           </div>
         </section>
       </main>
+
+      <div v-if="createModalOpen" class="modal-backdrop" @click.self="createModalOpen = false">
+        <section class="modal-panel create-modal">
+          <header class="modal-header">
+            <div>
+              <h2>Create Sandbox</h2>
+              <p>Create starts the sandbox and opens the first terminal.</p>
+            </div>
+            <button class="icon-button" type="button" title="Close" @click="createModalOpen = false">
+              <i data-lucide="x"></i>
+            </button>
+          </header>
+          <div class="modal-body">
+            <div class="base-banner" :data-state="baseStatus.state" v-if="!baseStatus.prepared">
+              <div>
+                <strong>{{ baseStatus.message || 'Microsandbox base is not prepared.' }}</strong>
+                <span v-if="baseStatus.error">{{ baseStatus.error }}</span>
+                <span v-else>Prepare the base from the main menu before creating sandboxes.</span>
+              </div>
+            </div>
+            <form class="create-form modal-create-form" @submit.prevent="createSandbox">
+              <label>
+                <span>Sandbox name</span>
+                <input v-model="form.name" autocomplete="off" placeholder="sandbox">
+              </label>
+              <label class="path-input">
+                <span>Workspace root</span>
+                <span class="path-control">
+                  <input v-model="form.workspace_root" autocomplete="off" placeholder="/Users/bill/aistuff">
+                  <button class="icon-button" type="button" title="Browse workspace roots" @click="browseWorkspace(form.workspace_root)">
+                    <i data-lucide="folder-open"></i>
+                  </button>
+                </span>
+              </label>
+              <label>
+                <span>vCPU</span>
+                <input v-model.number="form.vcpus" type="number" min="1" max="32">
+              </label>
+              <label>
+                <span>RAM MiB</span>
+                <input v-model.number="form.memory_mib" type="number" min="512" step="512">
+              </label>
+              <button class="primary-button" type="submit" :disabled="busy || !baseStatus.prepared">
+                <i data-lucide="plus"></i>
+                <span>Create + Start</span>
+              </button>
+            </form>
+            <div v-if="actionState.active" class="operation-strip">
+              <i data-lucide="loader-circle"></i>
+              <span>
+                <strong>{{ actionState.label }}</strong>
+                <small v-if="actionState.detail">{{ actionState.detail }}</small>
+              </span>
+            </div>
+            <div v-if="picker.open" class="picker-panel">
+              <div class="picker-toolbar">
+                <div>
+                  <strong>{{ picker.path || 'Workspace roots' }}</strong>
+                  <span v-if="picker.truncated">First 500 directories shown</span>
+                  <span v-else>Select the top-level work tree to mount at /workspace.</span>
+                </div>
+                <button class="icon-button" type="button" title="Close picker" @click="picker.open = false">
+                  <i data-lucide="x"></i>
+                </button>
+              </div>
+              <div class="picker-roots" v-if="picker.roots.length">
+                <button v-for="root in picker.roots" :key="root.path" type="button" class="tool-button" @click="browseWorkspace(root.path)">
+                  <i data-lucide="hard-drive"></i><span>{{ root.path }}</span>
+                </button>
+              </div>
+              <div class="picker-actions">
+                <button class="tool-button" type="button" :disabled="!picker.parent || picker.loading" @click="browseWorkspace(picker.parent)">
+                  <i data-lucide="corner-up-left"></i><span>Parent</span>
+                </button>
+                <button class="primary-button" type="button" :disabled="!picker.path || picker.loading" @click="selectWorkspacePath(picker.path)">
+                  <i data-lucide="check"></i><span>Select</span>
+                </button>
+              </div>
+              <div v-if="picker.error" class="picker-error">{{ picker.error }}</div>
+              <div v-else-if="picker.loading" class="picker-empty">Loading...</div>
+              <div v-else-if="!picker.entries.length" class="picker-empty">No child directories</div>
+              <div v-else class="picker-list">
+                <button v-for="entry in picker.entries" :key="entry.path" type="button" class="picker-row" @click="browseWorkspace(entry.path)">
+                  <i data-lucide="folder"></i>
+                  <span>{{ entry.name }}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div v-if="detailsModalOpen && selected" class="modal-backdrop" @click.self="detailsModalOpen = false">
+        <section class="modal-panel">
+          <header class="modal-header">
+            <div>
+              <h2>Sandbox Details</h2>
+              <p>{{ selected.slug }}</p>
+            </div>
+            <button class="icon-button" type="button" title="Close" @click="detailsModalOpen = false">
+              <i data-lucide="x"></i>
+            </button>
+          </header>
+          <div class="modal-body">
+            <div class="metric-grid">
+              <div class="metric">
+                <span>Status</span>
+                <strong>{{ operationBySandbox[selected.slug] || selected.last_status }}</strong>
+              </div>
+              <div class="metric">
+                <span>vCPU</span>
+                <strong>{{ selected.vcpus }}</strong>
+              </div>
+              <div class="metric">
+                <span>RAM</span>
+                <strong>{{ selected.memory_mib }} MiB</strong>
+              </div>
+              <div class="metric">
+                <span>Controller</span>
+                <strong>:{{ selected.controller?.host_port || '-' }}</strong>
+              </div>
+            </div>
+            <dl class="manifest">
+              <div><dt>Workspace</dt><dd>{{ selected.canonical_workspace_path }}</dd></div>
+              <div><dt>Home</dt><dd>{{ selected.home_path }}</dd></div>
+              <div><dt>Created</dt><dd>{{ formatDate(selected.created_at) }}</dd></div>
+            </dl>
+          </div>
+        </section>
+      </div>
+
+      <div v-if="portsModalOpen && selected" class="modal-backdrop" @click.self="portsModalOpen = false">
+        <section class="modal-panel">
+          <header class="modal-header">
+            <div>
+              <h2>Published Ports</h2>
+              <p>{{ selected.slug }}</p>
+            </div>
+            <button class="icon-button" type="button" title="Close" @click="portsModalOpen = false">
+              <i data-lucide="x"></i>
+            </button>
+          </header>
+          <div class="modal-body">
+            <section class="ports-panel modal-ports">
+              <div class="ports-header">
+                <div>
+                  <h3>Published Ports</h3>
+                  <p>Expose a sandbox web server through a local host port.</p>
+                </div>
+                <form class="port-form" @submit.prevent="publishPort(selected)">
+                  <label>
+                    <span>Guest</span>
+                    <input v-model.number="portForm.guest_port" type="number" min="1" max="65535">
+                  </label>
+                  <label>
+                    <span>Host</span>
+                    <input v-model="portForm.host_port" inputmode="numeric" placeholder="auto">
+                  </label>
+                  <button class="tool-button" type="submit" :disabled="busy">
+                    <i data-lucide="radio-tower"></i><span>Publish</span>
+                  </button>
+                </form>
+              </div>
+              <div v-if="selected.published_ports?.length" class="port-list">
+                <div v-for="mapping in selected.published_ports" :key="mapping.host_port" class="port-row" :data-status="mapping.status">
+                  <span class="port-main">
+                    <strong>{{ portUrl(mapping) }}</strong>
+                    <small>:{{ mapping.host_port }} -> :{{ mapping.guest_port }} / {{ portStatusText(mapping) }}</small>
+                  </span>
+                  <span class="port-actions">
+                    <button class="icon-button" type="button" title="Open port" :disabled="!portIsLive(mapping, selected)" @click="openPort(mapping)">
+                      <i data-lucide="external-link"></i>
+                    </button>
+                    <button class="icon-button" type="button" title="Copy URL" @click="copyPortUrl(mapping)">
+                      <i data-lucide="copy"></i>
+                    </button>
+                    <button v-if="mapping.status === 'conflict'" class="icon-button" type="button" title="Reassign port" :disabled="busy" @click="reassignPort(selected, mapping)">
+                      <i data-lucide="shuffle"></i>
+                    </button>
+                    <button class="icon-button" type="button" title="Unpublish" :disabled="busy" @click="unpublishPort(selected, mapping)">
+                      <i data-lucide="x"></i>
+                    </button>
+                  </span>
+                </div>
+              </div>
+              <div v-else class="port-empty">
+                <span>No published ports</span>
+                <button class="tool-button" type="button" :disabled="busy" @click="publishPort(selected)">
+                  <i data-lucide="radio-tower"></i><span>Publish :{{ portForm.guest_port }}</span>
+                </button>
+              </div>
+            </section>
+          </div>
+        </section>
+      </div>
 
       <div v-if="baseLogViewer.open" class="modal-backdrop" @click.self="baseLogViewer.open = false">
         <section class="modal-panel log-viewer">

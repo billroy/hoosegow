@@ -245,8 +245,16 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "Publish :{{ portForm.guest_port }}" in app_js
     assert "sandbox:logs" in app_js
     assert "Sandbox Logs" in app_js
+    assert "openCreateModal" in app_js
+    assert "openDetailsModal" in app_js
+    assert "openPortsModal" in app_js
+    assert "connection-dot" in app_js
+    assert "Connected" not in app_js
+    assert 'title="Refresh"' not in app_js
+    assert "beginSidebarResize" in app_js
     assert ".empty-state" in css
-    assert ".base-banner-actions" in css
+    assert ".menu-panel" in css
+    assert ".sidebar-resizer" in css
 
 
 def test_real_microsandbox_smokes_default_to_toady_base():
