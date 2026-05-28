@@ -323,6 +323,7 @@ def create_app(
     )
     app.config["terminal_manager"] = None
     app.config["toady_terminals"] = {}
+    app.config["toady_terminal_numbers"] = {}
     app.config["toady_terminals_lock"] = threading.RLock()
     app.config["toady_terminal_limit"] = max(
         1,
@@ -460,6 +461,7 @@ def create_app(
         return {
             "id": session_info.get("id"),
             "sandbox_id": session_info.get("sandbox_id"),
+            "number": session_info.get("number"),
             "cwd": session_info.get("cwd") or "/workspace",
             "pid": session_info.get("pid"),
             "status": session_info.get("status") or "running",
@@ -961,9 +963,12 @@ def create_app(
             driver = _toady_terminal_driver(manifest)
             opened = driver.open(terminal_id, cwd="/workspace", shell="/bin/bash", cols=cols, rows=rows)
             with app.config["toady_terminals_lock"]:
+                terminal_number = int(app.config["toady_terminal_numbers"].get(manifest.slug, 0)) + 1
+                app.config["toady_terminal_numbers"][manifest.slug] = terminal_number
                 app.config["toady_terminals"][terminal_id] = {
                     "id": terminal_id,
                     "sandbox_id": manifest.slug,
+                    "number": terminal_number,
                     "driver": driver,
                     "clients": {request.sid},
                     "seq": 0,

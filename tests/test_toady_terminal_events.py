@@ -174,6 +174,48 @@ def test_toady_terminal_close_frees_limit_slot(tmp_path, monkeypatch):
     assert reopened["ok"] is True
 
 
+def test_toady_terminal_numbers_do_not_renumber_after_close(tmp_path, monkeypatch):
+    monkeypatch.setattr("server.app.PtyDriver", FakePtyDriver)
+    app = create_app(
+        str(tmp_path),
+        no_browser=True,
+        global_dir=str(tmp_path / "state"),
+        start_without_project=True,
+    )
+    _running_sandbox(app, tmp_path)
+    client = socketio.test_client(app)
+    client.get_received()
+
+    first = client.emit(
+        "sandbox:terminal:open",
+        {"sandbox_id": "demo", "cols": 80, "rows": 24},
+        callback=True,
+    )
+    second = client.emit(
+        "sandbox:terminal:open",
+        {"sandbox_id": "demo", "cols": 80, "rows": 24},
+        callback=True,
+    )
+    closed = client.emit(
+        "sandbox:terminal:close",
+        {"terminal_id": first["terminal"]["id"]},
+        callback=True,
+    )
+    third = client.emit(
+        "sandbox:terminal:open",
+        {"sandbox_id": "demo", "cols": 80, "rows": 24},
+        callback=True,
+    )
+    listed = client.emit("sandbox:terminal:list", {"sandbox_id": "demo"}, callback=True)
+
+    client.disconnect()
+    assert first["terminal"]["number"] == 1
+    assert second["terminal"]["number"] == 2
+    assert closed["ok"] is True
+    assert third["terminal"]["number"] == 3
+    assert [terminal["number"] for terminal in listed["terminals"]] == [2, 3]
+
+
 def test_toady_terminal_status_reports_foreground_process(tmp_path, monkeypatch):
     monkeypatch.setattr("server.app.PtyDriver", FakePtyDriver)
     app = create_app(

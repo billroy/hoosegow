@@ -339,10 +339,14 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "terminal-tab-add" in app_js
     assert "terminalStatusLabel" in app_js
     assert "{{ term.status }}" not in app_js
+    assert "Term {{ term.number || '?' }}" in app_js
+    assert "Term {{ index + 1 }}" not in app_js
     assert 'terminalStatusLabel(term.status)' in app_js
     assert "terminalStatusLabel,\n      terminals," in app_js
+    assert "grid-template-columns: minmax(54px, auto) 22px;" in css
+    assert ".terminal-tab.has-status" in css
     assert '.terminal-tab[data-status="error"] small' in css
-    assert "grid-column: 3;" in css
+    assert ".terminal-tab.has-status .terminal-tab-close" in css
     assert ':disabled="!canOpenTerminal"' in app_js
     assert '@click="openTerminal(selected)"' in app_js
     assert "Use + to open a terminal." not in app_js

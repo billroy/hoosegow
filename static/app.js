@@ -348,6 +348,7 @@ createApp({
         record = {
           id: terminalInfo.id,
           sandbox_id: terminalInfo.sandbox_id,
+          number: terminalInfo.number ?? null,
           cwd: terminalInfo.cwd || '/workspace',
           status: terminalInfo.status || 'running',
           exit_code: terminalInfo.exit_code ?? null,
@@ -356,6 +357,7 @@ createApp({
         terminals.push(record);
       } else {
         record.sandbox_id = terminalInfo.sandbox_id;
+        record.number = terminalInfo.number ?? record.number ?? null;
         record.cwd = terminalInfo.cwd || record.cwd || '/workspace';
         record.status = terminalInfo.status || record.status || 'running';
         record.exit_code = terminalInfo.exit_code ?? record.exit_code ?? null;
@@ -1256,10 +1258,10 @@ createApp({
           <div class="terminal-surface">
             <div v-if="selectedTerminals.length" class="terminal-tabs">
               <div
-                v-for="(term, index) in selectedTerminals"
+                v-for="term in selectedTerminals"
                 :key="term.id"
                 class="terminal-tab"
-                :class="{ active: term.id === activeTerminal.id }"
+                :class="{ active: term.id === activeTerminal.id, 'has-status': terminalStatusLabel(term.status) }"
                 :data-status="term.status"
                 role="button"
                 tabindex="0"
@@ -1267,7 +1269,7 @@ createApp({
                 @keydown.enter.prevent="focusTerminal(term.id)"
                 @keydown.space.prevent="focusTerminal(term.id)"
               >
-                <span>Term {{ index + 1 }}</span>
+                <span>Term {{ term.number || '?' }}</span>
                 <small v-if="terminalStatusLabel(term.status)">{{ terminalStatusLabel(term.status) }}</small>
                 <button class="terminal-tab-close" type="button" title="Close terminal" @click.stop="closeTerminal({ terminalId: term.id })">
                   <i data-lucide="x"></i>
