@@ -310,6 +310,8 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "Sandboxes ({{ sortedSandboxes.length }})" in app_js
     assert "closeMenusOnOutsideClick" in app_js
     assert "document.addEventListener('click', closeMenusOnOutsideClick)" in app_js
+    assert 'title="Main menu" @click.stop="toggleMainMenu"' in app_js
+    assert 'title="Sandbox menu" @click.stop="toggleSandboxMenu"' in app_js
     assert "if (!focused && sandbox.last_status === 'running')" in app_js
     assert "silent: true" in app_js
     assert "terminalReplayMuted" in app_js
@@ -328,6 +330,8 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "beginSidebarResize" in app_js
     assert ".empty-state" in css
     assert ".menu-panel" in css
+    assert "pointer-events: none;" in css
+    assert "pointer-events: auto;" in css
     assert ".sidebar-resizer" in css
     assert ".menu-item-icon" in css
     assert ".terminal-tab-add" in css

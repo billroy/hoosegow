@@ -1077,7 +1077,7 @@ createApp({
       <header class="topbar">
         <div class="brand">
           <div class="menu-wrap">
-            <button class="icon-button header-menu-button" type="button" title="Main menu" @click="toggleMainMenu">
+            <button class="icon-button header-menu-button" type="button" title="Main menu" @click.stop="toggleMainMenu">
               <i data-lucide="menu"></i>
             </button>
             <div v-if="mainMenuOpen" class="menu-panel main-menu">
@@ -1114,7 +1114,7 @@ createApp({
           <h2>Sandboxes ({{ sortedSandboxes.length }})</h2>
           <span class="sidebar-heading-actions">
             <span class="menu-wrap">
-              <button class="icon-button tiny" type="button" title="Sandbox menu" @click="toggleSandboxMenu">
+              <button class="icon-button tiny" type="button" title="Sandbox menu" @click.stop="toggleSandboxMenu">
                 <i data-lucide="ellipsis"></i>
               </button>
               <div v-if="sandboxMenuOpen" class="menu-panel sandbox-menu">

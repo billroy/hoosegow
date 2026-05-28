@@ -187,6 +187,7 @@ button:disabled {
   width: 16px;
   height: 16px;
   stroke-width: 2;
+  pointer-events: none;
 }
 
 .primary-button {
@@ -234,6 +235,7 @@ button:disabled {
   border-radius: 8px;
   background: var(--panel);
   box-shadow: var(--shadow);
+  pointer-events: none;
 }
 
 .main-menu {
@@ -276,6 +278,7 @@ button:disabled {
   color: var(--text);
   padding: 0 9px;
   text-align: left;
+  pointer-events: auto;
 }
 
 .menu-item:hover {
@@ -286,6 +289,7 @@ button:disabled {
   width: 16px;
   height: 16px;
   color: var(--muted);
+  pointer-events: none;
 }
 
 .menu-item-label {
