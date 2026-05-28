@@ -1128,6 +1128,7 @@ createApp({
       sidebarWidth,
       sortedSandboxes,
       terminalRef,
+      terminalStatusLabel,
       terminals,
       terminalVisible,
       theme,
