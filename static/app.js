@@ -89,6 +89,7 @@ createApp({
     const terminalTextDecoders = new Map();
     const mainMenuOpen = ref(false);
     const sandboxMenuOpen = ref(false);
+    const sandboxActionMenuSlug = ref('');
     const createModalOpen = ref(false);
     const detailsModalOpen = ref(false);
     const portsModalOpen = ref(false);
@@ -125,6 +126,14 @@ createApp({
     function closeMenus() {
       mainMenuOpen.value = false;
       sandboxMenuOpen.value = false;
+      sandboxActionMenuSlug.value = '';
+    }
+
+    function toggleSandboxActionMenu(slug) {
+      mainMenuOpen.value = false;
+      sandboxMenuOpen.value = false;
+      sandboxActionMenuSlug.value = sandboxActionMenuSlug.value === slug ? '' : slug;
+      refreshIcons();
     }
 
     function openCreateModal() {
@@ -134,15 +143,17 @@ createApp({
       refreshIcons();
     }
 
-    function openDetailsModal() {
-      if (!selected.value) return;
+    function openDetailsModal(sandbox = selected.value) {
+      if (!sandbox?.slug) return;
+      selectedSlug.value = sandbox.slug;
       closeMenus();
       detailsModalOpen.value = true;
       refreshIcons();
     }
 
-    function openPortsModal() {
-      if (!selected.value) return;
+    function openPortsModal(sandbox = selected.value) {
+      if (!sandbox?.slug) return;
+      selectedSlug.value = sandbox.slug;
       closeMenus();
       portsModalOpen.value = true;
       refreshIcons();
@@ -976,6 +987,7 @@ createApp({
       focusTerminal,
       requestBasePrepare,
       runSandboxAction,
+      sandboxActionMenuSlug,
       sandboxMenuOpen,
       selected,
       selectedSlug,
@@ -988,6 +1000,7 @@ createApp({
       terminalVisible,
       theme,
       toggleTheme,
+      toggleSandboxActionMenu,
       toast,
       unpublishPort,
       mainMenuOpen,
@@ -1010,16 +1023,13 @@ createApp({
                 <small>{{ baseStatus.message || baseStatus.name }}</small>
               </div>
               <button class="menu-item" type="button" :disabled="basePreparing" @click="requestBasePrepare(false)">
-                <i data-lucide="hammer"></i><span>{{ baseStatus.prepared ? 'Prepare again' : 'Prepare base' }}</span>
+                <i class="menu-item-icon" data-lucide="hammer"></i><span class="menu-item-label">{{ baseStatus.prepared ? 'Prepare again' : 'Prepare base' }}</span>
               </button>
               <button class="menu-item" type="button" :disabled="basePreparing" @click="requestBasePrepare(true)">
-                <i data-lucide="refresh-ccw"></i><span>Rebuild base</span>
+                <i class="menu-item-icon" data-lucide="refresh-ccw"></i><span class="menu-item-label">Rebuild base</span>
               </button>
               <button class="menu-item" type="button" @click="openBaseLogs">
-                <i data-lucide="scroll-text"></i><span>Base logs</span>
-              </button>
-              <button class="menu-item" type="button" @click="toggleTheme(); closeMenus()">
-                <i :data-lucide="theme === 'dark' ? 'sun' : 'moon'"></i><span>Toggle theme</span>
+                <i class="menu-item-icon" data-lucide="scroll-text"></i><span class="menu-item-label">Base logs</span>
               </button>
             </div>
           </div>
@@ -1029,6 +1039,9 @@ createApp({
           </div>
         </div>
         <div class="topbar-actions">
+          <button class="icon-button" type="button" title="Toggle theme" @click="toggleTheme">
+            <i :data-lucide="theme === 'dark' ? 'sun' : 'moon'"></i>
+          </button>
           <span class="connection-dot" :class="{ online: connected }" :title="connected ? 'Socket connected' : 'Socket offline'"></span>
         </div>
       </header>
@@ -1044,65 +1057,72 @@ createApp({
               </button>
               <div v-if="sandboxMenuOpen" class="menu-panel sandbox-menu">
                 <button class="menu-item" type="button" @click="openCreateModal">
-                  <i data-lucide="plus"></i><span>Create sandbox</span>
+                  <i class="menu-item-icon" data-lucide="plus"></i><span class="menu-item-label">Create sandbox</span>
                 </button>
-                <button class="menu-item" type="button" :disabled="!selected" @click="openDetailsModal">
-                  <i data-lucide="info"></i><span>Sandbox details</span>
+                <button class="menu-item" type="button" :disabled="!selected" @click="openDetailsModal()">
+                  <i class="menu-item-icon" data-lucide="info"></i><span class="menu-item-label">Sandbox details</span>
                 </button>
-                <button class="menu-item" type="button" :disabled="!selected" @click="openPortsModal">
-                  <i data-lucide="radio-tower"></i><span>Published ports</span>
+                <button class="menu-item" type="button" :disabled="!selected" @click="openPortsModal()">
+                  <i class="menu-item-icon" data-lucide="radio-tower"></i><span class="menu-item-label">Published ports</span>
                 </button>
                 <button class="menu-item" type="button" :disabled="!selected" @click="openSandboxLogs(selected)">
-                  <i data-lucide="scroll-text"></i><span>Sandbox logs</span>
+                  <i class="menu-item-icon" data-lucide="scroll-text"></i><span class="menu-item-label">Sandbox logs</span>
                 </button>
               </div>
             </span>
           </span>
         </div>
-        <button
+        <div
           v-for="sandbox in sortedSandboxes"
           :key="sandbox.slug"
-          type="button"
           class="sandbox-row"
           :class="{ active: selectedSlug === sandbox.slug }"
-          @click="selectedSlug = sandbox.slug"
         >
-          <span class="status-dot" :data-status="sandbox.last_status"></span>
-          <span class="sandbox-main">
-            <strong>{{ sandbox.name || sandbox.slug }}</strong>
-            <small>{{ basename(sandbox.canonical_workspace_path) }}</small>
+          <button type="button" class="sandbox-select" @click="selectedSlug = sandbox.slug">
+            <span class="status-dot" :data-status="sandbox.last_status"></span>
+            <span class="sandbox-main">
+              <strong>{{ sandbox.name || sandbox.slug }}</strong>
+              <small>{{ basename(sandbox.canonical_workspace_path) }}</small>
+            </span>
+            <span class="status-pill" :data-busy="operationBySandbox[sandbox.slug] ? 'true' : null">
+              {{ operationBySandbox[sandbox.slug] || sandbox.last_status }}
+            </span>
+          </button>
+          <span class="menu-wrap sandbox-row-menu">
+            <button class="icon-button tiny" type="button" title="Sandbox actions" @click.stop="toggleSandboxActionMenu(sandbox.slug)">
+              <i data-lucide="ellipsis"></i>
+            </button>
+            <div v-if="sandboxActionMenuSlug === sandbox.slug" class="menu-panel row-action-menu">
+              <button class="menu-item" type="button" :disabled="!baseStatus.prepared || busy || sandbox.last_status === 'running'" @click="closeMenus(); runSandboxAction('sandbox:start', sandbox, 'Start requested.')">
+                <i class="menu-item-icon" data-lucide="play"></i><span class="menu-item-label">Start</span>
+              </button>
+              <button class="menu-item" type="button" :disabled="sandbox.last_status !== 'running' || busy" @click="closeMenus(); openTerminal(sandbox)">
+                <i class="menu-item-icon" data-lucide="terminal"></i><span class="menu-item-label">New terminal</span>
+              </button>
+              <button class="menu-item" type="button" :disabled="busy || sandbox.last_status !== 'running'" @click="closeMenus(); runSandboxAction('sandbox:stop', sandbox, 'Stopped.')">
+                <i class="menu-item-icon" data-lucide="square"></i><span class="menu-item-label">Stop</span>
+              </button>
+              <button class="menu-item" type="button" @click="openDetailsModal(sandbox)">
+                <i class="menu-item-icon" data-lucide="info"></i><span class="menu-item-label">Details</span>
+              </button>
+              <button class="menu-item" type="button" @click="openPortsModal(sandbox)">
+                <i class="menu-item-icon" data-lucide="radio-tower"></i><span class="menu-item-label">Published ports</span>
+              </button>
+              <button class="menu-item" type="button" @click="openSandboxLogs(sandbox)">
+                <i class="menu-item-icon" data-lucide="scroll-text"></i><span class="menu-item-label">Logs</span>
+              </button>
+              <button class="menu-item menu-item-danger" type="button" :disabled="busy" @click="closeMenus(); destroySandbox(sandbox)">
+                <i class="menu-item-icon" data-lucide="trash-2"></i><span class="menu-item-label">Destroy</span>
+              </button>
+            </div>
           </span>
-          <span class="status-pill" :data-busy="operationBySandbox[sandbox.slug] ? 'true' : null">
-            {{ operationBySandbox[sandbox.slug] || sandbox.last_status }}
-          </span>
-        </button>
+        </div>
         <div v-if="!sortedSandboxes.length" class="empty-list">No sandboxes</div>
       </aside>
       <div class="sidebar-resizer" role="separator" title="Resize sidebar" @pointerdown="beginSidebarResize"></div>
 
       <main class="workspace">
         <section class="detail" v-if="selected">
-          <div class="detail-header">
-            <div>
-              <h2>{{ selected.name || selected.slug }}</h2>
-              <p>{{ selected.canonical_workspace_path }}</p>
-            </div>
-            <div class="detail-actions">
-              <button class="tool-button" type="button" :disabled="!canStartSelected" @click="runSandboxAction('sandbox:start', selected, 'Start requested.')">
-                <i data-lucide="play"></i><span>Start</span>
-              </button>
-              <button class="primary-button" type="button" :disabled="!canOpenTerminal" @click="openTerminal(selected)">
-                <i data-lucide="terminal"></i><span>New Terminal</span>
-              </button>
-              <button class="tool-button" type="button" :disabled="busy" @click="runSandboxAction('sandbox:stop', selected, 'Stopped.')">
-                <i data-lucide="square"></i><span>Stop</span>
-              </button>
-              <button class="danger-button" type="button" :disabled="busy" @click="destroySandbox(selected)">
-                <i data-lucide="trash-2"></i><span>Destroy</span>
-              </button>
-            </div>
-          </div>
-
           <div class="terminal-surface">
             <div class="terminal-title">
               <span class="terminal-title-text">
@@ -1110,9 +1130,6 @@ createApp({
                 <span>Terminal</span>
                 <small v-if="terminalVisible">{{ activeTerminal.cwd }}</small>
               </span>
-              <button class="tool-button terminal-new" type="button" :disabled="!canOpenTerminal" @click="openTerminal(selected)">
-                <i data-lucide="plus"></i><span>New</span>
-              </button>
             </div>
             <div v-if="selectedTerminals.length" class="terminal-tabs">
               <div
@@ -1136,13 +1153,8 @@ createApp({
             </div>
             <div v-if="terminalVisible" ref="terminalRef" class="terminal-viewport"></div>
             <div v-else class="terminal-placeholder">
-              <button v-if="selected.last_status === 'running'" class="primary-button" type="button" :disabled="busy" @click="openTerminal(selected)">
-                <i data-lucide="terminal"></i><span>Open Terminal</span>
-              </button>
-                <span v-else>{{ selected.last_status === 'configured' ? 'Sandbox is configured.' : 'Sandbox is stopped.' }}</span>
-              <button v-if="selected.last_status !== 'running'" class="tool-button" type="button" :disabled="!canStartSelected" @click="runSandboxAction('sandbox:start', selected, 'Start requested.')">
-                <i data-lucide="play"></i><span>Start</span>
-              </button>
+              <span v-if="selected.last_status === 'running'">Use the sandbox row menu to open a terminal.</span>
+              <span v-else>{{ selected.last_status === 'configured' ? 'Sandbox is configured.' : 'Sandbox is stopped.' }}</span>
             </div>
           </div>
         </section>

@@ -129,9 +129,14 @@ def exercise_http_controller(base_url: str, token: str, cwd: str, *, verbose: bo
     )
     if opened.get("event") != "opened":
         raise RuntimeError(f"unexpected opened payload: {opened}")
-    banner = client.wait_for_output_containing("http-smoke", b"codex login", timeout=10)
-    if b"gh auth login" not in banner:
-        raise RuntimeError(f"missing auth banner content: {banner!r}")
+    initial_events = client.poll("http-smoke", timeout=0.5)
+    initial_output = b"".join(
+        base64.b64decode(event.get("data", ""))
+        for event in initial_events
+        if event.get("event") == "output"
+    )
+    if b"Toady sandbox terminal" in initial_output or b"codex login" in initial_output:
+        raise RuntimeError(f"unexpected startup banner: {initial_output!r}")
     client.rpc({"op": "resize", "id": "http-smoke", "cols": 90, "rows": 28})
     command = b"printf 'TOADY_HTTP_PTYD_SMOKE:%s\\n' \"$PWD\"; exit 11\n"
     client.rpc({"op": "write", "id": "http-smoke", "data": base64.b64encode(command).decode("ascii")})
@@ -160,8 +165,8 @@ def exercise_http_controller(base_url: str, token: str, cwd: str, *, verbose: bo
         for event in second_events
         if event.get("event") == "output"
     )
-    if b"codex login" in second_output:
-        raise RuntimeError("auth banner repeated in second terminal")
+    if b"Toady sandbox terminal" in second_output or b"codex login" in second_output:
+        raise RuntimeError("unexpected startup banner in second terminal")
     client.rpc({"op": "close", "id": "http-smoke-second"})
     if verbose:
         print(output.decode("utf-8", errors="replace"))

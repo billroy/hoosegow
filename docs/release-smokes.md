@@ -36,19 +36,28 @@ Browser smoke:
 - URL: `http://127.0.0.1:5855/`
 - Final refresh:
   - `pytest -q tests/test_toady_sandbox_service.py tests/test_toady_sandbox_events.py tests/test_toady_terminal_events.py tests/test_toady_product_surface.py tests/test_toady_cli.py tests/test_auth.py tests/test_auth_e2e.py`
-    returned `98 passed in 7.21s`.
+    returned `98 passed in 6.84s`.
   - `node --check static/app.js` passed.
+  - `python3 scripts/pty_controller_http_smoke.py` passed outside the command
+    sandbox, where temporary localhost binding is allowed.
   - `/health` returned `{"ok":true}` when checked outside the command sandbox,
     which is required for reaching the local Flask listener from Codex.
 - Verified app title/body loads as Toady.
 - Verified hamburger menu exposes base readiness, base prepare/rebuild, base
-  logs, and theme toggle.
+  logs.
+- Verified theme toggle is in the header, not the hamburger menu.
 - Verified Sandboxes menu exposes create sandbox, sandbox details, published
   ports, and sandbox logs.
+- Verified per-sandbox row menu exposes start, new terminal, stop, details,
+  ports, logs, and destroy with Lucide menu icons.
 - Verified create, details, and published-port modals open with existing
   sandbox state.
 - Verified terminal-focused workspace has no top-level refresh button and no
   visible `Connected` label; Socket.IO state is represented by the status dot.
+- Verified the selected-sandbox command header is gone and the terminal surface
+  occupies about 93% of the right pane in the narrow in-app browser viewport.
+- Verified new PTY sessions no longer inject the first-terminal auth/setup
+  banner.
 - Verified sandbox list or empty sandbox state is visible.
 - Verified selected sandbox `Logs` menu action opens the `Sandbox Logs` modal.
 - Verified xterm loads from `/vendor/xterm/xterm.js`.

@@ -232,6 +232,8 @@ def test_toady_shell_has_theme_toggle_assets():
     assert "toady-theme" in app_js
     assert "toggleTheme" in app_js
     assert ':data-lucide="theme ===' in app_js
+    assert 'title="Toggle theme"' in app_js
+    assert '<span class="menu-item-label">Toggle theme</span>' not in app_js
     assert 'html[data-theme="light"]' in css
 
 
@@ -248,13 +250,20 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "openCreateModal" in app_js
     assert "openDetailsModal" in app_js
     assert "openPortsModal" in app_js
+    assert "toggleSandboxActionMenu" in app_js
+    assert "sandboxActionMenuSlug" in app_js
+    assert "menu-item-icon" in app_js
+    assert "menu-item-label" in app_js
+    assert "New terminal" in app_js
     assert "connection-dot" in app_js
     assert "Connected" not in app_js
     assert 'title="Refresh"' not in app_js
+    assert "Toady sandbox terminal" not in (ROOT / "guest" / "toady-ptyd.py").read_text(encoding="utf-8")
     assert "beginSidebarResize" in app_js
     assert ".empty-state" in css
     assert ".menu-panel" in css
     assert ".sidebar-resizer" in css
+    assert ".menu-item-icon" in css
 
 
 def test_real_microsandbox_smokes_default_to_toady_base():

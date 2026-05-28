@@ -57,29 +57,28 @@ root concurrently; this is expected to be the common local configuration.
 
 1. Start the server: `python3 toady.py`. Browser opens at
    `http://localhost:5858`.
-2. Click **New Sandbox**. Pick a workspace root using the server-side directory
-   picker or type a path. This should feel like Bullpen Monitor's workspace
-   root selection: choose the top-level work tree that contains projects, not a
-   specific project. Give the sandbox a name. Click Create.
+2. Open the Sandboxes menu and choose **Create sandbox**. Pick a workspace root
+   using the server-side directory picker or type a path. This should feel like
+   Bullpen Monitor's workspace root selection: choose the top-level work tree
+   that contains projects, not a specific project. Give the sandbox a name.
+   Click Create.
 3. The sandbox appears in the left pane with a status pill (`preparing`,
    `running`, `stopped`, `error`) and any published dev-server URLs.
-4. Click **New Terminal** on a sandbox card. A new xterm.js tab opens, already
-   `cd`'d into `/workspace`.
+4. Use a sandbox row action menu to open more terminals. A new xterm.js tab
+   opens, already `cd`'d into `/workspace`.
 5. Type `claude` (or `codex`, `gemini`, `opencode`) and work normally.
 
 There is no step 6.
 
 ### UI Layout
 
-- **Left pane**: list of sandboxes. Each card shows name, workspace path,
-  status, resource caps, terminal count, published ports, and an action menu
-  (New Terminal, Publish Port, Stop, Start, Destroy, Open Files).
-- **Main pane**: tab strip across the top, one tab per open terminal. Tabs are
-  color-tagged by sandbox. A `+` button on each sandbox card or in the tab
-  strip opens a new terminal for that sandbox.
-- **Top bar**: app title, light/dark toggle, host indicator
-  (`localhost` / actual bind), aggregate resource usage, base-image status,
-  and "rebuild base" action.
+- **Left pane**: compact list of sandboxes. Each row shows name, workspace
+  path, status, and an action menu for start, new terminal, stop, details,
+  ports, logs, and destroy. The pane boundary is draggable.
+- **Main pane**: terminal-first surface with terminal tabs and the active
+  xterm.js viewport.
+- **Top bar**: app title, hamburger menu for base-image status/actions, a
+  light/dark toggle, and a Socket.IO status dot.
 - **Optional Files panel** (stretch): read-only browser of files under the
   sandbox's mounted workspace, scoped to that sandbox.
 
@@ -243,9 +242,8 @@ There are no subcommands and no deployment modes. Environment variables:
 - Acceptance target: base prep <=10 minutes and base artifacts <=4 GiB on the
   representative dev machine. The first implementation milestone includes a
   measurement script that records the actual values.
-- First terminal in a fresh sandbox prints a short one-time banner with
-  suggested auth commands: `claude`, `codex login`, `gemini auth`, `opencode`,
-  and `gh auth login`. The banner is informational only.
+- Terminals start directly in the shell. Agent CLI authentication help belongs
+  in documentation and setup affordances, not injected terminal output.
 
 ### 5.6 Network and Dev-Server Ports
 
@@ -838,8 +836,8 @@ Objective: make the first release usable and documented.
 
 Tasks:
 
-- Add theme toggle, toasts, logs viewer, base rebuild UI, first-terminal agent
-  auth banner, and clear empty/error states.
+- Add theme toggle, toasts, logs viewer, base rebuild UI, and clear empty/error
+  states.
 - Write README, `docs/security.md`, and `docs/bullpen-excavation.md`.
 - Measure base prep time and artifact size opportunistically; record results
   but do not block early implementation on the 10 minute / 4 GiB target.
