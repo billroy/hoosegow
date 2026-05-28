@@ -34,10 +34,19 @@ Notes:
 Browser smoke:
 
 - URL: `http://127.0.0.1:5855/`
+- Final refresh:
+  - `pytest -q tests/test_toady_sandbox_service.py tests/test_toady_sandbox_events.py tests/test_toady_terminal_events.py tests/test_toady_product_surface.py tests/test_toady_cli.py tests/test_auth.py tests/test_auth_e2e.py`
+    returned `98 passed in 7.28s`.
+  - `node --check static/app.js` passed.
+  - `/health` returned `{"ok":true}` when checked outside the command sandbox,
+    which is required for reaching the local Flask listener from Codex.
 - Verified app title/body loads as Toady.
+- Verified create controls, sandbox actions, status panel, and Logs action are
+  present with existing sandbox state.
 - Verified sandbox list or empty sandbox state is visible.
 - Verified selected sandbox `Logs` action opens the `Sandbox Logs` modal.
 - Verified xterm loads from `/vendor/xterm/xterm.js`.
+- Verified xterm CSS loads from `/vendor/xterm/xterm.css`.
 - Verified the old `/manager/vendor/xterm/xterm.js` script path is not used.
 
 ## 2026-05-27
