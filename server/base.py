@@ -192,6 +192,7 @@ PY
             npm install -g --no-audit --no-fund --no-progress --omit=dev @anthropic-ai/claude-code
             npm install -g --no-audit --no-fund --no-progress --omit=dev @openai/codex
             npm install -g --no-audit --no-fund --no-progress --omit=dev @google/gemini-cli
+            npm install -g --no-audit --no-fund --no-progress --omit=dev opencode-ai
             """,
             label="Installing agent CLIs",
         )
@@ -210,6 +211,7 @@ PY
               claude --version
               {codex_cli_integrity_command()}
               gemini --version
+              opencode --version
             }} > "$versions_file"
             cat "$versions_file"
             test -s "$versions_file"

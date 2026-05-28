@@ -224,6 +224,8 @@ There are no subcommands and no deployment modes. Environment variables:
   logic, not a greenfield rewrite. Contents: Python 3, Node 22, bash,
   bubblewrap, ca-certificates, curl, gh, git, iproute2, jq, Python venv
   support, ripgrep, strace, `claude`, `codex`, `gemini`, and `opencode` CLIs.
+  Install packages include `@anthropic-ai/claude-code`, `@openai/codex`,
+  `@google/gemini-cli`, and `opencode-ai`.
   Agent CLIs are not pre-authenticated; the user authenticates inside the
   running sandbox.
 - Base prep uses Bullpen's prepare-sandbox -> local snapshot -> validation
@@ -240,8 +242,8 @@ There are no subcommands and no deployment modes. Environment variables:
   check for `@openai/codex-linux-arm64` / `@openai/codex-linux-x64`, because a
   `codex --version` alone is not enough to prove the packaged native binary is
   present.
-- Toady detects base image absence and offers preparation through the UI as
-  well as `--prepare-base`.
+- Toady detects base image absence and starts preparation automatically; manual
+  `--prepare-base` remains available for diagnostics.
 - Acceptance target: base prep <=10 minutes and base artifacts <=4 GiB on the
   representative dev machine. The first implementation milestone includes a
   measurement script that records the actual values.

@@ -343,3 +343,16 @@ def test_real_microsandbox_smokes_default_to_toady_base():
         assert 'SNAPSHOT_DEFAULT = "toady-microsandbox-local"' in text
         assert "TOADY_MICROSANDBOX_BASE" in text
         assert "bullpen-microsandbox-local" not in text
+
+
+def test_toady_base_installs_declared_agent_clis():
+    base_py = (ROOT / "server" / "base.py").read_text(encoding="utf-8")
+
+    assert "npm install -g --no-audit --no-fund --no-progress --omit=dev @anthropic-ai/claude-code" in base_py
+    assert "npm install -g --no-audit --no-fund --no-progress --omit=dev @openai/codex" in base_py
+    assert "npm install -g --no-audit --no-fund --no-progress --omit=dev @google/gemini-cli" in base_py
+    assert "npm install -g --no-audit --no-fund --no-progress --omit=dev opencode-ai" in base_py
+    assert "claude --version" in base_py
+    assert "codex --version" in base_py
+    assert "gemini --version" in base_py
+    assert "opencode --version" in base_py

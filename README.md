@@ -136,7 +136,7 @@ The base includes the runtime pieces Toady expects inside each sandbox:
 - Python and the Toady PTY controller
 - Node/npm tooling
 - git, gh, ripgrep, and common CLI dependencies
-- Claude/Codex/Gemini/opencode CLI setup hooks where available
+- Claude Code, Codex, Gemini, and opencode CLIs installed globally
 - Bullpen-derived file-descriptor, network-cap, CA, Codex auth, and Claude IPv6
   workarounds
 
