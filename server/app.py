@@ -532,7 +532,10 @@ def create_app(
         "started_at": None,
         "finished_at": None,
         "duration_seconds": None,
+        "automatic": False,
+        "rebuild": False,
     }
+    app.config["base_prepare_lock"] = threading.RLock()
     global _service_worker_atexit_registered
     if not start_without_project and not _service_worker_atexit_registered:
         atexit.register(service_worker_mod.stop_all_services)
@@ -763,11 +766,14 @@ def create_app(
             )
 
     def _base_prepare_payload(*, include_logs=True):
-        state = app.config.get("base_prepare") or {}
+        with app.config["base_prepare_lock"]:
+            state = dict(app.config.get("base_prepare") or {})
         payload = {
             "running": bool(state.get("running")),
             "returncode": state.get("returncode"),
             "duration_seconds": state.get("duration_seconds"),
+            "automatic": bool(state.get("automatic")),
+            "rebuild": bool(state.get("rebuild")),
         }
         if include_logs:
             payload["logs"] = list(state.get("logs") or [])
@@ -833,29 +839,74 @@ def create_app(
                         to=_toady_terminal_room(terminal_id),
                     )
 
-    def _base_prepare_worker(rebuild=False):
+    def _base_prepare_status_message(rebuild=False, automatic=False):
+        if rebuild:
+            return "Rebuilding sandbox runtime..."
+        if automatic:
+            return "Setting up sandbox runtime..."
+        return "Setting up sandbox runtime..."
+
+    def _set_base_prepare_started(*, rebuild=False, automatic=False):
         state = app.config["base_prepare"]
-        state["running"] = True
-        state["returncode"] = None
-        state["logs"] = []
-        state["started_at"] = monotonic()
-        state["finished_at"] = None
-        state["duration_seconds"] = None
+        with app.config["base_prepare_lock"]:
+            if state.get("running"):
+                return False
+            state["running"] = True
+            state["returncode"] = None
+            state["logs"] = []
+            state["started_at"] = monotonic()
+            state["finished_at"] = None
+            state["duration_seconds"] = None
+            state["automatic"] = bool(automatic)
+            state["rebuild"] = bool(rebuild)
+        return True
+
+    def _start_base_prepare(rebuild=False, *, automatic=False):
+        if not _set_base_prepare_started(rebuild=rebuild, automatic=automatic):
+            _log_socket_event("base:prepare", ok=True, started=False, automatic=automatic)
+            return False
+        socketio.start_background_task(_base_prepare_worker, rebuild, automatic)
+        _log_socket_event("base:prepare", ok=True, started=True, rebuild=rebuild, automatic=automatic)
+        return True
+
+    def _overlay_base_prepare_status(status):
+        with app.config["base_prepare_lock"]:
+            state = dict(app.config["base_prepare"])
+        if state.get("running"):
+            status["prepared"] = False
+            status["state"] = "preparing"
+            status["message"] = _base_prepare_status_message(
+                rebuild=bool(state.get("rebuild")),
+                automatic=bool(state.get("automatic")),
+            )
+        status["prepare"] = _base_prepare_payload(include_logs=False)
+        return status
+
+    def _auto_start_base_prepare_if_needed(status):
+        if status.get("prepared") or status.get("state") != "missing":
+            return False
+        return _start_base_prepare(False, automatic=True)
+
+    def _base_prepare_worker(rebuild=False, automatic=False):
+        if not app.config["base_prepare"].get("running"):
+            _set_base_prepare_started(rebuild=rebuild, automatic=automatic)
+        state = app.config["base_prepare"]
 
         def emit_base_log(line):
             line = str(line or "")
             if not line:
                 return
-            state.setdefault("logs", []).append(line)
-            if len(state["logs"]) > 500:
-                del state["logs"][: len(state["logs"]) - 500]
+            with app.config["base_prepare_lock"]:
+                state.setdefault("logs", []).append(line)
+                if len(state["logs"]) > 500:
+                    del state["logs"][: len(state["logs"]) - 500]
             socketio.emit("base:log", {"line": line}, to="authenticated")
 
         _emit_base_status({
             "name": "toady-microsandbox-local",
             "prepared": False,
             "state": "preparing",
-            "message": "Preparing Microsandbox base...",
+            "message": _base_prepare_status_message(rebuild=rebuild, automatic=automatic),
         })
         root = os.path.dirname(os.path.dirname(__file__))
         command = [
@@ -878,27 +929,30 @@ def create_app(
             assert proc.stdout is not None
             for line in proc.stdout:
                 emit_base_log(line.rstrip("\n"))
-            state["returncode"] = proc.wait()
-            if state["returncode"] == 0:
+            returncode = proc.wait()
+            with app.config["base_prepare_lock"]:
+                state["returncode"] = returncode
+            if returncode == 0:
                 emit_base_log("Base preparation finished.")
             else:
-                emit_base_log(f"Base preparation exited with code {state['returncode']}.")
+                emit_base_log(f"Base preparation exited with code {returncode}.")
         except Exception as exc:
-            state["returncode"] = -1
+            with app.config["base_prepare_lock"]:
+                state["returncode"] = -1
             emit_base_log(f"Base preparation failed: {exc}")
         finally:
-            state["running"] = False
-            state["finished_at"] = monotonic()
-            if state["started_at"] is not None:
-                state["duration_seconds"] = round(state["finished_at"] - state["started_at"], 1)
+            with app.config["base_prepare_lock"]:
+                state["running"] = False
+                state["finished_at"] = monotonic()
+                if state["started_at"] is not None:
+                    state["duration_seconds"] = round(state["finished_at"] - state["started_at"], 1)
             import asyncio
 
             status = asyncio.run(toady_base.base_status())
             if state["returncode"] not in (None, 0) and not status.get("prepared"):
                 status["state"] = "error"
                 status["error"] = status.get("error") or f"prepare exited with code {state['returncode']}"
-            status["prepare"] = _base_prepare_payload(include_logs=False)
-            _emit_base_status(status)
+            _emit_base_status(_overlay_base_prepare_status(status))
 
     # --- Login / logout -------------------------------------------------
 
@@ -1683,11 +1737,8 @@ def create_app(
         import asyncio
 
         status = asyncio.run(toady_base.base_status())
-        if app.config["base_prepare"].get("running"):
-            status["state"] = "preparing"
-            status["message"] = "Preparing Microsandbox base..."
-        status["prepare"] = _base_prepare_payload(include_logs=False)
-        return {"ok": True, "base": status}
+        _auto_start_base_prepare_if_needed(status)
+        return {"ok": True, "base": _overlay_base_prepare_status(status)}
 
     @socketio.on("base:logs")
     def toady_socket_base_logs(_payload=None):
@@ -1700,9 +1751,8 @@ def create_app(
             _log_socket_event("base:prepare", ok=True, started=False)
             return {"ok": True, "started": False, "message": "Base preparation is already running."}
         rebuild = bool((payload or {}).get("rebuild"))
-        socketio.start_background_task(_base_prepare_worker, rebuild)
-        _log_socket_event("base:prepare", ok=True, started=True, rebuild=rebuild)
-        return {"ok": True, "started": True}
+        started = _start_base_prepare(rebuild, automatic=False)
+        return {"ok": True, "started": started}
 
     @socketio.on("sandbox:create")
     def toady_socket_create_sandbox(payload):

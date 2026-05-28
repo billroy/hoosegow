@@ -30,7 +30,7 @@ createApp({
       prepared: false,
       state: 'checking',
       name: 'toady-microsandbox-local',
-      message: 'Checking Microsandbox base...',
+      message: 'Checking sandbox runtime...',
     });
     const baseLogs = reactive([]);
     const baseLogViewer = reactive({
@@ -556,7 +556,7 @@ createApp({
         return;
       }
       if (!baseStatus.prepared) {
-        setToast(baseStatus.message || 'Prepare the Microsandbox base before creating sandboxes.', 'error');
+        setToast(baseStatus.message || 'Sandbox runtime is setting up automatically.', 'info');
         return;
       }
       busy.value = true;
@@ -633,7 +633,7 @@ createApp({
     async function runSandboxAction(event, sandbox, successMessage) {
       if (!sandbox) return;
       if (event === 'sandbox:start' && !baseStatus.prepared) {
-        setToast(baseStatus.message || 'Prepare the Microsandbox base before starting sandboxes.', 'error');
+        setToast(baseStatus.message || 'Sandbox runtime is setting up automatically.', 'info');
         return;
       }
       if (event === 'sandbox:stop' || event === 'sandbox:destroy') {
@@ -1078,18 +1078,18 @@ createApp({
             </button>
             <div v-if="mainMenuOpen" class="menu-panel main-menu">
               <div class="menu-section">
-                <span class="menu-label">Microsandbox Base</span>
-                <strong>{{ baseStatus.prepared ? 'Ready' : 'Not ready' }}</strong>
+                <span class="menu-label">Sandbox Runtime</span>
+                <strong>{{ baseStatus.prepared ? 'Ready' : (basePreparing ? 'Setting up' : 'Unavailable') }}</strong>
                 <small>{{ baseStatus.message || baseStatus.name }}</small>
               </div>
-              <button class="menu-item" type="button" :disabled="basePreparing" @click="requestBasePrepare(false)">
-                <i class="menu-item-icon" data-lucide="hammer"></i><span class="menu-item-label">{{ baseStatus.prepared ? 'Prepare again' : 'Prepare base' }}</span>
+              <button class="menu-item" v-if="baseStatus.state === 'error'" type="button" :disabled="basePreparing" @click="requestBasePrepare(false)">
+                <i class="menu-item-icon" data-lucide="hammer"></i><span class="menu-item-label">Retry setup</span>
               </button>
               <button class="menu-item" type="button" :disabled="basePreparing" @click="requestBasePrepare(true)">
-                <i class="menu-item-icon" data-lucide="refresh-ccw"></i><span class="menu-item-label">Rebuild base</span>
+                <i class="menu-item-icon" data-lucide="refresh-ccw"></i><span class="menu-item-label">Rebuild runtime</span>
               </button>
               <button class="menu-item" type="button" @click="openBaseLogs">
-                <i class="menu-item-icon" data-lucide="scroll-text"></i><span class="menu-item-label">Base logs</span>
+                <i class="menu-item-icon" data-lucide="scroll-text"></i><span class="menu-item-label">Runtime logs</span>
               </button>
             </div>
           </div>
@@ -1215,7 +1215,7 @@ createApp({
             <i data-lucide="box"></i>
             <h2>No Sandboxes</h2>
             <p>Workspace root required</p>
-            <button class="primary-button" type="button" :disabled="!baseStatus.prepared" @click="browseWorkspace(form.workspace_root)">
+            <button class="primary-button" type="button" @click="browseWorkspace(form.workspace_root)">
               <i data-lucide="folder-open"></i><span>Workspace Root</span>
             </button>
           </div>
@@ -1236,9 +1236,9 @@ createApp({
           <div class="modal-body">
             <div class="base-banner" :data-state="baseStatus.state" v-if="!baseStatus.prepared">
               <div>
-                <strong>{{ baseStatus.message || 'Microsandbox base is not prepared.' }}</strong>
+                <strong>{{ baseStatus.message || 'Setting up sandbox runtime...' }}</strong>
                 <span v-if="baseStatus.error">{{ baseStatus.error }}</span>
-                <span v-else>Prepare the base from the main menu before creating sandboxes.</span>
+                <span v-else>Toady is doing this automatically. Sandbox creation will be available when setup finishes.</span>
               </div>
             </div>
             <form class="create-form modal-create-form" @submit.prevent="createSandbox">
@@ -1265,7 +1265,7 @@ createApp({
               </label>
               <button class="primary-button" type="submit" :disabled="busy || !baseStatus.prepared">
                 <i data-lucide="plus"></i>
-                <span>Create + Start</span>
+                <span>{{ baseStatus.prepared ? 'Create + Start' : 'Waiting for setup' }}</span>
               </button>
             </form>
             <div v-if="actionState.active" class="operation-strip">
@@ -1421,7 +1421,7 @@ createApp({
         <section class="modal-panel log-viewer">
           <header class="modal-header">
             <div>
-              <h2>Base Logs</h2>
+              <h2>Runtime Logs</h2>
               <p>
                 <span v-if="basePreparing">Preparing now</span>
                 <span v-else-if="baseLogViewer.returncode !== null">Exit {{ baseLogViewer.returncode }}</span>
@@ -1441,7 +1441,7 @@ createApp({
           <div v-if="baseLogs.length" class="log-output">
             <div v-for="(line, index) in baseLogs" :key="index">{{ line }}</div>
           </div>
-          <div v-else class="log-empty">No base-prep logs in this server session.</div>
+          <div v-else class="log-empty">No runtime setup logs in this server session.</div>
         </section>
       </div>
 

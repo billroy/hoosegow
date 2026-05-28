@@ -220,9 +220,46 @@ def test_base_logs_are_available_after_reconnect(tmp_path):
             "running": False,
             "returncode": 0,
             "duration_seconds": 12.3,
+            "automatic": False,
+            "rebuild": False,
             "logs": ["first line", "second line"],
         },
     }
+
+
+def test_base_status_auto_starts_missing_base_setup(tmp_path, monkeypatch):
+    async def fake_base_status():
+        return {
+            "name": "toady-microsandbox-local",
+            "prepared": False,
+            "state": "missing",
+            "message": "missing",
+        }
+
+    started = []
+
+    def fake_start_background_task(function, *args):
+        started.append((function.__name__, args))
+        return None
+
+    monkeypatch.setattr("server.app.toady_base.base_status", fake_base_status)
+    monkeypatch.setattr("server.app.socketio.start_background_task", fake_start_background_task)
+    app = create_app(
+        str(tmp_path),
+        no_browser=True,
+        global_dir=str(tmp_path / "state"),
+        start_without_project=True,
+    )
+    client = socketio.test_client(app)
+    response = client.emit("base:status", callback=True)
+    client.disconnect()
+
+    assert response["ok"] is True
+    assert started == [("_base_prepare_worker", (False, True))]
+    assert response["base"]["state"] == "preparing"
+    assert response["base"]["message"] == "Setting up sandbox runtime..."
+    assert response["base"]["prepare"]["running"] is True
+    assert response["base"]["prepare"]["automatic"] is True
 
 
 def test_toady_shell_has_theme_toggle_assets():
@@ -248,6 +285,11 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "No Sandboxes" in app_js
     assert "Workspace Root" in app_js
     assert "Publish :{{ portForm.guest_port }}" in app_js
+    assert "Sandbox Runtime" in app_js
+    assert "Runtime logs" in app_js
+    assert "Waiting for setup" in app_js
+    assert "Toady is doing this automatically." in app_js
+    assert "Prepare the base from the main menu" not in app_js
     assert "sandbox:logs" in app_js
     assert "Sandbox Logs" in app_js
     assert "openCreateModal" in app_js

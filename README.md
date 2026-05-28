@@ -4,7 +4,7 @@ Current release target: `0.1.0`.
 
 Toady is a local terminal app for running coding agents inside Microsandbox
 microVMs. It gives you a browser UI with persistent sandbox terminals, shared
-workspace-root mounts, base-image preparation, sandbox logs, and local published
+workspace-root mounts, automatic runtime setup, sandbox logs, and local published
 ports for dev servers.
 
 The expected workflow is direct: create a sandbox, get a terminal, type
@@ -20,7 +20,7 @@ base-prep path. It is intentionally not a Bullpen worker/ticket UI.
 This is an active first release candidate for `0.1.0`. The local
 Microsandbox path covers:
 
-- base prepare/rebuild and base logs
+- automatic sandbox-runtime setup, rebuild, and logs
 - sandbox create, start, stop, destroy, details, and logs
 - shared workspace-root selection
 - automatic create -> start -> first terminal behavior
@@ -35,7 +35,6 @@ Remaining work is release verification and review before tagging.
 
 ```bash
 pip install -r requirements.txt
-python3 toady.py --prepare-base
 python3 toady.py --workspace-root /path/to/work
 ```
 
@@ -52,8 +51,8 @@ The UI is terminal-first.
 
 - The top bar has a minimal hamburger menu, the `Toady` title, a light/dark
   toggle, and a green/red Socket.IO status dot.
-- The hamburger menu contains Microsandbox base readiness, prepare, rebuild,
-  and base logs.
+- The hamburger menu contains sandbox runtime readiness, rebuild, retry after
+  setup errors, and runtime logs.
 - The left pane is a compact sandbox list headed `Sandboxes (n)`. Its boundary
   is draggable.
 - The left-pane `...` menu opens create, selected-sandbox details, published
@@ -69,10 +68,11 @@ The UI is terminal-first.
 
 ## Common Flow
 
-1. Prepare the reusable Microsandbox base from the CLI or hamburger menu.
-2. Choose **Sandboxes (...) -> Create sandbox**.
-3. Pick or type a workspace root and name the sandbox.
-4. Click **Create + Start**.
+1. Choose **Sandboxes (...) -> Create sandbox**.
+2. Pick or type a workspace root and name the sandbox.
+3. Click **Create + Start**.
+4. If the reusable sandbox runtime is not ready yet, Toady sets it up
+   automatically and creation waits until setup finishes.
 5. Toady creates the sandbox, starts it, opens the first terminal, and focuses
    that terminal automatically.
 6. Use the sandbox row `...` menu for more terminals, details, ports, logs,
@@ -128,8 +128,8 @@ on sandbox restart, depending on current sandbox state.
 
 ## Base Image
 
-The reusable base image is prepared from `node:22-bookworm` by default and is
-named `toady-microsandbox-local`.
+The reusable base image is prepared automatically from `node:22-bookworm` by
+default and is named `toady-microsandbox-local`.
 
 The base includes the runtime pieces Toady expects inside each sandbox:
 
@@ -140,14 +140,20 @@ The base includes the runtime pieces Toady expects inside each sandbox:
 - Bullpen-derived file-descriptor, network-cap, CA, Codex auth, and Claude IPv6
   workarounds
 
-Prepare or rebuild from the CLI:
+Normal users do not need to prepare it manually. On first launch, the UI asks
+for base status, the server notices a missing snapshot, and setup starts in the
+background. While that happens, sandbox creation shows a short setup delay and
+runtime logs are available from the hamburger menu.
+
+Manual setup and rebuild commands remain available for diagnostics:
 
 ```bash
 python3 toady.py --prepare-base
 python3 toady.py --prepare-base --rebuild-base
 ```
 
-You can also prepare, rebuild, and inspect base logs from the hamburger menu.
+You can also rebuild and inspect runtime logs from the hamburger menu. If setup
+fails, the menu exposes a retry action.
 
 ## CLI Options
 
@@ -158,7 +164,7 @@ You can also prepare, rebuild, and inspect base logs from the hamburger menu.
 | `--home` | `~/.toady` | State directory. |
 | `--no-browser` | off | Do not open a browser on startup. |
 | `--workspace-root PATH` | cwd and `$HOME` | Repeatable browse root for sandbox workspace-root picker. |
-| `--prepare-base` | off | Build the reusable Microsandbox base snapshot and exit. |
+| `--prepare-base` | off | Manually build the reusable Microsandbox base snapshot and exit. Normally automatic. |
 | `--rebuild-base` | off | Force rebuilding the base snapshot. |
 | `--base-image IMAGE` | `node:22-bookworm` | OCI image used for base preparation. |
 | `--vcpus N` | `4` | Default per-sandbox vCPU cap. |

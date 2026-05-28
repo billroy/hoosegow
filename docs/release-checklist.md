@@ -3,14 +3,14 @@
 ## Verified
 
 - CLI version: `python3 toady.py --version` reports `toady 0.1.0`.
-- Focused Toady/auth suite passes: latest run `98 passed in 7.50s`.
+- Focused Toady/auth suite passes: latest run `99 passed in 6.83s`.
 - Frontend syntax check passes: `node --check static/app.js`.
 - Local health smoke passes: `http://127.0.0.1:5855/health` returns
   `{"ok":true}`.
 - Opt-in real Microsandbox pytest passes on the target dev machine:
   `2 passed, 1090 deselected`.
 - Browser smoke passes against `http://127.0.0.1:5855/`, including the
-  minimized hamburger base menu, compact header theme toggle, Sandboxes count,
+  minimized hamburger runtime menu, compact header theme toggle, Sandboxes count,
   hydrated icons in all menus, click-away menu dismissal, per-sandbox action
   menu, create/details/ports modals, compact sandbox list, automatic terminal
   focus for running sandboxes, terminal-focused workspace without the old

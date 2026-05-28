@@ -36,15 +36,15 @@ Browser smoke:
 - URL: `http://127.0.0.1:5855/`
 - Final refresh:
   - `pytest -q tests/test_toady_sandbox_service.py tests/test_toady_sandbox_events.py tests/test_toady_terminal_events.py tests/test_toady_product_surface.py tests/test_toady_cli.py tests/test_auth.py tests/test_auth_e2e.py`
-    returned `98 passed in 7.50s`.
+    returned `99 passed in 6.83s`.
   - `node --check static/app.js` passed.
   - `python3 scripts/pty_controller_http_smoke.py` passed outside the command
     sandbox, where temporary localhost binding is allowed.
   - `/health` returned `{"ok":true}` when checked outside the command sandbox,
     which is required for reaching the local Flask listener from Codex.
 - Verified app title/body loads as Toady.
-- Verified hamburger menu exposes base readiness, base prepare/rebuild, base
-  logs.
+- Verified hamburger menu exposes runtime readiness, rebuild/retry setup, and
+  runtime logs.
 - Verified theme toggle is in the header, not the hamburger menu.
 - Verified header height is 44px, the hamburger button is visually bare, and
   no selected-sandbox subtitle appears under `Toady`.

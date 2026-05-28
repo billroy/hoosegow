@@ -48,7 +48,7 @@
 | **Sandbox** | A named Microsandbox microVM with the Toady base image (Python, Node, git, gh, ripgrep, Claude/Codex/Gemini/opencode CLIs). Has persistent `/home/agent` storage. |
 | **Terminal** | A PTY session running inside a sandbox, bridged to a browser xterm.js tab over Socket.IO. |
 | **PTY controller** | A small in-sandbox process (`toady-ptyd`) that owns PTYs and exposes a token-protected HTTP control/data API to the host Toady server through a Microsandbox-published localhost port. |
-| **Base image** | Reusable Microsandbox snapshot, prepared once on first run. Mirrors Bullpen's `deploy-sandbox.py --prepare-base` flow. |
+| **Base image** | Reusable Microsandbox snapshot, prepared automatically on first run. Mirrors Bullpen's `deploy-sandbox.py --prepare-base` flow internally. |
 
 A sandbox has 0..N terminals. Multiple sandboxes may mount the same workspace
 root concurrently; this is expected to be the common local configuration.
@@ -78,17 +78,19 @@ There is no step 6.
 - **Main pane**: terminal-first surface with terminal tabs and the active
   xterm.js viewport. Selecting a running sandbox with no open terminal starts
   and focuses a terminal automatically.
-- **Top bar**: app title, hamburger menu for base-image status/actions, a
+- **Top bar**: app title, hamburger menu for sandbox-runtime status/actions, a
   light/dark toggle, and a Socket.IO status dot.
 - **Optional Files panel** (stretch): read-only browser of files under the
   sandbox's mounted workspace, scoped to that sandbox.
 
 ### Empty / First-Run State
 
-If the Toady base image is not yet prepared, the UI shows a single full-pane
-card: "Prepare base image (~5-10 min, one-time)" with a button that streams
-preparation logs to a built-in terminal-style view. No sandbox actions are
-available until preparation succeeds.
+If the Toady base image is not yet prepared, the server starts setup
+automatically the first time the app checks base status. The UI should frame
+this as a short first-run sandbox-runtime setup delay, not as a command the user
+must learn. Sandbox creation remains unavailable until setup succeeds, but the
+create modal and hamburger menu show progress and runtime logs. If setup fails,
+the hamburger menu exposes retry and rebuild actions.
 
 If auth is enabled, unauthenticated users see the Bullpen-style login page
 before the app shell. If auth is disabled, there is no login screen.
