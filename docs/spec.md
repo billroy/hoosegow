@@ -56,7 +56,7 @@ root concurrently; this is expected to be the common local configuration.
 ## 4. User Experience
 
 1. Start the server: `python3 toady.py`. Browser opens at
-   `http://localhost:5858`.
+   `http://localhost:6060`.
 2. Open the Sandboxes menu and choose **Create sandbox**. Pick a workspace root
    using the server-side directory picker or type a path. This should feel like
    Bullpen Monitor's workspace root selection: choose the top-level work tree
@@ -187,7 +187,7 @@ Single CLI: `toady.py`.
 
 | Flag | Default | Description |
 |---|---|---|
-| `--port` | `5858` | UI port. |
+| `--port` | `6060` | UI port. |
 | `--host` | `127.0.0.1` | Bind address. Non-loopback binds require auth. |
 | `--home` | `~/.toady` | State directory. |
 | `--no-browser` | off | Do not auto-open. |
@@ -209,6 +209,10 @@ Single CLI: `toady.py`.
 | `--set-password [USERNAME]` | off | Bullpen-style interactive set/update of login user(s), then exit. Repeatable. |
 | `--delete-user USERNAME` | off | Delete configured login user(s), then exit. Repeatable. |
 | `--bootstrap-credentials` | off | Create credentials from `TOADY_BOOTSTRAP_USER` (default `admin`) and `TOADY_BOOTSTRAP_PASSWORD`, then exit. |
+
+If the UI port is known to be blocked by Chromium-based browsers, such as
+`6000`, Toady must fail early when auto-opening a browser and must warn when
+started with `--no-browser`.
 
 There are no subcommands and no deployment modes. Environment variables:
 
@@ -653,7 +657,7 @@ Tasks:
   `git subtree` for v1; preserve provenance through `docs/bullpen-excavation.md`
   entries that record original Bullpen paths and notable commits/workarounds.
 - Rename executable entrypoint to `toady.py`, state root to `~/.toady`, env
-  prefixes to `TOADY_`, user-facing strings to Toady, and app port to 5858.
+  prefixes to `TOADY_`, user-facing strings to Toady, and app port to 6060.
 - Keep Bullpen's `requirements.txt`, Flask/Socket.IO setup, static CDN shape,
   login page, auth tests, Socket.IO CORS tests, terminal tests, and
   deploy-sandbox tests initially.
@@ -666,7 +670,7 @@ Verification gate:
 
 - `python3 -m py_compile toady.py server/*.py`
 - Auth tests still pass after `BULLPEN_` -> `TOADY_` renaming.
-- App starts on `127.0.0.1:5858`, `/health` returns 200, and login behavior
+- App starts on `127.0.0.1:6060`, `/health` returns 200, and login behavior
   matches Bullpen's optional-auth model.
 
 ### P1 - Remove Bullpen Product Surface (1-2 days)

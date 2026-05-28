@@ -13,8 +13,19 @@ from pathlib import Path
 
 LOCALHOST_BINDS = {"127.0.0.1", "localhost", "::1"}
 DEFAULT_HOME = "~/.toady"
-DEFAULT_PORT = 5858
+DEFAULT_PORT = 6060
 __version__ = "0.1.0"
+
+BROWSER_BLOCKED_PORTS = {
+    1, 7, 9, 11, 13, 15, 17, 19,
+    20, 21, 22, 23, 25, 37, 42, 43, 53, 69, 77, 79, 87, 95,
+    101, 102, 103, 104, 109, 110, 111, 113, 115, 117, 119, 123,
+    135, 137, 139, 143, 161, 179, 389, 427, 465, 512, 513, 514,
+    515, 526, 530, 531, 532, 540, 548, 554, 556, 563, 587, 601,
+    636, 989, 990, 993, 995, 1719, 1720, 1723, 2049, 3659, 4045,
+    5060, 5061, 6000, 6566, 6665, 6666, 6667, 6668, 6669, 6697,
+    10080,
+}
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -200,11 +211,25 @@ def require_auth_for_network_bind(host: str, home: str) -> None:
     )
 
 
+def browser_blocked_port_message(port: int) -> str:
+    return (
+        f"port {port} is blocked by Chromium-based browsers; choose a browser-safe "
+        f"port such as {DEFAULT_PORT}, or pass --no-browser if you only need the API."
+    )
+
+
 def run_server(args: argparse.Namespace, home: str) -> int:
     workspace = os.path.abspath(args.workspace)
     if not os.path.isdir(workspace):
         print(f"Error: workspace directory does not exist: {workspace}", file=sys.stderr)
         return 1
+
+    if int(args.port) in BROWSER_BLOCKED_PORTS:
+        message = browser_blocked_port_message(int(args.port))
+        if not args.no_browser:
+            print(f"Error: {message}", file=sys.stderr)
+            return 1
+        print(f"Warning: {message}", file=sys.stderr)
 
     try:
         require_auth_for_network_bind(args.host, home)

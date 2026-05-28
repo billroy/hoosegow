@@ -85,7 +85,7 @@ Completed in the first Build Go pass:
 - Replaced the copied `toady.py` CLI with a Toady-only server/auth entrypoint.
 - Removed visible Bullpen product subcommands from the Toady CLI (`mcp`,
   `mcp-token`, `ticket`, `model-catalog`).
-- Set the default Toady web port to `5858`.
+- Set the default Toady web port to `6060`.
 - Added the v1 CLI flag surface from the spec and wired
   `--prepare-base` / `--rebuild-base` to the extracted base-prep path.
 - Switched the copied global state default from `~/.bullpen` to `~/.toady`.

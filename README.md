@@ -38,7 +38,7 @@ pip install -r requirements.txt
 python3 toady.py --workspace-root /path/to/work
 ```
 
-Open `http://127.0.0.1:5858/` if the browser does not open automatically.
+Open `http://127.0.0.1:6060/` if the browser does not open automatically.
 
 `--workspace-root` should usually point at a shared parent work tree, not one
 specific project. For example, use `/Users/bill/aistuff` if that directory
@@ -159,7 +159,7 @@ fails, the menu exposes a retry action.
 
 | Flag | Default | Description |
 |---|---|---|
-| `--port` | `5858` | UI port. |
+| `--port` | `6060` | UI port. |
 | `--host` | `127.0.0.1` | Bind address. Non-loopback binds require auth. |
 | `--home` | `~/.toady` | State directory. |
 | `--no-browser` | off | Do not open a browser on startup. |
@@ -183,6 +183,9 @@ fails, the menu exposes a retry action.
 | `--delete-user USERNAME` | off | Delete configured login users, then exit. Repeatable. |
 | `--bootstrap-credentials` | off | Create credentials from `TOADY_BOOTSTRAP_USER` and `TOADY_BOOTSTRAP_PASSWORD`, then exit. |
 | `--version` | n/a | Print the Toady version and exit. |
+
+Toady rejects browser-blocked ports, such as `6000`, when it would otherwise
+open a browser tab. With `--no-browser`, it still starts but prints a warning.
 
 ## Authentication
 
