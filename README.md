@@ -17,8 +17,8 @@ inside sandbox terminals yourself.
 This is an active first-draft implementation. The local Microsandbox path covers
 prepare/create/start/terminal/port/log workflows, with create auto-starting the
 sandbox and opening the first terminal. Remaining v1 work is release hardening:
-final browser smoke, release checklist cleanup, and deciding whether to delete
-or keep the copied Bullpen reference modules before `0.1.0`.
+release checklist cleanup and deciding whether to delete or keep the copied
+Bullpen reference modules before `0.1.0`.
 
 ## Quick Start
 
