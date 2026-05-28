@@ -309,6 +309,10 @@ createApp({
     }
 
     function terminalCellSize() {
+      const renderedCell = terminal.value?._core?._renderService?.dimensions?.css?.cell;
+      if (renderedCell?.width > 0 && renderedCell?.height > 0) {
+        return { width: renderedCell.width, height: renderedCell.height };
+      }
       if (!terminalRef.value) return null;
       const probe = document.createElement('span');
       probe.textContent = 'W';
@@ -352,7 +356,7 @@ createApp({
         return;
       }
       terminal.value = new window.Terminal({
-        convertEol: true,
+        convertEol: false,
         cursorBlink: true,
         disableStdin: false,
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
