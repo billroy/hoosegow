@@ -268,6 +268,12 @@ def test_toady_shell_has_theme_toggle_assets():
 
     assert "toady-theme" in app_js
     assert "toggleTheme" in app_js
+    assert "TERMINAL_THEMES" in app_js
+    assert "applyTerminalTheme" in app_js
+    assert "terminal.value.options.theme = currentTerminalTheme()" in app_js
+    assert "theme: currentTerminalTheme()" in app_js
+    assert "background: '#f8fafc'" in app_js
+    assert "foreground: '#17202a'" in app_js
     assert ':data-lucide="theme ===' in app_js
     assert 'title="Toggle theme"' in app_js
     assert "header-icon-button" in app_js
@@ -275,6 +281,10 @@ def test_toady_shell_has_theme_toggle_assets():
     assert '<span class="menu-item-label">Toggle theme</span>' not in app_js
     assert "{{ selected ? selected.slug" not in app_js
     assert 'html[data-theme="light"]' in css
+    assert "--terminal-bg: #f8fafc;" in css
+    assert "--terminal-text: #17202a;" in css
+    assert "background: var(--terminal-bg);" in css
+    assert "color: var(--terminal-text);" in css
 
 
 def test_toady_shell_has_clear_empty_and_error_states():

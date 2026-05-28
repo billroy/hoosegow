@@ -16,6 +16,41 @@ function basename(path) {
   return clean.split('/').pop() || clean;
 }
 
+const TERMINAL_THEMES = {
+  dark: {
+    background: '#07090c',
+    foreground: '#d7dde7',
+    cursor: '#e9edf5',
+    selectionBackground: '#3b5366',
+    black: '#111820',
+    red: '#e06c75',
+    green: '#98c379',
+    yellow: '#d19a66',
+    blue: '#61afef',
+    magenta: '#c678dd',
+    cyan: '#56b6c2',
+    white: '#d7dde7',
+    brightBlack: '#5c6370',
+    brightWhite: '#ffffff',
+  },
+  light: {
+    background: '#f8fafc',
+    foreground: '#17202a',
+    cursor: '#1d4ed8',
+    selectionBackground: '#bfd7ff',
+    black: '#17202a',
+    red: '#b4232f',
+    green: '#237447',
+    yellow: '#8a5a00',
+    blue: '#1d4ed8',
+    magenta: '#8b3bb3',
+    cyan: '#0f6f7e',
+    white: '#f8fafc',
+    brightBlack: '#667085',
+    brightWhite: '#ffffff',
+  },
+};
+
 createApp({
   setup() {
     const socket = io({ transports: ['websocket', 'polling'] });
@@ -235,12 +270,23 @@ createApp({
     function applyTheme() {
       document.documentElement.dataset.theme = theme.value;
       window.localStorage.setItem('toady-theme', theme.value);
+      applyTerminalTheme();
     }
 
     function toggleTheme() {
       theme.value = theme.value === 'dark' ? 'light' : 'dark';
       applyTheme();
       refreshIcons();
+    }
+
+    function currentTerminalTheme() {
+      return TERMINAL_THEMES[theme.value] || TERMINAL_THEMES.dark;
+    }
+
+    function applyTerminalTheme() {
+      if (!terminal.value) return;
+      terminal.value.options.theme = currentTerminalTheme();
+      if (terminal.value.rows) terminal.value.refresh(0, terminal.value.rows - 1);
     }
 
     function currentTerminalRecord() {
@@ -363,12 +409,7 @@ createApp({
         fontSize: 12,
         lineHeight: 1.25,
         scrollback: 8000,
-        theme: {
-          background: '#07090c',
-          foreground: '#d7dde7',
-          cursor: '#e9edf5',
-          selectionBackground: '#3b5366',
-        },
+        theme: currentTerminalTheme(),
       });
       terminal.value.open(terminalRef.value);
       terminalDataDisposable.value = terminal.value.onData((data) => {
