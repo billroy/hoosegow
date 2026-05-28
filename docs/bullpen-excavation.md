@@ -67,8 +67,10 @@ From the P-1 Toady spike:
 
 ## Next Excavation Pass
 
-Decision for private `0.1.0`: keep copied Bullpen reference modules/tests/static
-assets in the tree, but keep them quarantined from the Toady runtime surface.
+Decision for private `0.1.0`: originally keep copied Bullpen reference
+modules/tests/static assets in the tree, but keep them quarantined from the
+Toady runtime surface. The first post-review cleanup pass has now removed the
+obvious quarantined frontend/profile/manager artifacts.
 
 Next pass after `0.1.0`:
 
@@ -77,6 +79,25 @@ Next pass after `0.1.0`:
 3. Keep the Toady-mode quarantine tests strict until deletion is complete: no
    legacy REST routes, no legacy product static assets, and no eager imports of
    legacy product modules on the Toady startup path.
+
+## Checkpoint: Phase 1 Cleanup
+
+Completed after the unused-code review:
+
+- Removed the copied Bullpen profile seeds in `profiles/`.
+- Removed the legacy componentized Bullpen UI under `static/components/`.
+- Removed legacy static helper files that were only loaded by the Bullpen UI:
+  `audio.js`, `commands.js`, `event-sounds.js`, `gridGeometry.js`,
+  `shell_worker_examples.json`, and `utils.js`.
+- Removed the legacy Bullpen manager UI under `static/manager/` and the
+  corresponding `server/manager.py` implementation.
+- Removed non-Toady remote deployment scaffolding in `deploy/digitalocean/` and
+  `deploy/docker/`.
+- Removed legacy frontend/manager/docker tests that only defended the deleted
+  artifacts.
+- Kept `deploy-sandbox.py`, `deploy/microsandbox/`, and `bullpen.py` for a
+  later parity-checked removal because the deploy script still validates
+  Bullpen source layout and holds historical Microsandbox workaround context.
 
 ## Checkpoint: Toady Entrypoint Seed
 

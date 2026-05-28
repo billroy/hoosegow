@@ -22,8 +22,11 @@
 
 ## Ready For Tag
 
-- Keep copied Bullpen reference modules/tests/static assets in the private
-  `0.1.0` tree as quarantined reference code, not product surface.
+- The first cleanup pass has removed copied Bullpen profile seeds, legacy
+  component UI assets, the Bullpen manager surface, non-Toady remote deployment
+  scaffolding, and their legacy-only tests.
+- Remaining copied Bullpen reference code should be removed in dependency-aware
+  slices after each workaround is covered by Toady tests.
 - Base-prep duration was not remeasured because a forced rebuild is optional
   and not a release blocker; current base size is recorded.
 - Final commands to rerun immediately before tagging, if anything changes:

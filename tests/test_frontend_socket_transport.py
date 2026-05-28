@@ -6,10 +6,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_frontend_forces_websocket_transport():
+def test_frontend_prefers_websocket_with_polling_fallback():
     app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
     assert "const socket = io({" in app_js
-    assert "transports: ['websocket']" in app_js
+    assert "transports: ['websocket', 'polling']" in app_js
     assert "const socket = io();" not in app_js
 
 
