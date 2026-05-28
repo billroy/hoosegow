@@ -297,7 +297,10 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert '<i data-lucide="plus"></i><span>Create Sandbox</span>' in app_js
     assert '<span>Workspace root</span>' in app_js
     assert "Publish :{{ portForm.guest_port }}" in app_js
-    assert "Sandbox Runtime" in app_js
+    assert "Sandbox Runtime" not in app_js
+    assert "menu-section" not in app_js
+    assert ".menu-section" not in css
+    assert ".menu-label" not in css
     assert "Runtime logs" in app_js
     assert "Waiting for setup" in app_js
     assert "Toady is doing this automatically." in app_js
@@ -307,6 +310,14 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "openCreateModal" in app_js
     assert "openDetailsModal" in app_js
     assert "openPortsModal" in app_js
+    assert '@click="openDetailsModal()"' not in app_js
+    assert '@click="openPortsModal()"' not in app_js
+    assert '@click="openSandboxLogs(selected)"' not in app_js
+    assert "Sandbox details" not in app_js
+    assert "Sandbox logs" not in app_js
+    assert '@click="openDetailsModal(sandbox)"' in app_js
+    assert '@click="openPortsModal(sandbox)"' in app_js
+    assert '@click="openSandboxLogs(sandbox)"' in app_js
     assert "toggleSandboxActionMenu" in app_js
     assert "toggleMainMenu" in app_js
     assert "toggleSandboxMenu" in app_js
@@ -345,6 +356,17 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "terminal-title" not in app_js
     assert ".terminal-title" not in css
     assert "beginSidebarResize" in app_js
+    assert "toady-sidebar-collapsed" in app_js
+    assert "sidebarCollapsed" in app_js
+    assert "toggleSidebar" in app_js
+    assert "Show sandboxes" in app_js
+    assert "Hide sandboxes" in app_js
+    assert "panel-left-open" in app_js
+    assert "panel-left-close" in app_js
+    assert "if (sidebarCollapsed.value) return;" in app_js
+    assert "sidebar-collapsed" in css
+    assert ".toady-shell.sidebar-collapsed .workspace" in css
+    assert "grid-column: 1 / -1;" in css
     assert ".empty-state" in css
     assert ".menu-panel" in css
     assert "pointer-events: none;" in css

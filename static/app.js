@@ -132,6 +132,7 @@ createApp({
     const portsModalOpen = ref(false);
     const storedSidebarWidth = Number(window.localStorage.getItem('toady-sidebar-width') || 308);
     const sidebarWidth = ref(Math.max(220, Math.min(460, storedSidebarWidth || 308)));
+    const sidebarCollapsed = ref(window.localStorage.getItem('toady-sidebar-collapsed') === 'true');
     const sidebarResize = reactive({
       active: false,
       startX: 0,
@@ -192,6 +193,14 @@ createApp({
       refreshIcons();
     }
 
+    function toggleSidebar() {
+      sidebarCollapsed.value = !sidebarCollapsed.value;
+      window.localStorage.setItem('toady-sidebar-collapsed', String(sidebarCollapsed.value));
+      closeMenus();
+      scheduleTerminalFit();
+      refreshIcons();
+    }
+
     function openCreateModal() {
       closeMenus();
       if (!form.name.trim()) form.name = nextSandboxName();
@@ -216,6 +225,7 @@ createApp({
     }
 
     function beginSidebarResize(event) {
+      if (sidebarCollapsed.value) return;
       sidebarResize.active = true;
       sidebarResize.startX = event.clientX;
       sidebarResize.startWidth = sidebarWidth.value;
@@ -1100,6 +1110,7 @@ createApp({
       requestBasePrepare,
       runSandboxAction,
       sandboxActionMenuSlug,
+      sidebarCollapsed,
       sandboxMenuOpen,
       selected,
       selectedSlug,
@@ -1112,6 +1123,7 @@ createApp({
       terminalVisible,
       theme,
       toggleTheme,
+      toggleSidebar,
       toggleMainMenu,
       toggleSandboxMenu,
       toggleSandboxActionMenu,
@@ -1123,7 +1135,7 @@ createApp({
     };
   },
   template: `
-    <div class="toady-shell" :style="{ '--sidebar-width': sidebarWidth + 'px' }">
+    <div class="toady-shell" :class="{ 'sidebar-collapsed': sidebarCollapsed }" :style="{ '--sidebar-width': sidebarWidth + 'px' }">
       <header class="topbar">
         <div class="brand">
           <div class="menu-wrap">
@@ -1131,11 +1143,6 @@ createApp({
               <i data-lucide="menu"></i>
             </button>
             <div v-if="mainMenuOpen" class="menu-panel main-menu">
-              <div class="menu-section">
-                <span class="menu-label">Sandbox Runtime</span>
-                <strong>{{ baseStatus.prepared ? 'Ready' : (basePreparing ? 'Setting up' : 'Unavailable') }}</strong>
-                <small>{{ baseStatus.message || baseStatus.name }}</small>
-              </div>
               <button class="menu-item" v-if="baseStatus.state === 'error'" type="button" :disabled="basePreparing" @click="requestBasePrepare(false)">
                 <i class="menu-item-icon" data-lucide="hammer"></i><span class="menu-item-label">Retry setup</span>
               </button>
@@ -1147,6 +1154,16 @@ createApp({
               </button>
             </div>
           </div>
+          <button
+            class="icon-button header-icon-button sidebar-toggle-button"
+            type="button"
+            :title="sidebarCollapsed ? 'Show sandboxes' : 'Hide sandboxes'"
+            :aria-pressed="sidebarCollapsed ? 'true' : 'false'"
+            :data-collapsed="sidebarCollapsed ? 'true' : 'false'"
+            @click="toggleSidebar"
+          >
+            <i :data-lucide="sidebarCollapsed ? 'panel-left-open' : 'panel-left-close'"></i>
+          </button>
           <div>
             <h1>Toady</h1>
           </div>
@@ -1170,15 +1187,6 @@ createApp({
               <div v-if="sandboxMenuOpen" class="menu-panel sandbox-menu">
                 <button class="menu-item" type="button" @click="openCreateModal">
                   <i class="menu-item-icon" data-lucide="plus"></i><span class="menu-item-label">Create sandbox</span>
-                </button>
-                <button class="menu-item" type="button" :disabled="!selected" @click="openDetailsModal()">
-                  <i class="menu-item-icon" data-lucide="info"></i><span class="menu-item-label">Sandbox details</span>
-                </button>
-                <button class="menu-item" type="button" :disabled="!selected" @click="openPortsModal()">
-                  <i class="menu-item-icon" data-lucide="radio-tower"></i><span class="menu-item-label">Published ports</span>
-                </button>
-                <button class="menu-item" type="button" :disabled="!selected" @click="openSandboxLogs(selected)">
-                  <i class="menu-item-icon" data-lucide="scroll-text"></i><span class="menu-item-label">Sandbox logs</span>
                 </button>
               </div>
             </span>
