@@ -1,9 +1,11 @@
 import asyncio
 import json
+import os
 from pathlib import Path
 
 import pytest
 
+from server.microsandbox_runtime import mark_open_fds_close_on_exec
 from server.sandboxes import SandboxService, SandboxServiceError
 from server.toady_validation import (
     ValidationError,
@@ -17,6 +19,20 @@ def test_validate_slug_rejects_bullpen_style_ids():
     assert validate_slug("demo-1") == "demo-1"
     with pytest.raises(ValidationError):
         validate_slug("Bad Name")
+
+
+def test_mark_open_fds_close_on_exec_clears_inheritable_fd():
+    read_fd, write_fd = os.pipe()
+    try:
+        os.set_inheritable(read_fd, True)
+
+        marked = mark_open_fds_close_on_exec()
+
+        assert read_fd in marked
+        assert not os.get_inheritable(read_fd)
+    finally:
+        os.close(read_fd)
+        os.close(write_fd)
 
 
 def test_workspace_validation_allows_browse_root_child(tmp_path):
@@ -320,6 +336,7 @@ def test_sandbox_service_reassigns_occupied_controller_port_on_start(tmp_path, m
         "controller_host_port": 63100,
     })
     captured = {}
+    fd_guard_calls = []
 
     class FakeRuntime:
         async def ensure_installed(self):
@@ -334,6 +351,7 @@ def test_sandbox_service_reassigns_occupied_controller_port_on_start(tmp_path, m
 
     monkeypatch.setattr("server.sandboxes.host_port_in_use", lambda port: port == 63100)
     monkeypatch.setattr("server.sandboxes.ensure_host_ports_available", lambda _ports: None)
+    monkeypatch.setattr("server.sandboxes.mark_open_fds_close_on_exec", lambda: fd_guard_calls.append(True))
     monkeypatch.setattr("server.sandboxes.MicrosandboxRuntime", FakeRuntime)
     monkeypatch.setattr("server.sandboxes.prepare_runtime_dirs", async_noop)
     monkeypatch.setattr("server.sandboxes.disable_guest_ipv6_for_claude", async_noop)
@@ -349,6 +367,7 @@ def test_sandbox_service_reassigns_occupied_controller_port_on_start(tmp_path, m
     assert started["last_status"] == "running"
     assert started["controller"]["host_port"] == 63101
     assert captured["ports"] == {63101: 5859}
+    assert fd_guard_calls == [True]
 
 
 def test_sandbox_service_reassigns_conflicted_port(tmp_path, monkeypatch):

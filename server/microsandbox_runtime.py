@@ -100,6 +100,36 @@ def ensure_host_nofile(target: int) -> tuple[int, int]:
     return updated_soft, updated_hard
 
 
+def mark_open_fds_close_on_exec(exclude: set[int] | tuple[int, ...] = (0, 1, 2)) -> list[int]:
+    """Prevent child runtimes from inheriting already-bound server sockets."""
+    excluded = set(exclude)
+    candidates: set[int] = set()
+    for fd_root in ("/proc/self/fd", "/dev/fd"):
+        try:
+            names = os.listdir(fd_root)
+        except OSError:
+            continue
+        for name in names:
+            try:
+                fd = int(name)
+            except ValueError:
+                continue
+            if fd not in excluded:
+                candidates.add(fd)
+        if candidates:
+            break
+
+    marked = []
+    for fd in sorted(candidates):
+        try:
+            if os.get_inheritable(fd):
+                os.set_inheritable(fd, False)
+                marked.append(fd)
+        except OSError:
+            continue
+    return marked
+
+
 def network_with_max_connections(network: Any, max_connections: int) -> Any:
     if hasattr(network, "max_connections"):
         try:

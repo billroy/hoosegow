@@ -23,6 +23,7 @@ from server.microsandbox_runtime import (
     ensure_host_ports_available,
     host_port_in_use,
     host_port_owner,
+    mark_open_fds_close_on_exec,
 )
 from server.sandbox_bootstrap import (
     build_runtime_env,
@@ -564,6 +565,7 @@ class SandboxService:
             ports=ports,
         )
         build_runtime_env(spec, controller_port=guest_port, controller_token=str(controller.get("token") or ""))
+        mark_open_fds_close_on_exec()
         runtime = MicrosandboxRuntime()
         await runtime.ensure_installed()
         try:
