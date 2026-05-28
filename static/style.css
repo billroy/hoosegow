@@ -956,7 +956,7 @@ input:focus {
 
 .terminal-tab {
   display: inline-grid;
-  grid-template-columns: minmax(54px, auto) 22px;
+  grid-template-columns: max-content 22px;
   align-items: center;
   gap: 8px;
   min-width: 96px;
@@ -969,7 +969,7 @@ input:focus {
 }
 
 .terminal-tab.has-status {
-  grid-template-columns: minmax(54px, auto) auto 22px;
+  grid-template-columns: max-content max-content 22px;
   min-width: 132px;
 }
 
@@ -978,9 +978,14 @@ input:focus {
   background: var(--terminal-tab-active);
 }
 
+.terminal-tab > span {
+  white-space: nowrap;
+}
+
 .terminal-tab small {
   color: var(--terminal-muted);
   font-size: 11px;
+  white-space: nowrap;
 }
 
 .terminal-tab[data-status="exited"] small {
