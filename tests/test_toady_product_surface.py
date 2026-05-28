@@ -345,6 +345,11 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "color: var(--primary-text);" in css
     assert ".sidebar-resizer" in css
     assert ".menu-item-icon" in css
+    assert "grid-template-columns: 20px minmax(0, 1fr);" in css
+    assert "font-size: 15px;" in css
+    assert "width: 18px;" in css
+    assert "height: 18px;" in css
+    assert "font: inherit;" in css
     assert ".terminal-tab-add" in css
 
 

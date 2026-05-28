@@ -280,15 +280,18 @@ button:disabled {
 
 .menu-item {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
+  grid-template-columns: 20px minmax(0, 1fr);
   align-items: center;
-  gap: 9px;
-  min-height: 34px;
+  gap: 10px;
+  min-height: 38px;
   border: 0;
   border-radius: 6px;
   background: transparent;
   color: var(--text);
-  padding: 0 9px;
+  padding: 0 11px;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.2;
   text-align: left;
   pointer-events: auto;
 }
@@ -298,14 +301,16 @@ button:disabled {
 }
 
 .menu-item-icon {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   color: var(--muted);
   pointer-events: none;
 }
 
 .menu-item-label {
   min-width: 0;
+  color: var(--text);
+  font: inherit;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
