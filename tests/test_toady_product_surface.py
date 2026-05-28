@@ -339,6 +339,10 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert ".menu-panel" in css
     assert "pointer-events: none;" in css
     assert "pointer-events: auto;" in css
+    assert "--primary: #1d4ed8;" in css
+    assert "--primary-text: #ffffff;" in css
+    assert "background: var(--primary);" in css
+    assert "color: var(--primary-text);" in css
     assert ".sidebar-resizer" in css
     assert ".menu-item-icon" in css
     assert ".terminal-tab-add" in css

@@ -11,6 +11,10 @@
   --teal: #39b8a6;
   --teal-2: #297f77;
   --blue: #6aa6f8;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-border: #8bbcff;
+  --primary-text: #ffffff;
   --amber: #d7a84f;
   --red: #e05c5c;
   --green: #6fc28a;
@@ -30,6 +34,10 @@ html[data-theme="light"] {
   --teal: #1b8b80;
   --teal-2: #146a63;
   --blue: #236fbd;
+  --primary: #1d4ed8;
+  --primary-hover: #1e40af;
+  --primary-border: #1e40af;
+  --primary-text: #ffffff;
   --amber: #9b6f16;
   --red: #b93f47;
   --green: #357d4c;
@@ -192,8 +200,12 @@ button:disabled {
 
 .primary-button {
   min-width: 112px;
-  border-color: #3b8a80;
-  background: #1d5e58;
+  border-color: var(--primary-border);
+  background: var(--primary);
+  color: var(--primary-text);
+  padding: 0 14px;
+  font-weight: 700;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.22);
 }
 
 .tool-button,
@@ -207,7 +219,7 @@ button:disabled {
 }
 
 .primary-button:hover {
-  background: #247169;
+  background: var(--primary-hover);
 }
 
 .danger-button {
