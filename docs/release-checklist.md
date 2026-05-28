@@ -3,7 +3,7 @@
 ## Verified
 
 - CLI version: `python3 toady.py --version` reports `toady 0.1.0`.
-- Focused Toady/auth suite passes: latest run `98 passed in 7.63s`.
+- Focused Toady/auth suite passes: latest run `98 passed in 7.50s`.
 - Frontend syntax check passes: `node --check static/app.js`.
 - Local health smoke passes: `http://127.0.0.1:5855/health` returns
   `{"ok":true}`.
@@ -11,9 +11,10 @@
   `2 passed, 1090 deselected`.
 - Browser smoke passes against `http://127.0.0.1:5855/`, including the
   minimized hamburger base menu, compact header theme toggle, Sandboxes count,
-  click-away menu dismissal, per-sandbox action menu, create/details/ports
-  modals, compact sandbox list, automatic terminal focus for running sandboxes,
-  terminal-focused workspace, connection dot, and xterm assets.
+  hydrated icons in all menus, click-away menu dismissal, per-sandbox action
+  menu, create/details/ports modals, compact sandbox list, automatic terminal
+  focus for running sandboxes, terminal-focused workspace without the old
+  terminal title header, connection dot, and xterm assets.
 - Toady mode does not register legacy Bullpen product REST routes.
 - Toady mode does not serve legacy Bullpen product static assets.
 - Toady mode does not eagerly import legacy Bullpen product modules.

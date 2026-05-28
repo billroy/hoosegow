@@ -183,8 +183,7 @@ button:disabled {
 .icon-button svg,
 .tool-button svg,
 .danger-button svg,
-.primary-button svg,
-.terminal-title svg {
+.primary-button svg {
   width: 16px;
   height: 16px;
   stroke-width: 2;
@@ -904,33 +903,6 @@ input:focus {
   overflow: hidden;
 }
 
-.terminal-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  height: 38px;
-  padding: 0 12px;
-  border-bottom: 1px solid #202730;
-  color: #c5d1df;
-  font-size: 13px;
-}
-
-.terminal-title-text {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  gap: 8px;
-}
-
-.terminal-title-text small {
-  min-width: 0;
-  overflow: hidden;
-  color: #7d8c9f;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .terminal-tabs {
   display: flex;
   gap: 6px;
@@ -1252,7 +1224,6 @@ html[data-theme="light"] .operation-strip {
 }
 
 html[data-theme="light"] .operation-strip small,
-html[data-theme="light"] .terminal-title-text small,
 html[data-theme="light"] .terminal-tab small,
 html[data-theme="light"] .port-empty {
   color: #657386;

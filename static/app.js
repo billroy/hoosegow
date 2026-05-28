@@ -141,6 +141,20 @@ createApp({
       refreshIcons();
     }
 
+    function toggleMainMenu() {
+      mainMenuOpen.value = !mainMenuOpen.value;
+      sandboxMenuOpen.value = false;
+      sandboxActionMenuSlug.value = '';
+      refreshIcons();
+    }
+
+    function toggleSandboxMenu() {
+      sandboxMenuOpen.value = !sandboxMenuOpen.value;
+      mainMenuOpen.value = false;
+      sandboxActionMenuSlug.value = '';
+      refreshIcons();
+    }
+
     function openCreateModal() {
       closeMenus();
       if (!form.name.trim()) form.name = nextSandboxName();
@@ -1020,6 +1034,8 @@ createApp({
       terminalVisible,
       theme,
       toggleTheme,
+      toggleMainMenu,
+      toggleSandboxMenu,
       toggleSandboxActionMenu,
       toast,
       unpublishPort,
@@ -1033,7 +1049,7 @@ createApp({
       <header class="topbar">
         <div class="brand">
           <div class="menu-wrap">
-            <button class="icon-button header-menu-button" type="button" title="Main menu" @click="mainMenuOpen = !mainMenuOpen; sandboxMenuOpen = false; sandboxActionMenuSlug = ''">
+            <button class="icon-button header-menu-button" type="button" title="Main menu" @click="toggleMainMenu">
               <i data-lucide="menu"></i>
             </button>
             <div v-if="mainMenuOpen" class="menu-panel main-menu">
@@ -1070,7 +1086,7 @@ createApp({
           <h2>Sandboxes ({{ sortedSandboxes.length }})</h2>
           <span class="sidebar-heading-actions">
             <span class="menu-wrap">
-              <button class="icon-button tiny" type="button" title="Sandbox menu" @click="sandboxMenuOpen = !sandboxMenuOpen; mainMenuOpen = false">
+              <button class="icon-button tiny" type="button" title="Sandbox menu" @click="toggleSandboxMenu">
                 <i data-lucide="ellipsis"></i>
               </button>
               <div v-if="sandboxMenuOpen" class="menu-panel sandbox-menu">
@@ -1142,13 +1158,6 @@ createApp({
       <main class="workspace">
         <section class="detail" v-if="selected">
           <div class="terminal-surface">
-            <div class="terminal-title">
-              <span class="terminal-title-text">
-                <i data-lucide="terminal"></i>
-                <span>Terminal</span>
-                <small v-if="terminalVisible">{{ activeTerminal.cwd }}</small>
-              </span>
-            </div>
             <div v-if="selectedTerminals.length" class="terminal-tabs">
               <div
                 v-for="(term, index) in selectedTerminals"

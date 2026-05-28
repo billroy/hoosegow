@@ -254,6 +254,8 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "openDetailsModal" in app_js
     assert "openPortsModal" in app_js
     assert "toggleSandboxActionMenu" in app_js
+    assert "toggleMainMenu" in app_js
+    assert "toggleSandboxMenu" in app_js
     assert "sandboxActionMenuSlug" in app_js
     assert "menu-item-icon" in app_js
     assert "menu-item-label" in app_js
@@ -268,6 +270,8 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "Connected" not in app_js
     assert 'title="Refresh"' not in app_js
     assert "Toady sandbox terminal" not in (ROOT / "guest" / "toady-ptyd.py").read_text(encoding="utf-8")
+    assert "terminal-title" not in app_js
+    assert ".terminal-title" not in css
     assert "beginSidebarResize" in app_js
     assert ".empty-state" in css
     assert ".menu-panel" in css

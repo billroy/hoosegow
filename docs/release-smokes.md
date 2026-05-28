@@ -36,7 +36,7 @@ Browser smoke:
 - URL: `http://127.0.0.1:5855/`
 - Final refresh:
   - `pytest -q tests/test_toady_sandbox_service.py tests/test_toady_sandbox_events.py tests/test_toady_terminal_events.py tests/test_toady_product_surface.py tests/test_toady_cli.py tests/test_auth.py tests/test_auth_e2e.py`
-    returned `98 passed in 7.63s`.
+    returned `98 passed in 7.50s`.
   - `node --check static/app.js` passed.
   - `python3 scripts/pty_controller_http_smoke.py` passed outside the command
     sandbox, where temporary localhost binding is allowed.
@@ -55,6 +55,9 @@ Browser smoke:
   ports, logs, and destroy with Lucide menu icons.
 - Verified every command in the hamburger, Sandboxes, and row action menus has
   a Lucide menu icon.
+- Verified hamburger and Sandboxes menu toggles now hydrate Lucide icons after
+  opening, matching the row action menu behavior.
+- Verified the old right-pane `Terminal` / `/workspace` title header is removed.
 - Verified hamburger, Sandboxes, and row action menus all dismiss when clicking
   outside them.
 - Verified selecting a running sandbox with no terminal opens and focuses a
