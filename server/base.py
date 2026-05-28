@@ -241,7 +241,7 @@ async def prepare_base(
             export DEBIAN_FRONTEND=noninteractive
             apt-get update
             apt-get install -y --no-install-recommends \
-              bash bubblewrap ca-certificates curl gh git iproute2 jq python3 python3-pip python3-venv ripgrep strace
+              bash bubblewrap ca-certificates curl gh git iproute2 jq nano python3 python3-pip python3-venv ripgrep strace tmux
             rm -rf /var/lib/apt/lists/*
             """,
             label="Installing OS packages",

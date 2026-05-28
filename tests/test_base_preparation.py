@@ -66,6 +66,9 @@ def test_prepare_base_runs_bullpen_style_steps_and_cleans_prepare_sandbox(tmp_pa
 
     async def fake_run(_sandbox, command, *, label):
         labels.append(label)
+        if label == "Installing OS packages":
+            assert "tmux" in command
+            assert "nano" in command
         if label == "Installing agent CLIs":
             assert "@anthropic-ai/claude-code" in command
             assert "@openai/codex" in command

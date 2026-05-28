@@ -45,7 +45,7 @@
 | Concept | Definition |
 |---|---|
 | **Workspace root** | A canonical host directory mounted read-write into a sandbox as `/workspace`. This is usually a shared parent directory containing many projects, matching Bullpen Monitor's workspace-root picker, not a single project directory. |
-| **Sandbox** | A named Microsandbox microVM with the Toady base image (Python, Node, git, gh, ripgrep, Claude/Codex/Gemini/opencode CLIs). Has persistent `/home/agent` storage. |
+| **Sandbox** | A named Microsandbox microVM with the Toady base image (Python, Node, git, gh, nano, ripgrep, tmux, Claude/Codex/Gemini/opencode CLIs). Has persistent `/home/agent` storage. |
 | **Terminal** | A PTY session running inside a sandbox, bridged to a browser xterm.js tab over Socket.IO. |
 | **PTY controller** | A small in-sandbox process (`toady-ptyd`) that owns PTYs and exposes a token-protected HTTP control/data API to the host Toady server through a Microsandbox-published localhost port. |
 | **Base image** | Reusable Microsandbox snapshot, prepared automatically on first run. Mirrors Bullpen's `deploy-sandbox.py --prepare-base` flow internally. |
@@ -227,7 +227,7 @@ There are no subcommands and no deployment modes. Environment variables:
 - Built once via a direct port of Bullpen's `deploy-sandbox.py` base-prep
   logic, not a greenfield rewrite. Contents: Python 3, Node 22, bash,
   bubblewrap, ca-certificates, curl, gh, git, iproute2, jq, Python venv
-  support, ripgrep, strace, `claude`, `codex`, `gemini`, and `opencode` CLIs.
+  support, nano, ripgrep, strace, tmux, `claude`, `codex`, `gemini`, and `opencode` CLIs.
   Install packages include `@anthropic-ai/claude-code`, `@openai/codex`,
   `@google/gemini-cli`, and `opencode-ai`.
   Agent CLIs are not pre-authenticated; the user authenticates inside the
