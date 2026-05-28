@@ -20,7 +20,7 @@ TOADY_RUN_REAL_MICROSANDBOX=1 pytest -q -m real_microsandbox
 Observed output:
 
 ```text
-2 passed, 1090 deselected in 3.67s
+2 passed, 1090 deselected in 3.02s
 ```
 
 Notes:
