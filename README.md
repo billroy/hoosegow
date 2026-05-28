@@ -267,8 +267,8 @@ The same real smokes are available as an opt-in pytest target:
 TOADY_RUN_REAL_MICROSANDBOX=1 pytest -q -m real_microsandbox
 ```
 
-The private `0.1.0` tree intentionally keeps copied Bullpen modules and tests
-as excavation reference. Toady mode does not register the legacy product REST
-routes, serve legacy product static assets, or eagerly import the legacy product
-modules. See `docs/spec.md` and `docs/bullpen-excavation.md` for provenance
-notes.
+The private `0.1.0` tree has removed the copied Bullpen product modules and
+legacy deploy script after extracting the Microsandbox runtime workarounds into
+Toady modules. Toady mode does not register the legacy product REST routes,
+serve legacy product static assets, or eagerly import legacy product modules.
+See `docs/spec.md` and `docs/bullpen-excavation.md` for provenance notes.

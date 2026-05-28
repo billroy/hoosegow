@@ -293,10 +293,12 @@ There are no subcommands and no deployment modes. Environment variables:
 
 ### 5.9 Bullpen Microsandbox Deployment Inheritance
 
-Toady should reuse or port the maximum practical amount of Bullpen's
-`deploy-sandbox.py` architecture. The implementation should carve out reusable
-modules from Bullpen where possible and preserve the operational workarounds
-unless a Toady-specific test proves they are unnecessary.
+Toady reuses the maximum practical amount of Bullpen's `deploy-sandbox.py`
+architecture through extracted Toady modules. The legacy deploy script itself
+is no longer present in the runtime tree; its reusable pieces live in
+`server/microsandbox_runtime.py`, `server/sandbox_bootstrap.py`, and
+`server/base.py`. Operational workarounds remain unless a Toady-specific test
+proves they are unnecessary.
 
 Required inherited pieces:
 
@@ -501,15 +503,18 @@ excavation. It does not start from an empty tree. The goal is to preserve
 Bullpen's infrastructure scars and delete Bullpen's product model.
 
 After the P-1 PTY controller spike, copy the Bullpen tree into Toady, then make
-small, test-backed cuts:
+small, test-backed cuts. Current implementation status: the excavation is
+complete for the v1 runtime; copied Bullpen product modules, the legacy
+`bullpen.py` entry point, `deploy-sandbox.py`, and deploy-only tests have been
+removed after extraction.
 
 - Keep first: `server/auth.py`, the relevant Flask/Socket.IO app bootstrap,
   Socket.IO origin policy, login page, terminal UI component, terminal
   validation, static Vue/CDN shape, deploy-sandbox Microsandbox runtime code,
-  base-prep code, runtime workarounds, and deploy tests.
+  base-prep code, and runtime workarounds.
 - Excavate or split first: `deploy-sandbox.py` into `microsandbox_runtime.py`,
-  `sandbox_bootstrap.py`, and `base.py`; `server/terminal.py` into a generic
-  terminal manager plus an inside-VM PTY driver seam.
+  `sandbox_bootstrap.py`, and `base.py`; replace `server/terminal.py` with an
+  inside-VM PTY driver.
 - Delete early: tickets/tasks, workers, service workers, MCP, profiles, model
   catalog, commits, stats, kanban, teams, transfers, worktrees, prompt
   hardening, and Bullpen-specific CLI subcommands.
@@ -660,7 +665,8 @@ Tasks:
   prefixes to `TOADY_`, user-facing strings to Toady, and app port to 6060.
 - Keep Bullpen's `requirements.txt`, Flask/Socket.IO setup, static CDN shape,
   login page, auth tests, Socket.IO CORS tests, terminal tests, and
-  deploy-sandbox tests initially.
+  deploy-sandbox tests initially; remove deploy-only tests once the extracted
+  Toady runtime/base modules carry equivalent coverage.
 - Add an explicit `docs/bullpen-excavation.md` map listing copied files,
   original Bullpen paths, retained subsystems, deleted subsystems, renamed
   environment variables, and known dirty workarounds retained from
@@ -703,7 +709,7 @@ Verification gate:
 ### P2 - Extract Microsandbox Infrastructure (1-2 days)
 
 Objective: turn `deploy-sandbox.py` from a Bullpen deploy script into Toady's
-runtime substrate.
+runtime substrate, then delete the legacy script.
 
 Tasks:
 
@@ -725,11 +731,13 @@ Tasks:
 
 Verification gate:
 
-- Ported deploy/base tests pass against fake SDK objects.
+- Ported runtime/base tests pass against fake SDK objects.
 - `--prepare-base` reaches the expected Microsandbox SDK calls in fake-driver
   tests.
 - Codex integrity command, Claude IPv6 mitigation, FD-limit setup, and
   network-cap mutation are unit-covered.
+- The legacy `deploy-sandbox.py` file and Bullpen proxy are absent from the
+  runtime tree after extraction.
 
 ### P3 - Toady Persistence and Validation (1 day)
 

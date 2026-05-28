@@ -29,10 +29,13 @@
   Socket.IO startup, MCP-token socket auth, legacy terminal-manager wiring, and
   Bullpen app-state helpers from `server/app.py`.
 - The third cleanup pass has removed detached Bullpen server modules and
-  legacy-only tests, leaving `server/workspace_manager.py` only as a temporary
-  auth-directory compatibility shim for the remaining deploy-era scripts.
-- Remaining copied Bullpen reference code should be removed in dependency-aware
-  slices after each workaround is covered by Toady tests.
+  legacy-only tests.
+- The fourth cleanup pass has removed the legacy `bullpen.py` entry point,
+  `deploy-sandbox.py`, the Bullpen Microsandbox front proxy, the temporary
+  workspace-manager shim, the deploy-sandbox tests, and unused
+  `eventlet`/`websocket-client` dependencies.
+- Remaining copied Bullpen references are historical docs and attribution, not
+  runtime or test code.
 - Base-prep duration was not remeasured because a forced rebuild is optional
   and not a release blocker; current base size is recorded.
 - Final commands to rerun immediately before tagging, if anything changes:

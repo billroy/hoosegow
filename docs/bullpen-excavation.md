@@ -67,12 +67,13 @@ From the P-1 Toady spike:
 
 ## Next Excavation Pass
 
-Decision for private `0.1.0`: originally keep copied Bullpen reference
-modules/tests/static assets in the tree, but keep them quarantined from the
-Toady runtime surface. The first post-review cleanup pass has now removed the
-obvious quarantined frontend/profile/manager artifacts.
+Decision for private `0.1.0`: copied Bullpen reference modules/tests/static
+assets were kept only until their reusable infrastructure was extracted and
+covered by Toady tests. The cleanup passes have now removed the quarantined
+frontend/profile/manager artifacts, legacy app surface, detached server
+modules, and old deploy-era entry points.
 
-Next pass after `0.1.0`:
+Cleanup sequence:
 
 1. Remove the legacy product modules in dependency-aware slices.
 2. Archive or delete the corresponding Bullpen tests.
@@ -137,15 +138,15 @@ Completed in the first Build Go pass:
 - Switched auth/env naming to `TOADY_*`, preserving `BULLPEN_*` reads only as
   migration/debug fallbacks inside copied modules.
 
-Current residue:
+Current residue after cleanup:
 
-- The repository still contains copied Bullpen product modules, static files,
-  and tests as excavation reference.
+- The repository no longer contains copied Bullpen product modules, product
+  static assets, legacy deploy entry points, or their legacy-only tests.
 - Toady mode no longer registers legacy product REST routes, serves legacy
   product static assets, constructs the legacy workspace manager, or eagerly
   imports the legacy product event/MCP/service-worker/terminal modules.
-- `bullpen.py` remains as an imported reference file and should not be used as
-  the Toady entrypoint.
+- Remaining Bullpen references are provenance notes, attribution, and comments
+  identifying extracted implementation workarounds.
 
 ## Checkpoint: Microsandbox Runtime Extraction
 
@@ -220,8 +221,23 @@ Completed after the app-surface cleanup:
 - Updated auth tests to seed credentials through `TOADY_HOME` instead of
   patching the removed workspace manager.
 
-Next cleanup target:
+## Checkpoint: Phase 4 Deploy-Era Removal
 
-- Remove `bullpen.py`, `deploy-sandbox.py`, and the remaining deploy-sandbox
-  tests after confirming every Microsandbox workaround they preserve is covered
-  by the extracted Toady runtime modules.
+Completed after the detached module removal:
+
+- Removed the legacy `bullpen.py` entry point.
+- Removed `deploy-sandbox.py` and the obsolete `deploy/microsandbox/`
+  Bullpen front proxy.
+- Removed the temporary `server/workspace_manager.py` shim because its only
+  remaining callers were deleted.
+- Removed `tests/test_deploy_sandbox.py`; deploy-sandbox parity is now covered
+  by the extracted Toady runtime/base tests and real Microsandbox smoke scripts.
+- Trimmed `requirements.txt` to drop `eventlet` and `websocket-client`; Toady
+  uses Flask-SocketIO's threading mode with `simple-websocket`.
+
+Remaining cleanup candidates:
+
+- The `scripts/` directory is retained because it contains live PTY and real
+  Microsandbox smoke tools used by docs and opt-in tests.
+- Historical docs may still mention Bullpen and `deploy-sandbox.py` as
+  provenance, but no removed deploy-era file remains in the runtime tree.

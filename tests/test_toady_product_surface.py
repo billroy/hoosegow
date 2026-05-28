@@ -151,6 +151,16 @@ print(json.dumps([name for name in legacy_modules if name in sys.modules]))
     assert json.loads(result.stdout) == []
 
 
+def test_legacy_deploy_entrypoints_are_not_shipped():
+    for relative in (
+        "bullpen.py",
+        "deploy-sandbox.py",
+        "deploy/microsandbox/bullpen-proxy.js",
+        "server/workspace_manager.py",
+    ):
+        assert not (ROOT / relative).exists()
+
+
 def test_server_log_records_http_and_socket_events_without_secrets(tmp_path, monkeypatch):
     monkeypatch.setattr("server.sandboxes.host_port_in_use", lambda _port: False)
     workspace_root = tmp_path / "work"
