@@ -866,13 +866,10 @@ No open product decisions are blocking implementation planning.
 
 Implementation watchpoints:
 
-1. **Foreground-process detection.** The PTY controller still needs a v1-grade
-   implementation or an explicit best-effort fallback before close
-   confirmations are considered complete.
-2. **Base-image budget.** Low priority during excavation. Measure prep time and
+1. **Base-image budget.** Low priority during excavation. Measure prep time and
    artifact size before v1; trim or raise the target only if the measured cost
    is painful.
-3. **License/attribution.** Deferred while private/local. Revisit before public
+2. **License/attribution.** Deferred while private/local. Revisit before public
    release or distribution.
 
 ---

@@ -66,8 +66,9 @@ running inside the sandbox. Controller traffic is token-protected with a
 per-sandbox secret stored in the sandbox manifest and injected during sandbox
 bootstrap.
 
-Terminal close confirmation for foreground processes is still a v1 watchpoint.
-Until foreground detection is completed, treat terminal close as best-effort.
+Terminal close confirmation uses `toady-ptyd` foreground process-group status
+where the guest can report it. Treat the process name as best-effort diagnostic
+metadata, not a security boundary.
 
 ## Published Ports
 
