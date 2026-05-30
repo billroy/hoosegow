@@ -59,6 +59,7 @@ createApp({
     const theme = ref(storedTheme === 'light' || storedTheme === 'dark' ? storedTheme : preferredTheme);
     const connected = ref(false);
     const busy = ref(false);
+    let clockCheckTimer = null;
     const selectedSlug = ref('');
     const sandboxes = reactive([]);
     const baseStatus = reactive({
@@ -746,6 +747,7 @@ createApp({
       try {
         if (event === 'sandbox:start') setAction(`Starting ${sandbox.slug}...`, sandbox.slug, 'A terminal will open when it is ready.');
         if (event === 'sandbox:stop') setAction(`Stopping ${sandbox.slug}...`, sandbox.slug);
+        if (event === 'sandbox:clock:sync') setAction(`Syncing ${sandbox.slug} clock...`, sandbox.slug);
         if (event === 'sandbox:refresh-runtime') {
           setAction(
             `Updating ${sandbox.slug} agent CLIs...`,
@@ -771,12 +773,35 @@ createApp({
           setToast(response.message || successMessage, 'success');
           return;
         }
+        if (event === 'sandbox:clock:sync') {
+          setToast(successMessage || 'Clock synced.', 'success');
+          return;
+        }
         setToast(successMessage, 'success');
       } catch (error) {
         setToast(error.message, 'error');
       } finally {
         busy.value = false;
         clearAction(sandbox.slug);
+      }
+    }
+
+    function clockStatusText(clock) {
+      if (!clock?.status || clock.status === 'unknown') return 'Not checked';
+      if (clock.status === 'synced') return 'Synced';
+      if (clock.status === 'ok') return 'OK';
+      if (clock.status === 'error') return 'Check failed';
+      const drift = Number(clock.drift_seconds || 0);
+      const direction = drift < 0 ? 'behind' : 'ahead';
+      return `${Math.abs(drift).toFixed(0)}s ${direction}`;
+    }
+
+    async function checkRunningClocks() {
+      if (!connected.value) return;
+      try {
+        await call('sandbox:clock:check', {});
+      } catch (error) {
+        setToast(error.message, 'error');
       }
     }
 
@@ -1036,6 +1061,7 @@ createApp({
       connected.value = true;
       try {
         await Promise.all([loadBaseStatus(), loadBaseLogs(), loadSandboxes(), loadWorkspaceDefaults()]);
+        checkRunningClocks().catch((error) => setToast(error.message, 'error'));
         await loadTerminalSessions();
       } catch (error) {
         setToast(error.message, 'error');
@@ -1120,11 +1146,13 @@ createApp({
 
     onMounted(() => {
       document.addEventListener('click', closeMenusOnOutsideClick);
+      clockCheckTimer = window.setInterval(checkRunningClocks, 5 * 60 * 1000);
       loadAuthState();
     });
 
     onBeforeUnmount(() => {
       document.removeEventListener('click', closeMenusOnOutsideClick);
+      if (clockCheckTimer) window.clearInterval(clockCheckTimer);
     });
 
     applyTheme();
@@ -1148,6 +1176,7 @@ createApp({
       closeTerminal,
       closeMenus,
       closeMenusOnOutsideClick,
+      clockStatusText,
       connected,
       createModalOpen,
       createSandbox,
@@ -1283,6 +1312,9 @@ createApp({
               <strong>{{ sandbox.name || sandbox.slug }}</strong>
               <small>{{ basename(sandbox.canonical_workspace_path) }}</small>
             </span>
+            <span v-if="sandbox.clock?.status === 'drift'" class="clock-warning" :title="'Clock ' + clockStatusText(sandbox.clock)">
+              <i data-lucide="clock"></i>
+            </span>
             <span class="status-pill" :data-busy="operationBySandbox[sandbox.slug] ? 'true' : null">
               {{ operationBySandbox[sandbox.slug] || sandbox.last_status }}
             </span>
@@ -1312,6 +1344,9 @@ createApp({
                 <i class="menu-item-icon" data-lucide="scroll-text"></i><span class="menu-item-label">Logs</span>
               </button>
               <div class="menu-divider" aria-hidden="true"></div>
+              <button class="menu-item" type="button" :disabled="busy || sandbox.last_status !== 'running'" @click="closeMenus(); runSandboxAction('sandbox:clock:sync', sandbox, 'Clock synced.')">
+                <i class="menu-item-icon" data-lucide="clock"></i><span class="menu-item-label">Sync clock</span>
+              </button>
               <button class="menu-item" type="button" :disabled="busy" @click="closeMenus(); runSandboxAction('sandbox:refresh-runtime', sandbox, 'Agent CLIs are current.')">
                 <i class="menu-item-icon" data-lucide="package-check"></i><span class="menu-item-label">Update agent CLIs</span>
               </button>
@@ -1497,6 +1532,10 @@ createApp({
               <div class="metric">
                 <span>Controller</span>
                 <strong>:{{ selected.controller?.host_port || '-' }}</strong>
+              </div>
+              <div class="metric" :data-alert="selected.clock?.status === 'drift' ? 'true' : null">
+                <span>Clock</span>
+                <strong>{{ clockStatusText(selected.clock) }}</strong>
               </div>
             </div>
             <dl class="manifest">

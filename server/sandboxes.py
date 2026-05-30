@@ -32,6 +32,8 @@ from server.sandbox_bootstrap import (
     detach_sandbox,
     disable_guest_ipv6_for_claude,
     prepare_runtime_dirs,
+    result_output_text,
+    run_sandbox_shell,
     start_pty_controller,
     verify_detached_sandbox,
     verify_mount_access,
@@ -54,6 +56,8 @@ class SandboxServiceError(RuntimeError):
 
 _LOG_MAX_BYTES = 10 * 1024 * 1024
 _LOG_BACKUPS = 5
+CLOCK_DRIFT_WARNING_SECONDS = 30
+CLOCK_SYNC_TARGET_SECONDS = 5
 
 
 def _host_memory_mib() -> int | None:
@@ -98,6 +102,7 @@ class SandboxService:
         max_sandboxes: int | None = 8,
         max_total_vcpus: int | None = None,
         max_total_memory_mib: int | None = None,
+        clock_drift_warning_seconds: int = CLOCK_DRIFT_WARNING_SECONDS,
     ) -> None:
         self.home = os.path.abspath(os.path.expanduser(home))
         self.store = SandboxStore(self.home)
@@ -117,6 +122,7 @@ class SandboxService:
         self.max_total_memory_mib = _positive_int_or_none(max_total_memory_mib) or (
             max(int(host_memory_mib * 0.75), self.default_memory_mib) if host_memory_mib else None
         )
+        self.clock_drift_warning_seconds = clock_drift_warning_seconds
 
     def _base_metadata_path(self) -> Path:
         return toady_base.base_metadata_path(self.home, self.base)
@@ -219,6 +225,157 @@ class SandboxService:
         slug = validate_slug(slug)
         manifest = self.store.get(slug)
         return None if manifest is None else manifest.to_dict()
+
+    def _clock_payload(
+        self,
+        *,
+        status: str,
+        host_epoch: float | None = None,
+        guest_epoch: float | None = None,
+        drift_seconds: float | None = None,
+        synced: bool = False,
+        error: str = "",
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "status": status,
+            "checked_at": round(time.time(), 3),
+            "threshold_seconds": self.clock_drift_warning_seconds,
+        }
+        if host_epoch is not None:
+            payload["host_epoch"] = round(host_epoch, 3)
+        if guest_epoch is not None:
+            payload["guest_epoch"] = round(guest_epoch, 3)
+        if drift_seconds is not None:
+            payload["drift_seconds"] = round(drift_seconds, 3)
+        if synced:
+            payload["synced_at"] = payload["checked_at"]
+        if error:
+            payload["error"] = error
+        return payload
+
+    def _save_clock(self, manifest: SandboxManifest, clock: dict[str, Any]) -> dict[str, Any]:
+        manifest.clock = clock
+        self.store.save(manifest)
+        return clock
+
+    async def _guest_epoch(self, sandbox: Any) -> float:
+        result = await run_sandbox_shell(sandbox, "date -u +%s", check=True)
+        output = result_output_text(result).strip().splitlines()
+        if not output:
+            raise SandboxServiceError("Sandbox clock command returned no output.")
+        try:
+            return float(output[-1].strip())
+        except ValueError as exc:
+            raise SandboxServiceError(f"Sandbox clock command returned an invalid epoch: {output[-1]!r}") from exc
+
+    async def _sample_clock(self, sandbox: Any) -> dict[str, Any]:
+        before = time.time()
+        guest_epoch = await self._guest_epoch(sandbox)
+        after = time.time()
+        host_epoch = (before + after) / 2
+        drift_seconds = guest_epoch - host_epoch
+        status = "drift" if abs(drift_seconds) > self.clock_drift_warning_seconds else "ok"
+        return self._clock_payload(
+            status=status,
+            host_epoch=host_epoch,
+            guest_epoch=guest_epoch,
+            drift_seconds=drift_seconds,
+        )
+
+    async def _set_guest_clock(self, sandbox: Any, host_epoch: int) -> None:
+        await run_sandbox_shell(sandbox, f"date -u -s @{int(host_epoch)} >/dev/null", check=True)
+
+    async def _connect_running_sandbox(self, runtime: MicrosandboxRuntime, manifest: SandboxManifest) -> Any:
+        if manifest.last_status != "running":
+            raise SandboxServiceError(f"Start {manifest.slug} before checking its clock.")
+        return await runtime.connect(manifest.slug)
+
+    async def _check_manifest_clock(
+        self,
+        runtime: MicrosandboxRuntime,
+        manifest: SandboxManifest,
+        *,
+        sandbox: Any | None = None,
+        reason: str = "manual",
+    ) -> dict[str, Any]:
+        try:
+            sandbox = sandbox or await self._connect_running_sandbox(runtime, manifest)
+            clock = await self._sample_clock(sandbox)
+        except Exception as exc:
+            clock = self._clock_payload(status="error", error=str(exc))
+        self._save_clock(manifest, clock)
+        self._log_sandbox_event(
+            manifest.slug,
+            "clock_checked",
+            status=clock.get("status"),
+            reason=reason,
+            drift_seconds=clock.get("drift_seconds"),
+            error=clock.get("error"),
+        )
+        return clock
+
+    async def _sync_manifest_clock(
+        self,
+        runtime: MicrosandboxRuntime,
+        manifest: SandboxManifest,
+        *,
+        sandbox: Any | None = None,
+        reason: str = "manual",
+    ) -> dict[str, Any]:
+        try:
+            sandbox = sandbox or await self._connect_running_sandbox(runtime, manifest)
+            target_epoch = int(time.time())
+            await self._set_guest_clock(sandbox, target_epoch)
+            clock = await self._sample_clock(sandbox)
+            clock["status"] = "synced" if abs(float(clock.get("drift_seconds") or 0)) <= CLOCK_SYNC_TARGET_SECONDS else "drift"
+            clock["synced_at"] = round(time.time(), 3)
+        except Exception as exc:
+            clock = self._clock_payload(status="error", error=str(exc))
+        self._save_clock(manifest, clock)
+        self._log_sandbox_event(
+            manifest.slug,
+            "clock_synced" if clock.get("status") != "error" else "clock_sync_failed",
+            status=clock.get("status"),
+            reason=reason,
+            drift_seconds=clock.get("drift_seconds"),
+            error=clock.get("error"),
+        )
+        if clock.get("status") == "error":
+            raise SandboxServiceError(f"Could not sync {manifest.slug} clock: {clock.get('error')}")
+        return clock
+
+    async def check_clock(self, slug: str) -> dict[str, Any]:
+        manifest = self.store.get(validate_slug(slug))
+        if manifest is None:
+            raise SandboxServiceError(f"Unknown sandbox: {slug}")
+        runtime = MicrosandboxRuntime()
+        await runtime.ensure_installed()
+        await self._check_manifest_clock(runtime, manifest, reason="manual")
+        refreshed = self.store.get(manifest.slug) or manifest
+        return refreshed.to_dict()
+
+    async def check_running_clocks(self) -> list[dict[str, Any]]:
+        runtime: MicrosandboxRuntime | None = None
+        checked = []
+        for manifest in self.store.list():
+            if manifest.last_status != "running":
+                continue
+            if runtime is None:
+                runtime = MicrosandboxRuntime()
+                await runtime.ensure_installed()
+            await self._check_manifest_clock(runtime, manifest, reason="periodic")
+            checked.append((self.store.get(manifest.slug) or manifest).to_dict())
+        return checked
+
+    async def sync_clock(self, slug: str) -> dict[str, Any]:
+        manifest = self.store.get(validate_slug(slug))
+        if manifest is None:
+            raise SandboxServiceError(f"Unknown sandbox: {slug}")
+        runtime = MicrosandboxRuntime()
+        await runtime.ensure_installed()
+        await self._sync_manifest_clock(runtime, manifest, reason="manual")
+        refreshed = self.store.get(manifest.slug) or manifest
+        return refreshed.to_dict()
 
     def browse_workspaces(self, path: str | None = None) -> dict[str, Any]:
         roots = list(self.browse_roots)
@@ -709,6 +866,7 @@ class SandboxService:
         await runtime.ensure_installed()
         try:
             sandbox = await runtime.create(spec)
+            await self._sync_manifest_clock(runtime, manifest, sandbox=sandbox, reason="start")
             await prepare_runtime_dirs(sandbox, spec)
             await disable_guest_ipv6_for_claude(sandbox)
             await verify_mount_access(sandbox, spec)

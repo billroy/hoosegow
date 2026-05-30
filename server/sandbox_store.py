@@ -32,6 +32,7 @@ class SandboxManifest:
     microsandbox_id: str | None = None
     runtime_generation: str = ""
     runtime_versions: dict[str, str] = field(default_factory=dict)
+    clock: dict[str, Any] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
 
     @classmethod
@@ -53,6 +54,7 @@ class SandboxManifest:
             microsandbox_id=data.get("microsandbox_id"),
             runtime_generation=str(data.get("runtime_generation") or ""),
             runtime_versions=dict(data.get("runtime_versions") or {}),
+            clock=dict(data.get("clock") or {}),
             warnings=list(data.get("warnings") or []),
         )
 

@@ -949,6 +949,53 @@ def create_app(
         socketio.emit("sandbox:status", {"id": manifest["slug"], "status": manifest["last_status"]}, to="authenticated")
         return {"ok": True, **result}
 
+    @socketio.on("sandbox:clock:check")
+    def toady_socket_check_sandbox_clock(payload=None):
+        import asyncio
+
+        payload = payload or {}
+        slug = payload.get("slug") or payload.get("id") or ""
+        try:
+            if slug:
+                manifest = asyncio.run(_sandbox_service().check_clock(slug))
+                sandboxes = _sandbox_service().list()
+            else:
+                checked = asyncio.run(_sandbox_service().check_running_clocks())
+                sandboxes = _sandbox_service().list()
+                manifest = None
+        except (SandboxServiceError, ValidationError, RuntimeError) as exc:
+            _log_socket_event("sandbox:clock:check", sandbox_id=slug, ok=False, error=exc)
+            socketio.emit("sandbox:error", {"id": slug, "error": str(exc)}, to=request.sid)
+            return _sandbox_error_payload(exc)
+        _emit_sandboxes_updated()
+        _log_socket_event("sandbox:clock:check", sandbox_id=slug or None, ok=True)
+        return {
+            "ok": True,
+            "sandbox": manifest,
+            "sandboxes": sandboxes,
+            "checked": checked if not slug else [manifest],
+        }
+
+    @socketio.on("sandbox:clock:sync")
+    def toady_socket_sync_sandbox_clock(payload):
+        import asyncio
+
+        slug = (payload or {}).get("slug") or (payload or {}).get("id") or ""
+        try:
+            manifest = asyncio.run(_sandbox_service().sync_clock(slug))
+        except (SandboxServiceError, ValidationError, RuntimeError) as exc:
+            _log_socket_event("sandbox:clock:sync", sandbox_id=slug, ok=False, error=exc)
+            socketio.emit("sandbox:error", {"id": slug, "error": str(exc)}, to=request.sid)
+            return _sandbox_error_payload(exc)
+        _emit_sandboxes_updated()
+        _log_socket_event(
+            "sandbox:clock:sync",
+            sandbox_id=manifest["slug"],
+            ok=True,
+            drift_seconds=(manifest.get("clock") or {}).get("drift_seconds"),
+        )
+        return {"ok": True, "sandbox": manifest, "clock": manifest.get("clock") or {}}
+
     @socketio.on("sandbox:destroy")
     def toady_socket_destroy_sandbox(payload):
         import asyncio
@@ -981,6 +1028,12 @@ def create_app(
                 raise SandboxServiceError("Unknown sandbox")
             if manifest.last_status != "running":
                 raise SandboxServiceError("Start the sandbox before opening a terminal.")
+            try:
+                checked = asyncio.run(_sandbox_service().check_clock(manifest.slug))
+                manifest.clock = checked.get("clock") or {}
+                _emit_sandboxes_updated()
+            except Exception as exc:
+                _log_socket_event("sandbox:clock:check", sandbox_id=manifest.slug, ok=False, error=exc)
             terminal_limit_value = int(app.config.get("toady_terminal_limit") or 32)
             if _toady_sandbox_terminal_count(manifest.slug) >= terminal_limit_value:
                 raise SandboxServiceError(

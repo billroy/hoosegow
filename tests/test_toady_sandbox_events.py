@@ -16,6 +16,17 @@ class FakePtyDriver:
         return {"event": "ok"}
 
 
+class FakeExecResult:
+    returncode = 0
+    stdout_text = "2000\n"
+    stderr_text = ""
+
+
+class FakeSandbox:
+    def exec(self, _cmd, _args):
+        return FakeExecResult()
+
+
 class FakeRuntime:
     async def exists(self, _name):
         return False
@@ -24,7 +35,10 @@ class FakeRuntime:
         return None
 
     async def create(self, _spec):
-        return object()
+        return FakeSandbox()
+
+    async def connect(self, _name):
+        return FakeSandbox()
 
     async def stop(self, _name):
         return None

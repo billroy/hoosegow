@@ -354,6 +354,7 @@ def test_sandbox_service_reassigns_occupied_controller_port_on_start(tmp_path, m
     monkeypatch.setattr("server.sandboxes.ensure_host_ports_available", lambda _ports: None)
     monkeypatch.setattr("server.sandboxes.mark_open_fds_close_on_exec", lambda: fd_guard_calls.append(True))
     monkeypatch.setattr("server.sandboxes.MicrosandboxRuntime", FakeRuntime)
+    monkeypatch.setattr(service, "_sync_manifest_clock", async_noop)
     monkeypatch.setattr("server.sandboxes.prepare_runtime_dirs", async_noop)
     monkeypatch.setattr("server.sandboxes.disable_guest_ipv6_for_claude", async_noop)
     monkeypatch.setattr("server.sandboxes.verify_mount_access", async_noop)
@@ -369,6 +370,92 @@ def test_sandbox_service_reassigns_occupied_controller_port_on_start(tmp_path, m
     assert started["controller"]["host_port"] == 63101
     assert captured["ports"] == {63101: 5859}
     assert fd_guard_calls == [True]
+
+
+def test_sandbox_service_check_clock_records_drift(tmp_path, monkeypatch):
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    service = SandboxService(
+        home=str(tmp_path / "state"),
+        browse_roots=[str(tmp_path)],
+        clock_drift_warning_seconds=5,
+    )
+    service.create_manifest({"name": "demo", "workspace_root": str(workspace)})
+    manifest = service.store.get("demo")
+    manifest.last_status = "running"
+    service.store.save(manifest)
+    times = iter([1000.0, 1000.2, 1000.3, 1000.4])
+
+    class FakeResult:
+        returncode = 0
+        stdout_text = "970\n"
+        stderr_text = ""
+
+    class FakeSandbox:
+        def exec(self, _cmd, _args):
+            return FakeResult()
+
+    class FakeRuntime:
+        async def ensure_installed(self):
+            return None
+
+        async def connect(self, slug):
+            assert slug == "demo"
+            return FakeSandbox()
+
+    monkeypatch.setattr("server.sandboxes.MicrosandboxRuntime", FakeRuntime)
+    monkeypatch.setattr("server.sandboxes.time.time", lambda: next(times, 1000.5))
+
+    checked = asyncio.run(service.check_clock("demo"))
+
+    assert checked["clock"]["status"] == "drift"
+    assert checked["clock"]["drift_seconds"] == -30.1
+
+
+def test_sandbox_service_sync_clock_sets_guest_time_without_restart(tmp_path, monkeypatch):
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    service = SandboxService(home=str(tmp_path / "state"), browse_roots=[str(tmp_path)])
+    service.create_manifest({"name": "demo", "workspace_root": str(workspace)})
+    manifest = service.store.get("demo")
+    manifest.last_status = "running"
+    service.store.save(manifest)
+    guest_epoch = {"value": 0}
+    commands = []
+
+    class FakeResult:
+        returncode = 0
+        stderr_text = ""
+
+        def __init__(self, stdout_text=""):
+            self.stdout_text = stdout_text
+
+    class FakeSandbox:
+        def exec(self, _cmd, args):
+            command = args[-1]
+            commands.append(command)
+            if "date -u -s @" in command:
+                guest_epoch["value"] = int(command.split("date -u -s @", 1)[1].split()[0])
+                return FakeResult()
+            return FakeResult(f"{guest_epoch['value']}\n")
+
+    class FakeRuntime:
+        async def ensure_installed(self):
+            return None
+
+        async def connect(self, slug):
+            assert slug == "demo"
+            return FakeSandbox()
+
+    monkeypatch.setattr("server.sandboxes.MicrosandboxRuntime", FakeRuntime)
+    monkeypatch.setattr("server.sandboxes.time.time", lambda: 2000.25)
+
+    synced = asyncio.run(service.sync_clock("demo"))
+
+    assert any("date -u -s @2000" in command for command in commands)
+    assert synced["last_status"] == "running"
+    assert synced["clock"]["status"] == "synced"
+    assert abs(synced["clock"]["drift_seconds"]) < 1
 
 
 def test_sandbox_service_reassigns_conflicted_port(tmp_path, monkeypatch):

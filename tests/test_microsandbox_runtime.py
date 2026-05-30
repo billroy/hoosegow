@@ -175,6 +175,33 @@ def test_prepared_base_snapshot_path_opens_lazy_snapshot(monkeypatch):
     assert path == "/lazy/snapshot"
 
 
+def test_runtime_connect_uses_handle_connect(monkeypatch):
+    class Sandbox:
+        pass
+
+    class Handle:
+        async def connect(self):
+            return Sandbox()
+
+    class FakeSandbox:
+        @staticmethod
+        async def get(_name):
+            return Handle()
+
+    module = SimpleNamespace(
+        Sandbox=FakeSandbox,
+        Snapshot=object,
+        Volume=object,
+        Network=object,
+    )
+    monkeypatch.setattr(importlib, "import_module", lambda name: module)
+    allow_supported_microsandbox_version(monkeypatch)
+
+    sandbox = asyncio.run(MicrosandboxRuntime().connect("demo"))
+
+    assert isinstance(sandbox, Sandbox)
+
+
 def test_ensure_installed_runs_sdk_installer_when_missing(monkeypatch):
     calls = []
 

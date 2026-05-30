@@ -480,6 +480,19 @@ button:disabled {
   font-size: 11px;
 }
 
+.clock-warning {
+  display: inline-grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  color: var(--amber);
+}
+
+.clock-warning svg {
+  width: 14px;
+  height: 14px;
+}
+
 .status-pill {
   min-width: 58px;
   max-width: 104px;
@@ -802,6 +815,10 @@ input:focus {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
+}
+
+.metric[data-alert="true"] {
+  border-color: color-mix(in srgb, var(--amber), var(--line) 45%);
 }
 
 .metric span {

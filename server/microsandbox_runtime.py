@@ -319,6 +319,15 @@ class MicrosandboxRuntime:
             status = await maybe(status())
         return None if status is None else str(status)
 
+    async def connect(self, name: str) -> Any:
+        sandbox = await self.get(name)
+        if sandbox is None:
+            raise ToadyRuntimeError(f"Microsandbox '{name}' was not found.")
+        connect = getattr(sandbox, "connect", None)
+        if callable(connect):
+            return await maybe(connect())
+        return sandbox
+
     async def get_prepared_base(self, base: str) -> Any | None:
         get = getattr(self.Snapshot, "get", None)
         if not callable(get):
