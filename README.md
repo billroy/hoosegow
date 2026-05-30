@@ -33,7 +33,7 @@ base-prep path. It is intentionally not a Bullpen worker/ticket UI.
 Known constraints for this release:
 
 - Toady is a local single-user developer tool.
-- Toady pins `microsandbox==0.5.2`. Older Microsandbox releases are missing the
+- Toady pins `microsandbox==0.5.3`. Older Microsandbox releases are missing the
   published-port TCP stall fix Toady depends on.
 - Real Microsandbox behavior depends on the pinned host Microsandbox runtime
   and the prepared `toady-microsandbox-local` base.
@@ -51,7 +51,7 @@ python3 toady.py --workspace-root /path/to/work
 
 If you installed Toady dependencies before this release, rerun
 `pip install -r requirements.txt` so the host `microsandbox` package is upgraded
-to the pinned `0.5.2` release.
+to the pinned `0.5.3` release.
 
 Open `http://127.0.0.1:6060/` if the browser does not open automatically.
 
@@ -318,7 +318,7 @@ node --check static/app.js
 ```
 
 Real Microsandbox smokes use the prepared base `toady-microsandbox-local` by
-default and require `microsandbox==0.5.2` or newer on the host:
+default and require `microsandbox==0.5.3` or newer on the host:
 
 ```bash
 python3 scripts/microsandbox_port_smoke.py
