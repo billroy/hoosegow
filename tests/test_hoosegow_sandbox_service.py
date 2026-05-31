@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from server import base as toady_base
+from server import base as hoosegow_base
 from server.microsandbox_runtime import mark_open_fds_close_on_exec
 from server.sandboxes import SandboxService, SandboxServiceError
-from server.toady_validation import (
+from server.hoosegow_validation import (
     ValidationError,
     normalize_browse_roots,
     validate_slug,
@@ -43,7 +43,7 @@ def test_workspace_validation_allows_browse_root_child(tmp_path):
     path, warnings = validate_workspace_path(
         str(workspace),
         browse_roots=[str(tmp_path)],
-        state_home=str(tmp_path / ".toady"),
+        state_home=str(tmp_path / ".hoosegow"),
     )
 
     assert path == str(workspace.resolve())
@@ -70,7 +70,7 @@ def test_workspace_validation_rejects_symlink_escape(tmp_path):
         validate_workspace_path(
             str(link),
             browse_roots=[str(allowed)],
-            state_home=str(tmp_path / ".toady"),
+            state_home=str(tmp_path / ".hoosegow"),
         )
 
 
@@ -115,7 +115,7 @@ def test_sandbox_service_rejects_foreign_runtime_slug(tmp_path, monkeypatch):
     monkeypatch.setattr("server.sandboxes.MicrosandboxRuntime", FakeRuntime)
     service = SandboxService(home=str(tmp_path / "state"), browse_roots=[str(tmp_path)])
 
-    with pytest.raises(SandboxServiceError, match="outside Toady: demo"):
+    with pytest.raises(SandboxServiceError, match="outside Hoosegow: demo"):
         service.create_manifest({"name": "demo", "workspace_root": str(workspace)})
 
 
@@ -662,7 +662,7 @@ def test_sandbox_service_refreshes_stopped_sandbox_without_starting_or_rebuildin
     )
     service.create_manifest({"name": "demo", "workspace_root": str(workspace)})
     latest = {"claude": "1", "codex": "2", "gemini": "3", "opencode": "4"}
-    metadata = toady_base.write_base_metadata(
+    metadata = hoosegow_base.write_base_metadata(
         service._base_metadata_path(),
         base=service.base,
         source_image="node:test",
@@ -685,7 +685,7 @@ def test_sandbox_service_refreshes_stopped_sandbox_without_starting_or_rebuildin
             calls.append(("remove", name))
 
     monkeypatch.setattr("server.sandboxes.MicrosandboxRuntime", FakeRuntime)
-    monkeypatch.setattr("server.sandboxes.toady_base.latest_agent_cli_versions", lambda: latest)
+    monkeypatch.setattr("server.sandboxes.hoosegow_base.latest_agent_cli_versions", lambda: latest)
 
     result = asyncio.run(service.refresh_runtime_dependencies("demo"))
 
@@ -718,7 +718,7 @@ def test_sandbox_service_refresh_rebuilds_only_when_versions_change(tmp_path, mo
     service.store.save(manifest)
     old_versions = {"claude": "1", "codex": "2", "gemini": "3", "opencode": "4"}
     latest = {"claude": "1", "codex": "2.1", "gemini": "3", "opencode": "4"}
-    toady_base.write_base_metadata(
+    hoosegow_base.write_base_metadata(
         service._base_metadata_path(),
         base=service.base,
         source_image="node:test",
@@ -742,7 +742,7 @@ def test_sandbox_service_refresh_rebuilds_only_when_versions_change(tmp_path, mo
 
     async def fake_prepare(_runtime, _spec, **kwargs):
         calls.append(("prepare", kwargs["dependency_versions"]))
-        toady_base.write_base_metadata(
+        hoosegow_base.write_base_metadata(
             kwargs["metadata_path"],
             base=service.base,
             source_image="node:test",
@@ -756,8 +756,8 @@ def test_sandbox_service_refresh_rebuilds_only_when_versions_change(tmp_path, mo
         return service.store.save(refreshed).to_dict()
 
     monkeypatch.setattr("server.sandboxes.MicrosandboxRuntime", FakeRuntime)
-    monkeypatch.setattr("server.sandboxes.toady_base.latest_agent_cli_versions", lambda: latest)
-    monkeypatch.setattr("server.sandboxes.toady_base.prepare_base", fake_prepare)
+    monkeypatch.setattr("server.sandboxes.hoosegow_base.latest_agent_cli_versions", lambda: latest)
+    monkeypatch.setattr("server.sandboxes.hoosegow_base.prepare_base", fake_prepare)
     monkeypatch.setattr(service, "start", fake_start)
 
     result = asyncio.run(service.refresh_runtime_dependencies("demo"))

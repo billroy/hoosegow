@@ -1,4 +1,4 @@
-"""Toady Microsandbox base preparation extracted from Bullpen."""
+"""Hoosegow Microsandbox base preparation extracted from Bullpen."""
 
 from __future__ import annotations
 
@@ -13,8 +13,8 @@ from server.persistence import read_json, write_json
 from server.microsandbox_runtime import (
     SOURCE_IMAGE_DEFAULT,
     MicrosandboxRuntime,
-    ToadyRuntimeError,
-    ToadySandboxSpec,
+    HoosegowRuntimeError,
+    HoosegowSandboxSpec,
 )
 from server.sandbox_bootstrap import run_sandbox_shell
 
@@ -27,7 +27,7 @@ AGENT_CLI_PACKAGES = {
 }
 
 
-def base_metadata_path(home: str | Path, base: str = "toady-microsandbox-local") -> Path:
+def base_metadata_path(home: str | Path, base: str = "hoosegow-microsandbox-local") -> Path:
     return Path(home).expanduser().resolve() / "base" / f"{base}-metadata.json"
 
 
@@ -62,7 +62,7 @@ def write_base_metadata(
 
 def latest_agent_cli_versions(cache_dir: str | Path | None = None) -> dict[str, str]:
     versions = {}
-    cache_context = tempfile.TemporaryDirectory(prefix="toady-npm-cache-") if cache_dir is None else None
+    cache_context = tempfile.TemporaryDirectory(prefix="hoosegow-npm-cache-") if cache_dir is None else None
     try:
         npm_cache = Path(cache_dir or cache_context.name).expanduser().resolve()
         npm_cache.mkdir(parents=True, exist_ok=True)
@@ -85,16 +85,16 @@ def latest_agent_cli_versions(cache_dir: str | Path | None = None) -> dict[str, 
                     env=env,
                 )
             except (OSError, subprocess.TimeoutExpired) as exc:
-                raise ToadyRuntimeError(f"Could not check latest {name} package version: {exc}") from exc
+                raise HoosegowRuntimeError(f"Could not check latest {name} package version: {exc}") from exc
             if result.returncode != 0:
                 detail = (result.stderr or result.stdout or "").strip()
-                raise ToadyRuntimeError(
+                raise HoosegowRuntimeError(
                     f"Could not check latest {name} package version with npm view {package}."
                     + (f" {detail}" if detail else "")
                 )
             version = result.stdout.strip()
             if not version:
-                raise ToadyRuntimeError(f"npm view {package} returned an empty version.")
+                raise HoosegowRuntimeError(f"npm view {package} returned an empty version.")
             versions[name] = version
     finally:
         if cache_context is not None:
@@ -109,7 +109,7 @@ def base_needs_dependency_refresh(metadata: dict[str, Any] | None, latest_versio
     return any(current_versions.get(name) != version for name, version in latest_versions.items())
 
 
-async def base_status(base: str = "toady-microsandbox-local") -> dict[str, Any]:
+async def base_status(base: str = "hoosegow-microsandbox-local") -> dict[str, Any]:
     """Return prepared-base availability without creating sandboxes."""
     try:
         runtime = MicrosandboxRuntime()
@@ -178,8 +178,8 @@ async def run_logged_sandbox_shell(sandbox: Any, command: str, *, label: str) ->
     print(f"==> {label}", flush=True)
     try:
         result = await run_sandbox_shell(sandbox, command, check=True)
-    except ToadyRuntimeError as exc:
-        raise ToadyRuntimeError(f"{label} failed\n{exc}") from exc
+    except HoosegowRuntimeError as exc:
+        raise HoosegowRuntimeError(f"{label} failed\n{exc}") from exc
     stdout = getattr(result, "stdout_text", "") or getattr(result, "stdout", "")
     stderr = getattr(result, "stderr_text", "") or getattr(result, "stderr", "")
     if stdout.strip():
@@ -207,7 +207,7 @@ async def stop_prepare_sandbox(sandbox: Any) -> None:
             await result
 
 
-async def validate_prepared_base_snapshot(runtime: MicrosandboxRuntime, spec: ToadySandboxSpec) -> None:
+async def validate_prepared_base_snapshot(runtime: MicrosandboxRuntime, spec: HoosegowSandboxSpec) -> None:
     validate_name = f"{spec.base}-v"
     sandbox = await runtime.create_base_validation_sandbox(validate_name, spec.base, spec)
     try:
@@ -226,7 +226,7 @@ async def validate_prepared_base_snapshot(runtime: MicrosandboxRuntime, spec: To
 
 async def prepare_base(
     runtime: MicrosandboxRuntime,
-    spec: ToadySandboxSpec,
+    spec: HoosegowSandboxSpec,
     *,
     source_image: str = SOURCE_IMAGE_DEFAULT,
     source: Path | None = None,
@@ -234,7 +234,7 @@ async def prepare_base(
     metadata_path: str | Path | None = None,
     dependency_versions: dict[str, str] | None = None,
 ) -> None:
-    """Prepare a reusable Toady Microsandbox base snapshot.
+    """Prepare a reusable Hoosegow Microsandbox base snapshot.
 
     This is a direct Bullpen-style prepare-sandbox -> snapshot -> validation
     flow. It is intentionally conservative and keeps the expensive operational
@@ -268,16 +268,16 @@ async def prepare_base(
             sandbox,
             r"""
             set -euo pipefail
-            python3 -m venv /opt/toady-venv
-            /opt/toady-venv/bin/python -m pip install --upgrade pip
-            /opt/toady-venv/bin/python -m pip install --no-cache-dir -r /app/requirements.txt
-            /opt/toady-venv/bin/python - <<'PY'
+            python3 -m venv /opt/hoosegow-venv
+            /opt/hoosegow-venv/bin/python -m pip install --upgrade pip
+            /opt/hoosegow-venv/bin/python -m pip install --no-cache-dir -r /app/requirements.txt
+            /opt/hoosegow-venv/bin/python - <<'PY'
 import flask
 import flask_socketio
 import pyfiglet
 PY
             """,
-            label="Installing Toady Python dependencies",
+            label="Installing Hoosegow Python dependencies",
         )
         await run_logged_sandbox_shell(
             sandbox,
@@ -297,10 +297,10 @@ PY
             sandbox,
             f"""
             set -euo pipefail
-            versions_file=/opt/toady-microsandbox-base-versions.txt
+            versions_file=/opt/hoosegow-microsandbox-base-versions.txt
             {{
               python3 --version
-              /opt/toady-venv/bin/python -c 'import flask, flask_socketio, pyfiglet'
+              /opt/hoosegow-venv/bin/python -c 'import flask, flask_socketio, pyfiglet'
               git --version
               gh --version
               node --version
@@ -336,12 +336,12 @@ PY
             pass
 
 
-async def ensure_prepared_base(runtime: MicrosandboxRuntime, spec: ToadySandboxSpec, *, auto_prepare: bool = False) -> None:
+async def ensure_prepared_base(runtime: MicrosandboxRuntime, spec: HoosegowSandboxSpec, *, auto_prepare: bool = False) -> None:
     if await runtime.prepared_base_exists(spec.base):
         return
     if not auto_prepare:
-        raise ToadyRuntimeError(
+        raise HoosegowRuntimeError(
             f"Prepared Microsandbox base '{spec.base}' was not found. "
-            "Run: python3 toady.py --prepare-base"
+            "Run: python3 hoosegow.py --prepare-base"
         )
     await prepare_base(runtime, spec, force=True)

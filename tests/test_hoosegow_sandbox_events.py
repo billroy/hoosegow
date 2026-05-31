@@ -61,7 +61,7 @@ def test_socket_create_allows_shared_workspace_root(tmp_path, monkeypatch):
         global_dir=str(tmp_path / "state"),
         start_without_project=True,
     )
-    service = app.config["toady_sandboxes"]
+    service = app.config["hoosegow_sandboxes"]
     service.browse_roots = [str(tmp_path)]
     service.port_pool = (63100, 63105)
     client = socketio.test_client(app)
@@ -108,7 +108,7 @@ def test_socket_lifecycle_smoke_create_start_terminal_port_destroy(tmp_path, mon
         global_dir=str(tmp_path / "state"),
         start_without_project=True,
     )
-    service = app.config["toady_sandboxes"]
+    service = app.config["hoosegow_sandboxes"]
     service.browse_roots = [str(tmp_path)]
     service.port_pool = (63100, 63110)
     client = socketio.test_client(app)
@@ -166,7 +166,7 @@ def test_socket_refresh_runtime_event_preserves_payload(tmp_path, monkeypatch):
         global_dir=str(tmp_path / "state"),
         start_without_project=True,
     )
-    service = app.config["toady_sandboxes"]
+    service = app.config["hoosegow_sandboxes"]
     service.browse_roots = [str(tmp_path)]
     service.port_pool = (63100, 63110)
     client = socketio.test_client(app)

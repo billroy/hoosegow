@@ -5,11 +5,11 @@ from types import SimpleNamespace
 import pytest
 
 from server import sandbox_bootstrap
-from server.microsandbox_runtime import ToadyRuntimeError, ToadySandboxSpec
+from server.microsandbox_runtime import HoosegowRuntimeError, HoosegowSandboxSpec
 
 
 def _spec(tmp_path):
-    spec = ToadySandboxSpec(
+    spec = HoosegowSandboxSpec(
         sandbox_name="demo",
         workspace=tmp_path / "workspace",
         source_root=tmp_path / "source",
@@ -40,12 +40,12 @@ def test_build_runtime_env_sets_controller_identity_and_limits(tmp_path, monkeyp
     sandbox_bootstrap.build_runtime_env(spec, controller_port=61234, controller_token="token")
 
     assert spec.runtime_env["HOME"] == "/home/agent"
-    assert spec.runtime_env["TOADY_UID"] == "501"
-    assert spec.runtime_env["TOADY_GID"] == "20"
-    assert spec.runtime_env["TOADY_PTYD_PORT"] == "61234"
-    assert spec.runtime_env["TOADY_PTYD_TOKEN"] == "token"
-    assert spec.runtime_env["TOADY_MICROSANDBOX_GUEST_NOFILE"] == "7777"
-    assert spec.runtime_env["TOADY_MICROSANDBOX_MAX_CONNECTIONS"] == "9999"
+    assert spec.runtime_env["HOOSEGOW_UID"] == "501"
+    assert spec.runtime_env["HOOSEGOW_GID"] == "20"
+    assert spec.runtime_env["HOOSEGOW_PTYD_PORT"] == "61234"
+    assert spec.runtime_env["HOOSEGOW_PTYD_TOKEN"] == "token"
+    assert spec.runtime_env["HOOSEGOW_MICROSANDBOX_GUEST_NOFILE"] == "7777"
+    assert spec.runtime_env["HOOSEGOW_MICROSANDBOX_MAX_CONNECTIONS"] == "9999"
 
 
 def test_run_configured_sandbox_shell_redacts_secrets_and_uses_label(tmp_path):
@@ -53,7 +53,7 @@ def test_run_configured_sandbox_shell_redacts_secrets_and_uses_label(tmp_path):
     sandbox_bootstrap.build_runtime_env(spec, controller_token="controller-secret")
     sandbox = FakeSandbox(SimpleNamespace(returncode=1, stderr_text="leaked secret-token"))
 
-    with pytest.raises(ToadyRuntimeError) as excinfo:
+    with pytest.raises(HoosegowRuntimeError) as excinfo:
         asyncio.run(
             sandbox_bootstrap.run_configured_sandbox_shell(
                 sandbox,
@@ -94,7 +94,7 @@ def test_prepare_runtime_dirs_writes_guest_fd_limit(tmp_path, monkeypatch):
 
 def test_start_pty_controller_uses_env_token_reference_not_raw_secret(tmp_path, monkeypatch):
     spec = _spec(tmp_path)
-    spec.runtime_env["TOADY_PTYD_TOKEN"] = "raw-controller-token"
+    spec.runtime_env["HOOSEGOW_PTYD_TOKEN"] = "raw-controller-token"
     captured = {}
 
     async def fake_run_as_agent(_sandbox, got_spec, command, *, label):
@@ -108,8 +108,8 @@ def test_start_pty_controller_uses_env_token_reference_not_raw_secret(tmp_path, 
 
     assert captured["spec"] is spec
     assert captured["label"] == "start PTY controller"
-    assert "/app/guest/toady-ptyd.py" in captured["command"]
-    assert '--token "$TOADY_PTYD_TOKEN"' in captured["command"]
+    assert "/app/guest/hoosegow-ptyd.py" in captured["command"]
+    assert '--token "$HOOSEGOW_PTYD_TOKEN"' in captured["command"]
     assert "raw-controller-token" not in captured["command"]
 
 
@@ -119,7 +119,7 @@ def test_run_sandbox_shell_falls_back_to_shell_method_and_reports_output():
             assert command == "false"
             return SimpleNamespace(exit_code=2, stdout=b"out", stderr=b"err")
 
-    with pytest.raises(ToadyRuntimeError) as excinfo:
+    with pytest.raises(HoosegowRuntimeError) as excinfo:
         asyncio.run(sandbox_bootstrap.run_sandbox_shell(ShellSandbox(), "false"))
 
     assert "Sandbox command failed: false" in str(excinfo.value)

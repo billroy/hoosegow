@@ -46,7 +46,7 @@ def parse_args(argv: Sequence[str] | None = None) -> PassthroughConfig:
     raw_argv = list(sys.argv[1:] if argv is None else argv)
     wrapper_argv, command, had_separator = split_wrapper_and_command(raw_argv)
     parser = argparse.ArgumentParser(
-        prog="toady-msb",
+        prog="hoosegow-msb",
         description="Run a command inside an existing Microsandbox sandbox via msb exec.",
     )
     parser.add_argument("--sandbox", required=True, help="Microsandbox sandbox name")
@@ -146,7 +146,7 @@ def run(config: PassthroughConfig) -> int:
         print(shell_join(argv))
         return 0
     if config.verbose:
-        print(f"toady-msb: running {shell_join(argv)}", file=sys.stderr)
+        print(f"hoosegow-msb: running {shell_join(argv)}", file=sys.stderr)
     try:
         completed = subprocess.run(argv, check=False)
     except FileNotFoundError:

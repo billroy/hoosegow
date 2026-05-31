@@ -8,8 +8,8 @@ import pytest
 from server import microsandbox_runtime
 from server.microsandbox_runtime import (
     MicrosandboxRuntime,
-    ToadyRuntimeError,
-    ToadySandboxSpec,
+    HoosegowRuntimeError,
+    HoosegowSandboxSpec,
     create_time_env,
     network_with_max_connections,
 )
@@ -50,12 +50,12 @@ def test_network_with_max_connections_mutates_non_dataclass_object():
 
 
 def test_network_with_max_connections_requires_sdk_support():
-    with pytest.raises(ToadyRuntimeError, match="does not expose max_connections"):
+    with pytest.raises(HoosegowRuntimeError, match="does not expose max_connections"):
         network_with_max_connections(object(), 20)
 
 
 def test_create_time_env_keeps_sandbox_create_environment_small(tmp_path):
-    spec = ToadySandboxSpec(
+    spec = HoosegowSandboxSpec(
         sandbox_name="demo",
         workspace=tmp_path / "workspace",
         source_root=tmp_path / "source",
@@ -91,7 +91,7 @@ def test_runtime_create_uses_prepared_snapshot_bullpen_volumes_and_small_env(tmp
     class FakeSnapshot:
         @staticmethod
         async def get(_base):
-            return SimpleNamespace(path="/snapshots/toady-base")
+            return SimpleNamespace(path="/snapshots/hoosegow-base")
 
     class FakeSandbox:
         @staticmethod
@@ -115,7 +115,7 @@ def test_runtime_create_uses_prepared_snapshot_bullpen_volumes_and_small_env(tmp
     home = tmp_path / "home"
     workspace.mkdir()
     source.mkdir()
-    spec = ToadySandboxSpec(
+    spec = HoosegowSandboxSpec(
         sandbox_name="demo",
         workspace=workspace,
         source_root=source,
@@ -134,7 +134,7 @@ def test_runtime_create_uses_prepared_snapshot_bullpen_volumes_and_small_env(tmp
 
     assert result.name == "demo"
     assert captured["name"] == "demo"
-    assert captured["kwargs"]["snapshot"] == "/snapshots/toady-base"
+    assert captured["kwargs"]["snapshot"] == "/snapshots/hoosegow-base"
     assert captured["kwargs"]["detached"] is True
     assert captured["kwargs"]["replace"] is True
     assert captured["kwargs"]["ports"] == {61234: 5859}
@@ -232,7 +232,7 @@ def test_runtime_init_reports_missing_sdk_api(monkeypatch):
     monkeypatch.setattr(importlib, "import_module", lambda name: SimpleNamespace(Sandbox=object))
     allow_supported_microsandbox_version(monkeypatch)
 
-    with pytest.raises(ToadyRuntimeError, match="missing the expected SDK API"):
+    with pytest.raises(HoosegowRuntimeError, match="missing the expected SDK API"):
         MicrosandboxRuntime()
 
 
@@ -250,5 +250,5 @@ def test_runtime_init_rejects_stale_microsandbox_distribution(monkeypatch):
         lambda module=None: "0.4.4",
     )
 
-    with pytest.raises(ToadyRuntimeError, match="published-port TCP stall fix"):
+    with pytest.raises(HoosegowRuntimeError, match="published-port TCP stall fix"):
         MicrosandboxRuntime()

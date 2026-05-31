@@ -1,4 +1,4 @@
-"""Minimal local authentication for Toady.
+"""Minimal local authentication for Hoosegow.
 
 Credentials live in ``GLOBAL_DIR/.env`` as an INI-like key=value file that
 we parse manually (no third-party dotenv/YAML libs, per project convention).
@@ -21,10 +21,10 @@ from werkzeug.security import generate_password_hash as _wz_generate_password_ha
 
 ENV_FILENAME = ".env"
 
-USERNAME_KEY = "TOADY_USERNAME"
-PASSWORD_HASH_KEY = "TOADY_PASSWORD_HASH"
-USERS_JSON_KEY = "TOADY_USERS_JSON"
-SECRET_KEY_KEY = "TOADY_SECRET_KEY"
+USERNAME_KEY = "HOOSEGOW_USERNAME"
+PASSWORD_HASH_KEY = "HOOSEGOW_PASSWORD_HASH"
+USERS_JSON_KEY = "HOOSEGOW_USERS_JSON"
+SECRET_KEY_KEY = "HOOSEGOW_SECRET_KEY"
 LEGACY_USERNAME_KEY = "BULLPEN_USERNAME"
 LEGACY_PASSWORD_HASH_KEY = "BULLPEN_PASSWORD_HASH"
 LEGACY_USERS_JSON_KEY = "BULLPEN_USERS_JSON"
@@ -160,8 +160,8 @@ def parse_credentials_mapping(data: Dict[str, str]) -> Dict[str, str]:
 def apply_credentials_mapping(env_data: Dict[str, str], users: Dict[str, str]) -> Dict[str, str]:
     """Merge users into ``env_data``, keeping unrelated keys untouched.
 
-    Stores users in ``TOADY_USERS_JSON`` and keeps
-    ``TOADY_USERNAME``/``TOADY_PASSWORD_HASH`` in sync for simple inspection.
+    Stores users in ``HOOSEGOW_USERS_JSON`` and keeps
+    ``HOOSEGOW_USERNAME``/``HOOSEGOW_PASSWORD_HASH`` in sync for simple inspection.
     """
     updated = dict(env_data)
     # Normalize + drop invalid entries.

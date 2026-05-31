@@ -21,7 +21,7 @@ from pty_controller_smoke import reserve_loopback_port
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SNAPSHOT_DEFAULT = "toady-microsandbox-local"
+SNAPSHOT_DEFAULT = "hoosegow-microsandbox-local"
 
 
 async def maybe(value: Any) -> Any:
@@ -63,7 +63,7 @@ async def run(args: argparse.Namespace) -> int:
     if not snapshot_path:
         raise RuntimeError(f"snapshot {snapshot_name!r} has no path")
 
-    with tempfile.TemporaryDirectory(prefix="toady-msb-home-", dir="/private/tmp") as home:
+    with tempfile.TemporaryDirectory(prefix="hoosegow-msb-home-", dir="/private/tmp") as home:
         await stop_remove(sandbox_name)
         volumes = {
             "/app": microsandbox.Volume.bind(str(ROOT), readonly=True),
@@ -92,9 +92,9 @@ async def run(args: argparse.Namespace) -> int:
         try:
             command = (
                 "set -e; "
-                "mkdir -p /var/lib/toady; "
-                f"nohup python3 /app/guest/toady-ptyd.py --http 0.0.0.0:{host_port} --token {shlex.quote(token)} "
-                ">/tmp/toady-ptyd.log 2>&1 &"
+                "mkdir -p /var/lib/hoosegow; "
+                f"nohup python3 /app/guest/hoosegow-ptyd.py --http 0.0.0.0:{host_port} --token {shlex.quote(token)} "
+                ">/tmp/hoosegow-ptyd.log 2>&1 &"
             )
             result = sandbox.exec("bash", ["-lc", command])
             await maybe(result)
@@ -105,12 +105,12 @@ async def run(args: argparse.Namespace) -> int:
         except BaseException as exc:
             failure = exc
             try:
-                result = sandbox.exec("bash", ["-lc", "cat /tmp/toady-ptyd.log 2>/dev/null || true"])
+                result = sandbox.exec("bash", ["-lc", "cat /tmp/hoosegow-ptyd.log 2>/dev/null || true"])
                 result = await maybe(result)
                 stdout = getattr(result, "stdout_text", "") or getattr(result, "stdout", "")
                 stderr = getattr(result, "stderr_text", "") or getattr(result, "stderr", "")
                 if stdout:
-                    print("--- guest /tmp/toady-ptyd.log ---", file=sys.stderr)
+                    print("--- guest /tmp/hoosegow-ptyd.log ---", file=sys.stderr)
                     print(stdout, file=sys.stderr)
                 if stderr:
                     print("--- guest log stderr ---", file=sys.stderr)
@@ -127,8 +127,8 @@ async def run(args: argparse.Namespace) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--name", default="toady-ptyd-smoke")
-    parser.add_argument("--snapshot", default=os.environ.get("TOADY_MICROSANDBOX_BASE", SNAPSHOT_DEFAULT))
+    parser.add_argument("--name", default="hoosegow-ptyd-smoke")
+    parser.add_argument("--snapshot", default=os.environ.get("HOOSEGOW_MICROSANDBOX_BASE", SNAPSHOT_DEFAULT))
     parser.add_argument("--port", type=int)
     parser.add_argument("--keep", action="store_true")
     parser.add_argument("--verbose", action="store_true")

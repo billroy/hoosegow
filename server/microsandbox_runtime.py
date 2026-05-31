@@ -22,7 +22,7 @@ except ImportError:  # pragma: no cover - unsupported host path.
     resource = None
 
 
-BASE_DEFAULT = "toady-microsandbox-local"
+BASE_DEFAULT = "hoosegow-microsandbox-local"
 SOURCE_IMAGE_DEFAULT = "node:22-bookworm"
 MICROSANDBOX_MIN_VERSION = "0.5.2"
 VCPUS_DEFAULT = 4
@@ -32,12 +32,12 @@ GUEST_NOFILE_DEFAULT = 65536
 NETWORK_MAX_CONNECTIONS_DEFAULT = 8192
 
 
-class ToadyRuntimeError(RuntimeError):
+class HoosegowRuntimeError(RuntimeError):
     """User-facing Microsandbox runtime error."""
 
 
 @dataclass
-class ToadySandboxSpec:
+class HoosegowSandboxSpec:
     sandbox_name: str
     workspace: Path
     source_root: Path
@@ -83,13 +83,13 @@ def microsandbox_distribution_version(module: Any | None = None) -> str:
 
 def validate_microsandbox_version(version: str) -> None:
     if not version:
-        raise ToadyRuntimeError(
+        raise HoosegowRuntimeError(
             "Could not determine the installed microsandbox package version. "
             "Install the pinned runtime with: python3 -m pip install -r requirements.txt"
         )
     if comparable_version(version) < comparable_version(MICROSANDBOX_MIN_VERSION):
-        raise ToadyRuntimeError(
-            f"Toady requires microsandbox >= {MICROSANDBOX_MIN_VERSION} because older releases "
+        raise HoosegowRuntimeError(
+            f"Hoosegow requires microsandbox >= {MICROSANDBOX_MIN_VERSION} because older releases "
             "are missing the published-port TCP stall fix. "
             f"Installed version: {version}. Upgrade with: python3 -m pip install -r requirements.txt"
         )
@@ -175,9 +175,9 @@ def network_with_max_connections(network: Any, max_connections: int) -> Any:
         except TypeError:
             setattr(network, "max_connections", max_connections)
             return network
-    raise ToadyRuntimeError(
+    raise HoosegowRuntimeError(
         "The installed microsandbox SDK Network object does not expose max_connections; "
-        "upgrade microsandbox before using Toady's Microsandbox runtime."
+        "upgrade microsandbox before using Hoosegow's Microsandbox runtime."
     )
 
 
@@ -221,7 +221,7 @@ def ensure_host_ports_available(ports: list[int] | tuple[int, ...] | set[int]) -
             details.append(f"Port {port} is already listening:\n{owner}")
         else:
             details.append(f"Port {port} is already listening.")
-    raise ToadyRuntimeError(
+    raise HoosegowRuntimeError(
         "Cannot start Microsandbox because required host port(s) are occupied.\n"
         + "\n\n".join(details)
     )
@@ -236,7 +236,7 @@ def wait_for_host_ports_available(ports: list[int] | tuple[int, ...] | set[int],
     ensure_host_ports_available(ports)
 
 
-def create_time_env(spec: ToadySandboxSpec) -> dict[str, str]:
+def create_time_env(spec: HoosegowSandboxSpec) -> dict[str, str]:
     """Keep Sandbox.create env small; commands export the full runtime env later."""
     return {
         key: str(spec.runtime_env[key])
@@ -252,7 +252,7 @@ class MicrosandboxRuntime:
         try:
             self.module = importlib.import_module("microsandbox")
         except ImportError as exc:
-            raise ToadyRuntimeError(
+            raise HoosegowRuntimeError(
                 "The microsandbox Python package is required. Install it with: "
                 "python3 -m pip install -r requirements.txt"
             ) from exc
@@ -271,7 +271,7 @@ class MicrosandboxRuntime:
             self.StderrEvent = getattr(self.module, "StderrEvent", None)
             self.ExitedEvent = getattr(self.module, "ExitedEvent", None)
         except AttributeError as exc:
-            raise ToadyRuntimeError("The installed microsandbox package is missing the expected SDK API.") from exc
+            raise HoosegowRuntimeError("The installed microsandbox package is missing the expected SDK API.") from exc
 
     async def ensure_installed(self) -> None:
         is_installed = getattr(self.module, "is_installed", None)
@@ -282,7 +282,7 @@ class MicrosandboxRuntime:
         if installed:
             return
         if not callable(install):
-            raise ToadyRuntimeError("Microsandbox runtime is not installed and this SDK cannot install it.")
+            raise HoosegowRuntimeError("Microsandbox runtime is not installed and this SDK cannot install it.")
         await maybe(install())
 
     async def exists(self, name: str) -> bool:
@@ -322,7 +322,7 @@ class MicrosandboxRuntime:
     async def connect(self, name: str) -> Any:
         sandbox = await self.get(name)
         if sandbox is None:
-            raise ToadyRuntimeError(f"Microsandbox '{name}' was not found.")
+            raise HoosegowRuntimeError(f"Microsandbox '{name}' was not found.")
         connect = getattr(sandbox, "connect", None)
         if callable(connect):
             return await maybe(connect())
@@ -343,9 +343,9 @@ class MicrosandboxRuntime:
     async def prepared_base_snapshot_path(self, base: str) -> str:
         snapshot = await self.get_prepared_base(base)
         if snapshot is None:
-            raise ToadyRuntimeError(
+            raise HoosegowRuntimeError(
                 f"Prepared Microsandbox base '{base}' was not found. "
-                "Run: python3 toady.py --prepare-base"
+                "Run: python3 hoosegow.py --prepare-base"
             )
         path = getattr(snapshot, "path", None)
         if path is None:
@@ -354,15 +354,15 @@ class MicrosandboxRuntime:
                 opened = await maybe(open_snapshot())
                 path = getattr(opened, "path", None)
         if not path:
-            raise ToadyRuntimeError(f"Prepared Microsandbox base '{base}' has no local snapshot path.")
+            raise HoosegowRuntimeError(f"Prepared Microsandbox base '{base}' has no local snapshot path.")
         return str(path)
 
-    async def create(self, spec: ToadySandboxSpec) -> Any:
+    async def create(self, spec: HoosegowSandboxSpec) -> Any:
         prepared_base = await self.prepared_base_snapshot_path(spec.base)
         try:
             spec.sandbox_home.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
-            raise ToadyRuntimeError(f"Cannot create Microsandbox home directory {spec.sandbox_home}: {exc}") from exc
+            raise HoosegowRuntimeError(f"Cannot create Microsandbox home directory {spec.sandbox_home}: {exc}") from exc
         volumes = {
             "/app": self.Volume.bind(str(spec.source_root), readonly=True),
             "/workspace": self.Volume.bind(str(spec.workspace)),
@@ -386,7 +386,7 @@ class MicrosandboxRuntime:
 
     async def create_prepare_sandbox(self, name: str, source_image: str, source: Path) -> Any:
         if self.Image is None or not hasattr(self.Image, "oci"):
-            raise ToadyRuntimeError("The installed microsandbox package does not expose Image.oci().")
+            raise HoosegowRuntimeError("The installed microsandbox package does not expose Image.oci().")
         result = self.Sandbox.create(
             name,
             image=self.Image.oci(source_image),
@@ -396,7 +396,7 @@ class MicrosandboxRuntime:
         )
         return await maybe(result)
 
-    async def create_base_validation_sandbox(self, name: str, base: str, spec: ToadySandboxSpec) -> Any:
+    async def create_base_validation_sandbox(self, name: str, base: str, spec: HoosegowSandboxSpec) -> Any:
         prepared_base = await self.prepared_base_snapshot_path(base)
         await self.stop(name)
         try:
@@ -423,6 +423,6 @@ class MicrosandboxRuntime:
             sandbox_name,
             name=base,
             force=True,
-            labels={"app": "toady", "kind": "microsandbox-base"},
+            labels={"app": "hoosegow", "kind": "microsandbox-base"},
         )
         await maybe(result)

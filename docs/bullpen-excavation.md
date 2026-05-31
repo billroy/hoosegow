@@ -1,7 +1,7 @@
 # Bullpen Excavation Log
 
-This file records the Bullpen code/architecture imported into Toady and the
-workarounds that should survive excavation unless a Toady-specific test proves
+This file records the Bullpen code/architecture imported into Hoosegow and the
+workarounds that should survive excavation unless a Hoosegow-specific test proves
 they are unnecessary.
 
 ## Source
@@ -12,18 +12,18 @@ they are unnecessary.
 
 ## Initial Imported Paths
 
-| Toady path | Bullpen source path | Initial disposition |
+| Hoosegow path | Bullpen source path | Initial disposition |
 |---|---|---|
-| `bullpen.py` | `bullpen.py` | Reference entrypoint during excavation; delete after `toady.py` owns startup. |
-| `toady.py` | `bullpen.py` | Working Toady entrypoint seed. Needs rename/cut passes. |
+| `bullpen.py` | `bullpen.py` | Reference entrypoint during excavation; delete after `hoosegow.py` owns startup. |
+| `hoosegow.py` | `bullpen.py` | Working Hoosegow entrypoint seed. Needs rename/cut passes. |
 | `deploy-sandbox.py` | `deploy-sandbox.py` | Primary source for Microsandbox runtime, base prep, and dirty workarounds. |
 | `deploy/` | `deploy/` | Keep `deploy/microsandbox/` proxy patterns and deployment notes as reference; non-local deploy targets are post-v1 or delete candidates. |
 | `server/` | `server/` | Excavate auth, Socket.IO, terminal, validation, persistence, and deploy-adjacent helpers; delete Bullpen product modules. |
 | `static/` | `static/` | Excavate CDN Vue shell, login page, xterm.js terminal shape, Socket.IO lifecycle, toasts/style variables. |
 | `tests/` | `tests/` | Keep auth, CORS, terminal, deploy, and validation coverage as starting points; archive Bullpen product tests as cuts land. |
-| `profiles/` | `profiles/` | Imported for completeness only; expected early delete because Toady has no worker/profile product. |
+| `profiles/` | `profiles/` | Imported for completeness only; expected early delete because Hoosegow has no worker/profile product. |
 | `requirements.txt` | `requirements.txt` | Keep initially; trim after product modules are deleted. |
-| `README.md`, `LICENSE.md` | `README.md`, `LICENSE.md` | Attribution/reference; rewrite README for Toady before release. |
+| `README.md`, `LICENSE.md` | `README.md`, `LICENSE.md` | Attribution/reference; rewrite README for Hoosegow before release. |
 
 ## Workarounds to Preserve
 
@@ -47,15 +47,15 @@ From `deploy-sandbox.py`:
   redaction.
 - Host port conflict detection with `lsof` owner diagnostics.
 - Detached process launch with post-detach health checks.
-- Bullpen's Node HTTP/proxy constraints where Toady needs an in-sandbox
+- Bullpen's Node HTTP/proxy constraints where Hoosegow needs an in-sandbox
   exposed web process: short upstream connections, hop-by-hop header stripping,
   and explicit WebSocket upgrade handling.
 
-From the P-1 Toady spike:
+From the P-1 Hoosegow spike:
 
 - Do not use raw generic TCP as the host-to-sandbox PTY bridge through
   Microsandbox published ports on the current target host.
-- Use `toady-ptyd` HTTP RPC/long-poll through a Microsandbox-published
+- Use `hoosegow-ptyd` HTTP RPC/long-poll through a Microsandbox-published
   localhost port.
 
 ## Early Delete Candidates
@@ -69,7 +69,7 @@ From the P-1 Toady spike:
 
 Decision for private `0.1.0`: copied Bullpen reference modules/tests/static
 assets were kept only until their reusable infrastructure was extracted and
-covered by Toady tests. The cleanup passes have now removed the quarantined
+covered by Hoosegow tests. The cleanup passes have now removed the quarantined
 frontend/profile/manager artifacts, legacy app surface, detached server
 modules, and old deploy-era entry points.
 
@@ -77,9 +77,9 @@ Cleanup sequence:
 
 1. Remove the legacy product modules in dependency-aware slices.
 2. Archive or delete the corresponding Bullpen tests.
-3. Keep the Toady-mode quarantine tests strict until deletion is complete: no
+3. Keep the Hoosegow-mode quarantine tests strict until deletion is complete: no
    legacy REST routes, no legacy product static assets, and no eager imports of
-   legacy product modules on the Toady startup path.
+   legacy product modules on the Hoosegow startup path.
 
 ## Checkpoint: Phase 1 Cleanup
 
@@ -92,7 +92,7 @@ Completed after the unused-code review:
   `shell_worker_examples.json`, and `utils.js`.
 - Removed the legacy Bullpen manager UI under `static/manager/` and the
   corresponding `server/manager.py` implementation.
-- Removed non-Toady remote deployment scaffolding in `deploy/digitalocean/` and
+- Removed non-Hoosegow remote deployment scaffolding in `deploy/digitalocean/` and
   `deploy/docker/`.
 - Removed legacy frontend/manager/docker tests that only defended the deleted
   artifacts.
@@ -105,8 +105,8 @@ Completed after the unused-code review:
 Completed after the first artifact-removal pass:
 
 - Removed legacy Bullpen workspace/project branching from `server/app.py`; the
-  app factory now always uses the Toady sandbox-state holder.
-- Removed legacy Bullpen REST route implementations from the Toady app:
+  app factory now always uses the Hoosegow sandbox-state holder.
+- Removed legacy Bullpen REST route implementations from the Hoosegow app:
   commits, file browser/editor, worker transfer, export/import, and service
   preview.
 - Removed Bullpen Socket.IO startup wiring from the app factory:
@@ -118,31 +118,31 @@ Completed after the first artifact-removal pass:
 - Kept a small explicit 404 guard for removed Bullpen `/api/*` product routes
   so old clients fail clearly instead of falling through to Flask static-route
   method handling.
-- Updated auth tests to target the current Toady static/socket surface rather
+- Updated auth tests to target the current Hoosegow static/socket surface rather
   than removed `/api/files` and MCP-token behavior.
 - Removed app-route-specific tests for deleted commits/files/deploy-label
   helpers and pruned old Socket.IO/service-preview/terminal-manager cases that
   depended on deleted app registrations.
 
-## Checkpoint: Toady Entrypoint Seed
+## Checkpoint: Hoosegow Entrypoint Seed
 
 Completed in the first Build Go pass:
 
-- Replaced the copied `toady.py` CLI with a Toady-only server/auth entrypoint.
-- Removed visible Bullpen product subcommands from the Toady CLI (`mcp`,
+- Replaced the copied `hoosegow.py` CLI with a Hoosegow-only server/auth entrypoint.
+- Removed visible Bullpen product subcommands from the Hoosegow CLI (`mcp`,
   `mcp-token`, `ticket`, `model-catalog`).
-- Set the default Toady web port to `6060`.
+- Set the default Hoosegow web port to `6060`.
 - Added the v1 CLI flag surface from the spec and wired
   `--prepare-base` / `--rebuild-base` to the extracted base-prep path.
-- Switched the copied global state default from `~/.bullpen` to `~/.toady`.
-- Switched auth/env naming to `TOADY_*`, preserving `BULLPEN_*` reads only as
+- Switched the copied global state default from `~/.bullpen` to `~/.hoosegow`.
+- Switched auth/env naming to `HOOSEGOW_*`, preserving `BULLPEN_*` reads only as
   migration/debug fallbacks inside copied modules.
 
 Current residue after cleanup:
 
 - The repository no longer contains copied Bullpen product modules, product
   static assets, legacy deploy entry points, or their legacy-only tests.
-- Toady mode no longer registers legacy product REST routes, serves legacy
+- Hoosegow mode no longer registers legacy product REST routes, serves legacy
   product static assets, constructs the legacy workspace manager, or eagerly
   imports the legacy product event/MCP/service-worker/terminal modules.
 - Remaining Bullpen references are provenance notes, attribution, and comments
@@ -156,22 +156,22 @@ Started in the first Build Go pass:
   host support gate, host FD lift, network `max_connections`, snapshot lookup,
   sandbox create/stop/remove/status, and `lsof`-backed port diagnostics.
 - Added `server/sandbox_bootstrap.py` for the Bullpen-derived in-guest setup:
-  `agent` user/group creation, `/workspace`, `/home/agent`, `/var/lib/toady`,
+  `agent` user/group creation, `/workspace`, `/home/agent`, `/var/lib/hoosegow`,
   guest FD limits, CA env exports, Claude IPv6 mitigation, Codex file-auth
   setup, sandbox command wrappers, secret redaction, PTY controller launch, and
   post-detach status verification.
 - Added `server/base.py` for the Bullpen-style prepare-sandbox -> snapshot ->
   validation flow, including Codex native package integrity checks.
-- Wired `python3 toady.py --prepare-base` / `--rebuild-base` to the extracted
+- Wired `python3 hoosegow.py --prepare-base` / `--rebuild-base` to the extracted
   base-prep code path.
 
 Verification so far:
 
 - Extracted modules compile.
 - Basic runtime-env import probe confirms `/home/agent` and controller env.
-- The prepared base `toady-microsandbox-local` exists locally and the latest
+- The prepared base `hoosegow-microsandbox-local` exists locally and the latest
   recorded size is in `docs/release-smokes.md`.
-- The Toady Flask/Socket.IO app starts and `/health` returns `200` after the
+- The Hoosegow Flask/Socket.IO app starts and `/health` returns `200` after the
   extraction.
 
 ## Checkpoint: Sandbox Control Plane Direction
@@ -202,7 +202,7 @@ Implemented baseline:
   resize/close.
 - Create now implies start, and successful start opens the first terminal in
   the UI.
-- Added per-sandbox lifecycle logs under `~/.toady/logs/sandbox-<slug>.log`,
+- Added per-sandbox lifecycle logs under `~/.hoosegow/logs/sandbox-<slug>.log`,
   exposed through the UI Logs action.
 - Terminal replay is bounded by both byte and line limits and returns a
   truncation marker on rejoin when output was dropped.
@@ -218,7 +218,7 @@ Completed after the app-surface cleanup:
 - Simplified `server/workspace_manager.py` to a temporary compatibility shim
   that only exposes the old global auth directory constants for the remaining
   legacy `bullpen.py` and `deploy-sandbox.py` entry points.
-- Updated auth tests to seed credentials through `TOADY_HOME` instead of
+- Updated auth tests to seed credentials through `HOOSEGOW_HOME` instead of
   patching the removed workspace manager.
 
 ## Checkpoint: Phase 4 Deploy-Era Removal
@@ -231,8 +231,8 @@ Completed after the detached module removal:
 - Removed the temporary `server/workspace_manager.py` shim because its only
   remaining callers were deleted.
 - Removed `tests/test_deploy_sandbox.py`; deploy-sandbox parity is now covered
-  by the extracted Toady runtime/base tests and real Microsandbox smoke scripts.
-- Trimmed `requirements.txt` to drop `eventlet` and `websocket-client`; Toady
+  by the extracted Hoosegow runtime/base tests and real Microsandbox smoke scripts.
+- Trimmed `requirements.txt` to drop `eventlet` and `websocket-client`; Hoosegow
   uses Flask-SocketIO's threading mode with `simple-websocket`.
 
 Remaining cleanup candidates:

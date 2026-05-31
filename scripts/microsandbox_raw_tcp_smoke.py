@@ -20,7 +20,7 @@ from pty_controller_smoke import reserve_loopback_port
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SNAPSHOT_DEFAULT = "toady-microsandbox-local"
+SNAPSHOT_DEFAULT = "hoosegow-microsandbox-local"
 
 
 async def maybe(value: Any) -> Any:
@@ -64,7 +64,7 @@ def wait_for_echo(port: int, timeout: float = 20.0) -> bytes:
         try:
             with socket.create_connection(("127.0.0.1", port), timeout=2) as sock:
                 sock.settimeout(2)
-                sock.sendall(b"toady-raw-smoke\n")
+                sock.sendall(b"hoosegow-raw-smoke\n")
                 return sock.recv(1024)
         except OSError as exc:
             last_error = exc
@@ -76,7 +76,7 @@ async def run(args: argparse.Namespace) -> int:
     sandbox_name = args.name
     host_port = args.port or reserve_loopback_port()
 
-    with tempfile.TemporaryDirectory(prefix="toady-msb-raw-", dir="/private/tmp") as home:
+    with tempfile.TemporaryDirectory(prefix="hoosegow-msb-raw-", dir="/private/tmp") as home:
         await stop_remove(sandbox_name)
         sandbox = await maybe(
             microsandbox.Sandbox.create(
@@ -99,21 +99,21 @@ async def run(args: argparse.Namespace) -> int:
             command = (
                 "set -e; "
                 f"nohup python3 /app/scripts/raw_tcp_echo_server.py --port {host_port} "
-                ">/tmp/toady-raw.log 2>&1 &"
+                ">/tmp/hoosegow-raw.log 2>&1 &"
             )
             await maybe(sandbox.exec("bash", ["-lc", command]))
             response = wait_for_echo(host_port, timeout=args.timeout)
-            if response != b"ECHO:toady-raw-smoke\n":
+            if response != b"ECHO:hoosegow-raw-smoke\n":
                 raise RuntimeError(f"unexpected raw TCP response: {response!r}")
             print(f"Microsandbox raw TCP port smoke passed on port {host_port}")
             return 0
         except BaseException:
             try:
-                result = await maybe(sandbox.exec("bash", ["-lc", "cat /tmp/toady-raw.log 2>/dev/null || true"]))
+                result = await maybe(sandbox.exec("bash", ["-lc", "cat /tmp/hoosegow-raw.log 2>/dev/null || true"]))
                 stdout = getattr(result, "stdout_text", "") or getattr(result, "stdout", "")
                 stderr = getattr(result, "stderr_text", "") or getattr(result, "stderr", "")
                 if stdout:
-                    print("--- guest /tmp/toady-raw.log ---", file=sys.stderr)
+                    print("--- guest /tmp/hoosegow-raw.log ---", file=sys.stderr)
                     print(stdout, file=sys.stderr)
                 if stderr:
                     print("--- guest log stderr ---", file=sys.stderr)
@@ -130,8 +130,8 @@ async def run(args: argparse.Namespace) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--name", default="toady-raw-smoke")
-    parser.add_argument("--snapshot", default=os.environ.get("TOADY_MICROSANDBOX_BASE", SNAPSHOT_DEFAULT))
+    parser.add_argument("--name", default="hoosegow-raw-smoke")
+    parser.add_argument("--snapshot", default=os.environ.get("HOOSEGOW_MICROSANDBOX_BASE", SNAPSHOT_DEFAULT))
     parser.add_argument("--port", type=int)
     parser.add_argument("--timeout", type=float, default=20.0)
     parser.add_argument("--keep", action="store_true")

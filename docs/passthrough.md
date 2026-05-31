@@ -6,13 +6,13 @@ External tools should be able to run agent commands inside an existing
 Microsandbox sandbox and receive ordinary command-line behavior: stdin,
 stdout/stderr, terminal behavior when requested, and the final exit code.
 
-Phase 0 is intentionally **Toady-independent**. It is a tiny generic wrapper
-around `msb exec`, not a Toady server feature and not a Bullpen built-in.
+Phase 0 is intentionally **Hoosegow-independent**. It is a tiny generic wrapper
+around `msb exec`, not a Hoosegow server feature and not a Bullpen built-in.
 
 Target shape:
 
 ```bash
-toady-msb --sandbox fred -- claude -p 'say model slug'
+hoosegow-msb --sandbox fred -- claude -p 'say model slug'
 ```
 
 Equivalent underlying command:
@@ -30,7 +30,7 @@ workarounds in every caller.
 - Provide a reusable command-line integration point for Bullpen and other local
   automation.
 - Use Microsandbox's approved `msb exec` execution path directly.
-- Avoid requiring the Toady web server, Socket.IO, browser auth, or Toady
+- Avoid requiring the Hoosegow web server, Socket.IO, browser auth, or Hoosegow
   manifests for the first integration.
 - Support non-interactive agent commands such as `claude -p ...`, `codex ...`,
   `gemini ...`, and `opencode ...`.
@@ -43,8 +43,8 @@ workarounds in every caller.
 - Enforcing access control beyond the local OS user and Microsandbox runtime.
 - Hiding sandbox names from same-user local processes.
 - Creating, preparing, or starting sandboxes in Phase 0.
-- Replacing Toady's browser terminal UI.
-- Providing Toady audit logs, policy, or session inventory.
+- Replacing Hoosegow's browser terminal UI.
+- Providing Hoosegow audit logs, policy, or session inventory.
 - A cloud transport or multi-user remote execution API.
 
 ## 4. Trust Boundary
@@ -55,7 +55,7 @@ Phase 0 accepts the real local security boundary:
   same Microsandbox runtime state, can already call `msb exec <sandbox>`.
 - The wrapper does not create new authority. It packages that existing ability
   into a stable integration command.
-- Toady server auth is not involved.
+- Hoosegow server auth is not involved.
 - Different Unix users may be constrained by filesystem and runtime
   permissions, but that is outside the wrapper's scope.
 
@@ -69,10 +69,10 @@ access-control layer.
 2. **Reusable local integration.** Another tool can shell out to the same
    wrapper with a sandbox name and command argv.
 3. **Synchronous non-interactive run.** A caller runs:
-   `toady-msb --sandbox fred -- claude -p 'say model slug'` and receives stdout,
+   `hoosegow-msb --sandbox fred -- claude -p 'say model slug'` and receives stdout,
    stderr, and the agent exit code.
 4. **Interactive auth or chat flow.** A caller runs:
-   `toady-msb --sandbox fred --tty -- claude` and expects Microsandbox PTY
+   `hoosegow-msb --sandbox fred --tty -- claude` and expects Microsandbox PTY
    behavior.
 5. **Stable defaults.** Callers do not need to remember `-u agent`,
    `-w /workspace`, timeout syntax, or PTY detection rules.
@@ -82,25 +82,25 @@ access-control layer.
 ### 6.1 Command Form
 
 ```bash
-toady-msb --sandbox fred -- claude -p 'say model slug'
+hoosegow-msb --sandbox fred -- claude -p 'say model slug'
 ```
 
 Interactive:
 
 ```bash
-toady-msb --sandbox fred --tty -- claude
+hoosegow-msb --sandbox fred --tty -- claude
 ```
 
 Explicit guest workspace:
 
 ```bash
-toady-msb --sandbox fred --workspace /workspace/subproject -- codex exec 'summarize'
+hoosegow-msb --sandbox fred --workspace /workspace/subproject -- codex exec 'summarize'
 ```
 
 Bullpen-style invocation:
 
 ```bash
-toady-msb --sandbox "$TOADY_SANDBOX" -- claude -p "$PROMPT"
+hoosegow-msb --sandbox "$HOOSEGOW_SANDBOX" -- claude -p "$PROMPT"
 ```
 
 ### 6.2 Flags
@@ -130,7 +130,7 @@ Everything after `--` is passed as the remote command argv.
 - No command means interactive shell if `msb exec` supports that mode:
 
 ```bash
-toady-msb --sandbox fred --tty
+hoosegow-msb --sandbox fred --tty
 ```
 
 ## 7. Exit Behavior
@@ -152,7 +152,7 @@ does so.
 Phase 0 can be implemented as a small Python script in this repo, for example:
 
 ```text
-scripts/toady-msb
+scripts/hoosegow-msb
 ```
 
 or as a module-backed command:
@@ -171,7 +171,7 @@ The implementation should:
 - Preserve Ctrl-C behavior by letting the foreground process receive the signal
   where possible.
 - Exit with the child process return code after mapping wrapper-only failures.
-- Never require the Toady web server to be running.
+- Never require the Hoosegow web server to be running.
 
 Expected generated argv:
 
@@ -203,7 +203,7 @@ msb exec fred -u agent -w /workspace -e FOO=bar --timeout 5m -- claude -p ...
 - Support both buffered subprocess completion and live inherited stdio.
 - Work from host shells and from containers that can invoke `msb` and reach the
   same Microsandbox runtime.
-- Keep code independent from Toady manifest state.
+- Keep code independent from Hoosegow manifest state.
 
 ## 10. Container And Integration Notes
 
@@ -223,41 +223,41 @@ Microsandbox runtime. That may require mounting runtime state, using a host-side
 shim, or running the wrapper on the host instead of inside the container. This
 is a deployment constraint to test early.
 
-## 11. Deferred Toady-Mediated Options
+## 11. Deferred Hoosegow-Mediated Options
 
-Phase 0 does not decide the full Toady passthrough architecture. It gives us a
+Phase 0 does not decide the full Hoosegow passthrough architecture. It gives us a
 simple integration first, then leaves the richer paths available if we need
 policy, UI visibility, lifecycle management, or stronger session semantics.
 
-### Deferred Option B: Toady Socket.IO + `toady-ptyd`
+### Deferred Option B: Hoosegow Socket.IO + `hoosegow-ptyd`
 
-The CLI wrapper talks to the Toady server over Socket.IO, and Toady relays
-stdio/PTY events to `toady-ptyd`.
+The CLI wrapper talks to the Hoosegow server over Socket.IO, and Hoosegow relays
+stdio/PTY events to `hoosegow-ptyd`.
 
 Keep this for:
 
 - Browser-visible sessions.
 - Attach/detach behavior.
 - Interactive PTY flows that `msb exec -t` cannot satisfy.
-- A Toady-managed session inventory.
+- A Hoosegow-managed session inventory.
 
 Defer because it requires more protocol machinery, backpressure handling,
 binary framing, guest daemon command APIs, and reconnect semantics.
 
-### Deferred Option F: Toady Server-Side SDK Exec
+### Deferred Option F: Hoosegow Server-Side SDK Exec
 
-The CLI wrapper talks to Toady, and Toady uses the Microsandbox SDK exec path
+The CLI wrapper talks to Hoosegow, and Hoosegow uses the Microsandbox SDK exec path
 on behalf of the caller.
 
 Keep this for:
 
-- Toady audit logs.
-- Toady workspace/sandbox policy.
+- Hoosegow audit logs.
+- Hoosegow workspace/sandbox policy.
 - Server-mediated lifecycle helpers.
 - A future local API for tools that cannot call `msb` directly.
 
 Defer because Phase 0 can get the core "run an agent in a sandbox" value
-without a Toady server, token, HTTP API, or Socket.IO client.
+without a Hoosegow server, token, HTTP API, or Socket.IO client.
 
 ## 12. Archived Considered/Discarded Options
 
@@ -266,7 +266,7 @@ without a Toady server, token, HTTP API, or Socket.IO client.
 Discard for now. SSH gives mature terminal semantics, but adds `sshd`, key
 management, host-key churn, extra ports, and a larger attack surface.
 
-### Direct `toady-ptyd` Client
+### Direct `hoosegow-ptyd` Client
 
 Discard as a public integration surface. It leaks low-level controller
 topology and tokens, and it bypasses Microsandbox's approved `msb exec`
@@ -274,10 +274,10 @@ interface.
 
 ### Raw WebSocket API
 
-Discard for now. It may become useful if Toady later needs a language-neutral
+Discard for now. It may become useful if Hoosegow later needs a language-neutral
 streaming protocol, but Phase 0 should avoid creating a new realtime API.
 
-### Unix Socket Toady API
+### Unix Socket Hoosegow API
 
 Archive as a possible future authorization/channel variant. It does not replace
 the simpler `msb exec` wrapper for Phase 0.
@@ -296,7 +296,7 @@ cleanup semantics.
 
 ### Phase 0A: Wrapper Skeleton
 
-- Add `scripts/toady-msb` or equivalent module-backed executable.
+- Add `scripts/hoosegow-msb` or equivalent module-backed executable.
 - Implement argparse handling for `--sandbox`, `--workspace`, `--user`, `--tty`,
   `--no-tty`, `--timeout`, `--env`, `--msb`, `--dry-run`, and command argv
   after `--`.
@@ -323,27 +323,27 @@ cleanup semantics.
 - Add a real smoke test gated by an environment variable, for example:
 
 ```bash
-TOADY_RUN_REAL_MICROSANDBOX=1 scripts/toady-msb --sandbox demo -- echo ok
+HOOSEGOW_RUN_REAL_MICROSANDBOX=1 scripts/hoosegow-msb --sandbox demo -- echo ok
 ```
 
 - Add an interactive manual smoke:
 
 ```bash
-scripts/toady-msb --sandbox demo --tty -- bash
+scripts/hoosegow-msb --sandbox demo --tty -- bash
 ```
 
 ### Phase 1: Optional Wrapper Enhancements
 
 - Add config defaults from env:
-  - `TOADY_MSB_SANDBOX`
-  - `TOADY_MSB_USER`
-  - `TOADY_MSB_WORKSPACE`
-  - `TOADY_MSB_BIN`
+  - `HOOSEGOW_MSB_SANDBOX`
+  - `HOOSEGOW_MSB_USER`
+  - `HOOSEGOW_MSB_WORKSPACE`
+  - `HOOSEGOW_MSB_BIN`
 - Add `--print-env-example` for integrations.
 - Add clearer detection for stopped/missing sandboxes by parsing `msb` errors.
 - Add an optional `--json-status` mode for machine-readable wrapper failures.
 
-### Phase 2: Reassess Toady-Mediated Passthrough
+### Phase 2: Reassess Hoosegow-Mediated Passthrough
 
 Only after Phase 0 is used by Bullpen or another integration:
 
@@ -356,8 +356,8 @@ Only after Phase 0 is used by Bullpen or another integration:
 
 ## 14. Open Issues
 
-- **Wrapper name/location**: final command name could be `toady-msb`,
-  `toady-exec`, or `sandbox-exec`.
+- **Wrapper name/location**: final command name could be `hoosegow-msb`,
+  `hoosegow-exec`, or `sandbox-exec`.
 - **Package/distribution**: decide whether this is shipped as a script, Python
   module entry point, or both.
 - **Container viability**: test whether Bullpen's actual runtime can invoke

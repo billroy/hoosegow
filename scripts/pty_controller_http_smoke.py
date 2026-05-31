@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke-test toady-ptyd over its HTTP control/event API."""
+"""Smoke-test hoosegow-ptyd over its HTTP control/event API."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from pty_controller_smoke import reserve_loopback_port
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PTYD = ROOT / "guest" / "toady-ptyd.py"
+PTYD = ROOT / "guest" / "hoosegow-ptyd.py"
 TOKEN = "smoke-token"
 
 
@@ -135,12 +135,12 @@ def exercise_http_controller(base_url: str, token: str, cwd: str, *, verbose: bo
         for event in initial_events
         if event.get("event") == "output"
     )
-    if b"Toady sandbox terminal" in initial_output or b"codex login" in initial_output:
+    if b"Hoosegow sandbox terminal" in initial_output or b"codex login" in initial_output:
         raise RuntimeError(f"unexpected startup banner: {initial_output!r}")
     client.rpc({"op": "resize", "id": "http-smoke", "cols": 90, "rows": 28})
-    command = b"printf 'TOADY_HTTP_PTYD_SMOKE:%s\\n' \"$PWD\"; exit 11\n"
+    command = b"printf 'HOOSEGOW_HTTP_PTYD_SMOKE:%s\\n' \"$PWD\"; exit 11\n"
     client.rpc({"op": "write", "id": "http-smoke", "data": base64.b64encode(command).decode("ascii")})
-    expected_output = f"TOADY_HTTP_PTYD_SMOKE:{cwd}".encode()
+    expected_output = f"HOOSEGOW_HTTP_PTYD_SMOKE:{cwd}".encode()
     output = client.wait_for_output_containing("http-smoke", expected_output, timeout=10)
     status = client.wait_for_status("http-smoke", "exited", timeout=10)
     if status.get("exit_code") != 11:
@@ -165,7 +165,7 @@ def exercise_http_controller(base_url: str, token: str, cwd: str, *, verbose: bo
         for event in second_events
         if event.get("event") == "output"
     )
-    if b"Toady sandbox terminal" in second_output or b"codex login" in second_output:
+    if b"Hoosegow sandbox terminal" in second_output or b"codex login" in second_output:
         raise RuntimeError("unexpected startup banner in second terminal")
     client.rpc({"op": "close", "id": "http-smoke-second"})
     if verbose:
@@ -179,7 +179,7 @@ def main() -> int:
 
     port = reserve_loopback_port()
     base_url = f"http://127.0.0.1:{port}"
-    with tempfile.TemporaryDirectory(prefix="toady-ptyd-home-") as home:
+    with tempfile.TemporaryDirectory(prefix="hoosegow-ptyd-home-") as home:
         env = os.environ.copy()
         env["HOME"] = home
         proc = subprocess.Popen(

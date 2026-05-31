@@ -59,7 +59,7 @@ class ReplayPtyDriver(FakePtyDriver):
 def _running_sandbox(app, tmp_path):
     workspace = tmp_path / "project"
     workspace.mkdir()
-    service = app.config["toady_sandboxes"]
+    service = app.config["hoosegow_sandboxes"]
     service.browse_roots = [str(tmp_path)]
     service.create_manifest({"name": "demo", "workspace_root": str(workspace)})
     manifest = service.store.get("demo")
@@ -67,7 +67,7 @@ def _running_sandbox(app, tmp_path):
     service.store.save(manifest)
 
 
-def test_toady_terminal_limit_rejects_extra_sessions(tmp_path, monkeypatch):
+def test_hoosegow_terminal_limit_rejects_extra_sessions(tmp_path, monkeypatch):
     monkeypatch.setattr("server.app.PtyDriver", FakePtyDriver)
     app = create_app(
         str(tmp_path),
@@ -97,7 +97,7 @@ def test_toady_terminal_limit_rejects_extra_sessions(tmp_path, monkeypatch):
     assert "Terminal limit reached" in second["error"]
 
 
-def test_toady_terminal_limit_allows_default_32_sessions(tmp_path, monkeypatch):
+def test_hoosegow_terminal_limit_allows_default_32_sessions(tmp_path, monkeypatch):
     monkeypatch.setattr("server.app.PtyDriver", FakePtyDriver)
     app = create_app(
         str(tmp_path),
@@ -133,7 +133,7 @@ def test_toady_terminal_limit_allows_default_32_sessions(tmp_path, monkeypatch):
     assert len(listed["terminals"]) == 32
 
 
-def test_toady_terminal_close_frees_limit_slot(tmp_path, monkeypatch):
+def test_hoosegow_terminal_close_frees_limit_slot(tmp_path, monkeypatch):
     monkeypatch.setattr("server.app.PtyDriver", FakePtyDriver)
     app = create_app(
         str(tmp_path),
@@ -174,7 +174,7 @@ def test_toady_terminal_close_frees_limit_slot(tmp_path, monkeypatch):
     assert reopened["ok"] is True
 
 
-def test_toady_terminal_numbers_do_not_renumber_after_close(tmp_path, monkeypatch):
+def test_hoosegow_terminal_numbers_do_not_renumber_after_close(tmp_path, monkeypatch):
     monkeypatch.setattr("server.app.PtyDriver", FakePtyDriver)
     app = create_app(
         str(tmp_path),
@@ -216,7 +216,7 @@ def test_toady_terminal_numbers_do_not_renumber_after_close(tmp_path, monkeypatc
     assert [terminal["number"] for terminal in listed["terminals"]] == [2, 3]
 
 
-def test_toady_terminal_status_reports_foreground_process(tmp_path, monkeypatch):
+def test_hoosegow_terminal_status_reports_foreground_process(tmp_path, monkeypatch):
     monkeypatch.setattr("server.app.PtyDriver", FakePtyDriver)
     app = create_app(
         str(tmp_path),
@@ -245,7 +245,7 @@ def test_toady_terminal_status_reports_foreground_process(tmp_path, monkeypatch)
     assert status["status"]["foreground"]["command"] == "sleep 100"
 
 
-def test_toady_terminal_can_be_rejoined_by_new_socket(tmp_path, monkeypatch):
+def test_hoosegow_terminal_can_be_rejoined_by_new_socket(tmp_path, monkeypatch):
     monkeypatch.setattr("server.app.PtyDriver", FakePtyDriver)
     app = create_app(
         str(tmp_path),
@@ -281,7 +281,7 @@ def test_toady_terminal_can_be_rejoined_by_new_socket(tmp_path, monkeypatch):
     assert wrote["ok"] is True
 
 
-def test_toady_terminal_replay_is_line_bounded_and_marked(tmp_path, monkeypatch):
+def test_hoosegow_terminal_replay_is_line_bounded_and_marked(tmp_path, monkeypatch):
     ReplayPtyDriver.polled = set()
     ReplayPtyDriver.output = b"one\ntwo\nthree\nfour\n"
     monkeypatch.setattr("server.app.PtyDriver", ReplayPtyDriver)
@@ -304,8 +304,8 @@ def test_toady_terminal_replay_is_line_bounded_and_marked(tmp_path, monkeypatch)
 
     deadline = time.time() + 1
     while time.time() < deadline:
-        with app.config["toady_terminals_lock"]:
-            session_info = app.config["toady_terminals"].get(terminal_id)
+        with app.config["hoosegow_terminals_lock"]:
+            session_info = app.config["hoosegow_terminals"].get(terminal_id)
             if session_info and session_info.get("replay_truncated"):
                 break
         time.sleep(0.01)
@@ -318,14 +318,14 @@ def test_toady_terminal_replay_is_line_bounded_and_marked(tmp_path, monkeypatch)
 
     replay = base64.b64decode(joined["replay"]["data"]).decode("utf-8")
     assert joined["replay"]["truncated"] is True
-    assert "[Toady replay truncated]" in replay
+    assert "[Hoosegow replay truncated]" in replay
     assert "one" not in replay
     assert "two" not in replay
     assert "three" in replay
     assert "four" in replay
 
 
-def test_toady_terminal_replay_is_byte_bounded_and_marked(tmp_path, monkeypatch):
+def test_hoosegow_terminal_replay_is_byte_bounded_and_marked(tmp_path, monkeypatch):
     ReplayPtyDriver.polled = set()
     ReplayPtyDriver.output = b"abcdef"
     monkeypatch.setattr("server.app.PtyDriver", ReplayPtyDriver)
@@ -348,8 +348,8 @@ def test_toady_terminal_replay_is_byte_bounded_and_marked(tmp_path, monkeypatch)
 
     deadline = time.time() + 1
     while time.time() < deadline:
-        with app.config["toady_terminals_lock"]:
-            session_info = app.config["toady_terminals"].get(terminal_id)
+        with app.config["hoosegow_terminals_lock"]:
+            session_info = app.config["hoosegow_terminals"].get(terminal_id)
             if session_info and session_info.get("replay_truncated"):
                 break
         time.sleep(0.01)
@@ -362,6 +362,6 @@ def test_toady_terminal_replay_is_byte_bounded_and_marked(tmp_path, monkeypatch)
 
     replay = base64.b64decode(joined["replay"]["data"]).decode("utf-8")
     assert joined["replay"]["truncated"] is True
-    assert "[Toady replay truncated]" in replay
+    assert "[Hoosegow replay truncated]" in replay
     assert "abc" not in replay
     assert replay.endswith("def")

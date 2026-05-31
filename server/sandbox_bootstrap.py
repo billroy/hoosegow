@@ -12,8 +12,8 @@ import urllib.request
 
 from server.microsandbox_runtime import (
     MicrosandboxRuntime,
-    ToadyRuntimeError,
-    ToadySandboxSpec,
+    HoosegowRuntimeError,
+    HoosegowSandboxSpec,
     maybe,
 )
 
@@ -29,12 +29,12 @@ SECRET_ENV_NAMES = {
     "GITHUB_TOKEN",
     "GOOGLE_API_KEY",
     "OPENAI_API_KEY",
-    "TOADY_PTYD_TOKEN",
+    "HOOSEGOW_PTYD_TOKEN",
 }
 
 
 def build_runtime_env(
-    spec: ToadySandboxSpec,
+    spec: HoosegowSandboxSpec,
     *,
     controller_port: int = TERMINAL_CONTROLLER_GUEST_PORT_DEFAULT,
     controller_token: str = "",
@@ -44,18 +44,18 @@ def build_runtime_env(
             "HOME": "/home/agent",
             "USER": "agent",
             "LOGNAME": "agent",
-            "TOADY_UID": str(os.getuid()),
-            "TOADY_GID": str(os.getgid()),
-            "TOADY_HOME": "/home/agent",
-            "TOADY_PROJECTS_ROOT": "/workspace",
-            "TOADY_DEPLOY_LABEL": f"(Microsandbox:{spec.sandbox_name})",
-            "TOADY_CODEX_PATH": "/usr/local/bin/codex",
-            "TOADY_PTYD_HOST": "0.0.0.0",
-            "TOADY_PTYD_PORT": str(controller_port),
-            "TOADY_PTYD_TOKEN": controller_token,
-            "TOADY_MICROSANDBOX_HOST_NOFILE": str(spec.host_nofile),
-            "TOADY_MICROSANDBOX_GUEST_NOFILE": str(spec.guest_nofile),
-            "TOADY_MICROSANDBOX_MAX_CONNECTIONS": str(spec.network_max_connections),
+            "HOOSEGOW_UID": str(os.getuid()),
+            "HOOSEGOW_GID": str(os.getgid()),
+            "HOOSEGOW_HOME": "/home/agent",
+            "HOOSEGOW_PROJECTS_ROOT": "/workspace",
+            "HOOSEGOW_DEPLOY_LABEL": f"(Microsandbox:{spec.sandbox_name})",
+            "HOOSEGOW_CODEX_PATH": "/usr/local/bin/codex",
+            "HOOSEGOW_PTYD_HOST": "0.0.0.0",
+            "HOOSEGOW_PTYD_PORT": str(controller_port),
+            "HOOSEGOW_PTYD_TOKEN": controller_token,
+            "HOOSEGOW_MICROSANDBOX_HOST_NOFILE": str(spec.host_nofile),
+            "HOOSEGOW_MICROSANDBOX_GUEST_NOFILE": str(spec.guest_nofile),
+            "HOOSEGOW_MICROSANDBOX_MAX_CONNECTIONS": str(spec.network_max_connections),
         }
     )
 
@@ -78,7 +78,7 @@ async def run_sandbox_shell(sandbox: Any, command: str, *, check: bool = True) -
     else:
         shell = getattr(sandbox, "shell", None)
         if not callable(shell):
-            raise ToadyRuntimeError("Microsandbox sandbox object does not expose exec() or shell().")
+            raise HoosegowRuntimeError("Microsandbox sandbox object does not expose exec() or shell().")
         result = shell(command)
     result = await maybe(result)
     returncode = getattr(result, "returncode", None)
@@ -92,7 +92,7 @@ async def run_sandbox_shell(sandbox: Any, command: str, *, check: bool = True) -
     if check and failed:
         details = result_output_text(result)
         command_preview = command.splitlines()[0] if command else ""
-        raise ToadyRuntimeError(f"Sandbox command failed: {command_preview}\n{details}")
+        raise HoosegowRuntimeError(f"Sandbox command failed: {command_preview}\n{details}")
     return result
 
 
@@ -109,7 +109,7 @@ def result_output_text(result: Any) -> str:
     return "\n".join(part for part in (stdout, stderr) if part)
 
 
-def redact_text(text: str, spec: ToadySandboxSpec | None = None) -> str:
+def redact_text(text: str, spec: HoosegowSandboxSpec | None = None) -> str:
     redacted = text
     if spec is not None:
         for key in SECRET_ENV_NAMES:
@@ -119,7 +119,7 @@ def redact_text(text: str, spec: ToadySandboxSpec | None = None) -> str:
     return redacted
 
 
-def sandbox_env_prefix(spec: ToadySandboxSpec) -> str:
+def sandbox_env_prefix(spec: HoosegowSandboxSpec) -> str:
     exports = []
     for key, value in sorted(spec.runtime_env.items()):
         exports.append(f"export {key}={shlex.quote(str(value))}")
@@ -128,7 +128,7 @@ def sandbox_env_prefix(spec: ToadySandboxSpec) -> str:
 
 async def run_configured_sandbox_shell(
     sandbox: Any,
-    spec: ToadySandboxSpec,
+    spec: HoosegowSandboxSpec,
     command: str,
     *,
     check: bool = True,
@@ -136,35 +136,35 @@ async def run_configured_sandbox_shell(
 ) -> Any:
     try:
         return await run_sandbox_shell(sandbox, f"{sandbox_env_prefix(spec)}; {command}", check=check)
-    except ToadyRuntimeError as exc:
+    except HoosegowRuntimeError as exc:
         message = redact_text(str(exc), spec)
         if label and message.startswith("Sandbox command failed: "):
             _first, _sep, details = message.partition("\n")
             message = f"Sandbox command failed: {label}"
             if details:
                 message = f"{message}\n{details}"
-        raise ToadyRuntimeError(message) from exc
+        raise HoosegowRuntimeError(message) from exc
 
 
-async def run_as_agent(sandbox: Any, spec: ToadySandboxSpec, command: str, *, check: bool = True, label: str | None = None) -> Any:
+async def run_as_agent(sandbox: Any, spec: HoosegowSandboxSpec, command: str, *, check: bool = True, label: str | None = None) -> Any:
     configured = f"{sandbox_env_prefix(spec)}; {command}"
     wrapped = f"su -s /bin/bash agent -c {shlex.quote(configured)}"
     try:
         return await run_sandbox_shell(sandbox, wrapped, check=check)
-    except ToadyRuntimeError as exc:
+    except HoosegowRuntimeError as exc:
         message = redact_text(str(exc), spec)
         if label and message.startswith("Sandbox command failed: "):
             _first, _sep, details = message.partition("\n")
             message = f"Sandbox command failed: {label}"
             if details:
                 message = f"{message}\n{details}"
-        raise ToadyRuntimeError(message) from exc
+        raise HoosegowRuntimeError(message) from exc
 
 
-async def prepare_runtime_dirs(sandbox: Any, spec: ToadySandboxSpec) -> None:
+async def prepare_runtime_dirs(sandbox: Any, spec: HoosegowSandboxSpec) -> None:
     command = r'''set -e
-uid="${TOADY_UID:-1000}"
-gid="${TOADY_GID:-1000}"
+uid="${HOOSEGOW_UID:-1000}"
+gid="${HOOSEGOW_GID:-1000}"
 if ! getent group agent >/dev/null 2>&1; then
   if getent group "$gid" >/dev/null 2>&1; then
     group_name="$(getent group "$gid" | cut -d: -f1)"
@@ -183,16 +183,16 @@ if [ "$actual_uid" != "$uid" ]; then
   echo "Existing agent user has uid $actual_uid, expected $uid." >&2
   exit 1
 fi
-mkdir -p /workspace /home/agent/logs /home/agent/bin /home/agent/.codex /var/lib/toady
+mkdir -p /workspace /home/agent/logs /home/agent/bin /home/agent/.codex /var/lib/hoosegow
 chown agent:"$group_name" /workspace /home/agent /home/agent/logs /home/agent/bin /home/agent/.codex
-chown -R agent:"$group_name" /var/lib/toady
-chmod 700 /var/lib/toady 2>/dev/null || true
+chown -R agent:"$group_name" /var/lib/hoosegow
+chmod 700 /var/lib/hoosegow 2>/dev/null || true
 mkdir -p /etc/security/limits.d
-cat > /etc/security/limits.d/toady-fd.conf <<'LIMITS_EOF'
+cat > /etc/security/limits.d/hoosegow-fd.conf <<'LIMITS_EOF'
 agent soft nofile __GUEST_NOFILE__
 agent hard nofile __GUEST_NOFILE__
 LIMITS_EOF
-chmod 644 /etc/security/limits.d/toady-fd.conf
+chmod 644 /etc/security/limits.d/hoosegow-fd.conf
 su -s /bin/bash agent -c 'test -w /home/agent && test -w /home/agent/logs && test -w /home/agent/bin && test -w /home/agent/.codex'
 soft_nofile="$(su -s /bin/bash agent -c 'ulimit -Sn')"
 hard_nofile="$(su -s /bin/bash agent -c 'ulimit -Hn')"
@@ -206,7 +206,7 @@ fi
 async def disable_guest_ipv6_for_claude(sandbox: Any) -> None:
     command = r'''set -e
 mkdir -p /etc/sysctl.d
-cat > /etc/sysctl.d/99-toady-claude-ipv4.conf <<'SYSCTL_EOF'
+cat > /etc/sysctl.d/99-hoosegow-claude-ipv4.conf <<'SYSCTL_EOF'
 net.ipv6.conf.all.disable_ipv6 = 1
 net.ipv6.conf.default.disable_ipv6 = 1
 net.ipv6.conf.eth0.disable_ipv6 = 1
@@ -236,16 +236,16 @@ echo "Disabled guest IPv6 for Claude auth due to Microsandbox IPv6 TLS EOFs." >&
     await run_sandbox_shell(sandbox, command)
 
 
-async def verify_mount_access(sandbox: Any, spec: ToadySandboxSpec) -> None:
+async def verify_mount_access(sandbox: Any, spec: HoosegowSandboxSpec) -> None:
     command = "set -e\ntest -w /workspace\ntest -w /home/agent\n"
     await run_as_agent(sandbox, spec, command, label="verify Microsandbox mount access")
 
 
-async def configure_codex_cli(sandbox: Any, spec: ToadySandboxSpec) -> None:
+async def configure_codex_cli(sandbox: Any, spec: HoosegowSandboxSpec) -> None:
     command = r'''set -e
 mkdir -p /home/agent/.codex /home/agent/.codex/tmp/arg0
 rm -f /home/agent/bin/codex
-rm -rf /var/lib/toady/codex-home /var/lib/toady/codex.lock
+rm -rf /var/lib/hoosegow/codex-home /var/lib/hoosegow/codex.lock
 rm -rf /home/agent/.codex/tmp/arg0/codex-arg0*
 config_file="/home/agent/.codex/config.toml"
 touch "$config_file"
@@ -254,26 +254,26 @@ if grep -Eq '^[[:space:]]*cli_auth_credentials_store[[:space:]]*=' "$config_file
 else
   printf '\ncli_auth_credentials_store = "file"\n' >> "$config_file"
 fi
-real_codex="${TOADY_CODEX_PATH:-$(command -v codex)}"
+real_codex="${HOOSEGOW_CODEX_PATH:-$(command -v codex)}"
 if [ -z "$real_codex" ] || [ ! -x "$real_codex" ]; then
   echo "Unable to locate real Codex CLI" >&2
   exit 1
 fi
 chown agent:"$(id -gn agent)" /home/agent/.codex /home/agent/.codex/config.toml
 chown -R agent:"$(id -gn agent)" /home/agent/.codex/tmp
-su -s /bin/bash agent -c 'test -x "$TOADY_CODEX_PATH" && test -w /home/agent/.codex && grep -Eq "^[[:space:]]*cli_auth_credentials_store[[:space:]]*=[[:space:]]*\"file\"" /home/agent/.codex/config.toml'
+su -s /bin/bash agent -c 'test -x "$HOOSEGOW_CODEX_PATH" && test -w /home/agent/.codex && grep -Eq "^[[:space:]]*cli_auth_credentials_store[[:space:]]*=[[:space:]]*\"file\"" /home/agent/.codex/config.toml'
 '''
     await run_configured_sandbox_shell(sandbox, spec, command, label="configure Codex CLI")
 
 
-async def start_pty_controller(sandbox: Any, spec: ToadySandboxSpec) -> None:
+async def start_pty_controller(sandbox: Any, spec: HoosegowSandboxSpec) -> None:
     command = (
         "set -e; "
-        "mkdir -p /home/agent/logs /var/lib/toady; "
-        ": > /home/agent/logs/toady-ptyd.log; "
+        "mkdir -p /home/agent/logs /var/lib/hoosegow; "
+        ": > /home/agent/logs/hoosegow-ptyd.log; "
         "cd /app; "
-        'nohup python3 /app/guest/toady-ptyd.py --http "${TOADY_PTYD_HOST}:${TOADY_PTYD_PORT}" --token "$TOADY_PTYD_TOKEN" '
-        ">/home/agent/logs/toady-ptyd.log 2>&1 &"
+        'nohup python3 /app/guest/hoosegow-ptyd.py --http "${HOOSEGOW_PTYD_HOST}:${HOOSEGOW_PTYD_PORT}" --token "$HOOSEGOW_PTYD_TOKEN" '
+        ">/home/agent/logs/hoosegow-ptyd.log 2>&1 &"
     )
     await run_as_agent(sandbox, spec, command, label="start PTY controller")
 
@@ -291,20 +291,20 @@ def wait_for_controller_health(host_port: int, timeout_seconds: int = 20) -> Non
         except (OSError, urllib.error.URLError) as exc:
             last_error = str(exc)
         time.sleep(0.5)
-    raise ToadyRuntimeError(f"Toady PTY controller health check failed for {url}: {last_error}")
+    raise HoosegowRuntimeError(f"Hoosegow PTY controller health check failed for {url}: {last_error}")
 
 
 async def detach_sandbox(sandbox: Any) -> None:
     detach = getattr(sandbox, "detach", None)
     if not callable(detach):
-        raise ToadyRuntimeError("Installed Microsandbox SDK does not expose sandbox.detach().")
+        raise HoosegowRuntimeError("Installed Microsandbox SDK does not expose sandbox.detach().")
     await maybe(detach())
 
 
-async def verify_detached_sandbox(runtime: MicrosandboxRuntime, spec: ToadySandboxSpec) -> None:
+async def verify_detached_sandbox(runtime: MicrosandboxRuntime, spec: HoosegowSandboxSpec) -> None:
     status = await runtime.status(spec.sandbox_name)
     if status is not None and "running" not in status.lower():
-        raise ToadyRuntimeError(f"Microsandbox '{spec.sandbox_name}' is not running after detach (status: {status}).")
+        raise HoosegowRuntimeError(f"Microsandbox '{spec.sandbox_name}' is not running after detach (status: {status}).")
 
 
 _URL_RE = re.compile(r"https?://\S+")

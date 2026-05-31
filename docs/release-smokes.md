@@ -6,15 +6,15 @@ Host: local Apple Silicon development machine.
 
 Prepared base:
 
-- Name: `toady-microsandbox-local`
-- Path: `/Users/bill/.microsandbox/snapshots/toady-microsandbox-local`
+- Name: `hoosegow-microsandbox-local`
+- Path: `/Users/bill/.microsandbox/snapshots/hoosegow-microsandbox-local`
 - Size: `1.1G` as last measured on 2026-05-27
 - Prep duration: not remeasured in this pass.
 
 Passing real Microsandbox smokes:
 
 ```bash
-TOADY_RUN_REAL_MICROSANDBOX=1 pytest -q -m real_microsandbox
+HOOSEGOW_RUN_REAL_MICROSANDBOX=1 pytest -q -m real_microsandbox
 ```
 
 Observed output:
@@ -35,19 +35,19 @@ Browser smoke:
 
 - URL: `http://127.0.0.1:5855/`
 - Final refresh:
-  - `pytest -q tests/test_toady_sandbox_service.py tests/test_toady_sandbox_events.py tests/test_toady_terminal_events.py tests/test_toady_product_surface.py tests/test_toady_cli.py tests/test_auth.py tests/test_auth_e2e.py`
+  - `pytest -q tests/test_hoosegow_sandbox_service.py tests/test_hoosegow_sandbox_events.py tests/test_hoosegow_terminal_events.py tests/test_hoosegow_product_surface.py tests/test_hoosegow_cli.py tests/test_auth.py tests/test_auth_e2e.py`
     returned `99 passed in 6.83s`.
   - `node --check static/app.js` passed.
   - `python3 scripts/pty_controller_http_smoke.py` passed outside the command
     sandbox, where temporary localhost binding is allowed.
   - `/health` returned `{"ok":true}` when checked outside the command sandbox,
     which is required for reaching the local Flask listener from Codex.
-- Verified app title/body loads as Toady.
+- Verified app title/body loads as Hoosegow.
 - Verified hamburger menu exposes runtime readiness, rebuild/retry setup, and
   runtime logs.
 - Verified theme toggle is in the header, not the hamburger menu.
 - Verified header height is 44px, the hamburger button is visually bare, and
-  no selected-sandbox subtitle appears under `Toady`.
+  no selected-sandbox subtitle appears under `Hoosegow`.
 - Verified left-pane heading renders the count inline as `Sandboxes (n)`.
 - Verified Sandboxes menu exposes create sandbox, sandbox details, published
   ports, and sandbox logs.
@@ -82,8 +82,8 @@ Host: local Apple Silicon development machine.
 
 Prepared base:
 
-- Name: `toady-microsandbox-local`
-- Path: `/Users/bill/.microsandbox/snapshots/toady-microsandbox-local`
+- Name: `hoosegow-microsandbox-local`
+- Path: `/Users/bill/.microsandbox/snapshots/hoosegow-microsandbox-local`
 - Size: `1.1G`
 - Prep duration: not captured for the existing base; the UI now records
   in-session base-prep duration for future rebuilds.
@@ -93,7 +93,7 @@ Passing real Microsandbox smokes:
 ```bash
 python3 scripts/microsandbox_port_smoke.py
 python3 scripts/pty_controller_microsandbox_smoke.py --verbose
-TOADY_RUN_REAL_MICROSANDBOX=1 pytest -q -m real_microsandbox
+HOOSEGOW_RUN_REAL_MICROSANDBOX=1 pytest -q -m real_microsandbox
 ```
 
 Observed output:
@@ -101,13 +101,13 @@ Observed output:
 ```text
 Microsandbox published HTTP port smoke passed
 Microsandbox PTY controller HTTP smoke passed
-TOADY_HTTP_PTYD_SMOKE:/app
+HOOSEGOW_HTTP_PTYD_SMOKE:/app
 ```
 
 Notes:
 
-- The real smoke scripts default to `toady-microsandbox-local`.
-- Use `TOADY_MICROSANDBOX_BASE=<name>` or `--snapshot <name>` to target a
+- The real smoke scripts default to `hoosegow-microsandbox-local`.
+- Use `HOOSEGOW_MICROSANDBOX_BASE=<name>` or `--snapshot <name>` to target a
   different prepared base.
 - `scripts/microsandbox_raw_tcp_smoke.py` remains an expected-failure
   diagnostic for raw TCP published-port behavior.

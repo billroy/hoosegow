@@ -9,10 +9,10 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _isolate_global_registry(tmp_path, monkeypatch):
-    """Prevent tests from polluting the user's real Toady state."""
+    """Prevent tests from polluting the user's real Hoosegow state."""
     test_global = str(tmp_path / "bullpen_global")
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("TOADY_HOME", test_global)
+    monkeypatch.setenv("HOOSEGOW_HOME", test_global)
 
 
 @pytest.fixture

@@ -11,7 +11,7 @@ from server.app import socketio
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_toady_mode_hides_legacy_product_rest_apis(tmp_path):
+def test_hoosegow_mode_hides_legacy_product_rest_apis(tmp_path):
     app = create_app(
         str(tmp_path),
         no_browser=True,
@@ -29,7 +29,7 @@ def test_toady_mode_hides_legacy_product_rest_apis(tmp_path):
     assert client.post("/api/service/preview").status_code == 404
 
 
-def test_toady_mode_does_not_register_legacy_product_rest_routes(tmp_path):
+def test_hoosegow_mode_does_not_register_legacy_product_rest_routes(tmp_path):
     app = create_app(
         str(tmp_path),
         no_browser=True,
@@ -47,7 +47,7 @@ def test_toady_mode_does_not_register_legacy_product_rest_routes(tmp_path):
     assert "/api/service/preview" not in rules
 
 
-def test_toady_mode_hides_legacy_product_static_assets(tmp_path):
+def test_hoosegow_mode_hides_legacy_product_static_assets(tmp_path):
     app = create_app(
         str(tmp_path),
         no_browser=True,
@@ -66,7 +66,7 @@ def test_toady_mode_hides_legacy_product_static_assets(tmp_path):
     assert client.get("/manager/index.html").status_code == 404
 
 
-def test_toady_mode_served_shell_has_no_legacy_product_copy(tmp_path):
+def test_hoosegow_mode_served_shell_has_no_legacy_product_copy(tmp_path):
     app = create_app(
         str(tmp_path),
         no_browser=True,
@@ -82,7 +82,7 @@ def test_toady_mode_served_shell_has_no_legacy_product_copy(tmp_path):
         assert b"bullpen" not in response.data
 
 
-def test_toady_mode_does_not_activate_legacy_project_registry(tmp_path):
+def test_hoosegow_mode_does_not_activate_legacy_project_registry(tmp_path):
     legacy_project = tmp_path / "legacy-project"
     legacy_project.mkdir()
     state = tmp_path / "state"
@@ -113,7 +113,7 @@ def test_toady_mode_does_not_activate_legacy_project_registry(tmp_path):
     assert "projects:updated" not in received_events
 
 
-def test_toady_mode_does_not_eagerly_import_legacy_product_modules(tmp_path):
+def test_hoosegow_mode_does_not_eagerly_import_legacy_product_modules(tmp_path):
     script = """
 import json
 import sys
@@ -172,7 +172,7 @@ def test_server_log_records_http_and_socket_events_without_secrets(tmp_path, mon
         global_dir=str(state),
         start_without_project=True,
     )
-    service = app.config["toady_sandboxes"]
+    service = app.config["hoosegow_sandboxes"]
     service.browse_roots = [str(tmp_path)]
     service.port_pool = (63100, 63105)
 
@@ -192,7 +192,7 @@ def test_server_log_records_http_and_socket_events_without_secrets(tmp_path, mon
     ]
     body = log_path.read_text(encoding="utf-8")
 
-    assert response.headers["X-Toady-Request-Id"]
+    assert response.headers["X-Hoosegow-Request-Id"]
     assert created["ok"] is True
     assert any(record["event"] == "http_request" and record["path"] == "/health" for record in records)
     assert any(
@@ -240,7 +240,7 @@ def test_base_logs_are_available_after_reconnect(tmp_path):
 def test_base_status_auto_starts_missing_base_setup(tmp_path, monkeypatch):
     async def fake_base_status():
         return {
-            "name": "toady-microsandbox-local",
+            "name": "hoosegow-microsandbox-local",
             "prepared": False,
             "state": "missing",
             "message": "missing",
@@ -252,7 +252,7 @@ def test_base_status_auto_starts_missing_base_setup(tmp_path, monkeypatch):
         started.append((function.__name__, args))
         return None
 
-    monkeypatch.setattr("server.app.toady_base.base_status", fake_base_status)
+    monkeypatch.setattr("server.app.hoosegow_base.base_status", fake_base_status)
     monkeypatch.setattr("server.app.socketio.start_background_task", fake_start_background_task)
     app = create_app(
         str(tmp_path),
@@ -272,11 +272,11 @@ def test_base_status_auto_starts_missing_base_setup(tmp_path, monkeypatch):
     assert response["base"]["prepare"]["automatic"] is True
 
 
-def test_toady_shell_has_theme_toggle_assets():
+def test_hoosegow_shell_has_theme_toggle_assets():
     app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
     css = (ROOT / "static" / "style.css").read_text(encoding="utf-8")
 
-    assert "toady-theme" in app_js
+    assert "hoosegow-theme" in app_js
     assert "toggleTheme" in app_js
     assert "TERMINAL_THEMES" in app_js
     assert "applyTerminalTheme" in app_js
@@ -297,7 +297,7 @@ def test_toady_shell_has_theme_toggle_assets():
     assert "color: var(--terminal-text);" in css
 
 
-def test_toady_shell_has_clear_empty_and_error_states():
+def test_hoosegow_shell_has_clear_empty_and_error_states():
     app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
     css = (ROOT / "static" / "style.css").read_text(encoding="utf-8")
 
@@ -314,7 +314,7 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "Base logs" in app_js
     assert "Runtime logs" not in app_js
     assert "Waiting for setup" in app_js
-    assert "Toady is doing this automatically." in app_js
+    assert "Hoosegow is doing this automatically." in app_js
     assert "Prepare the base from the main menu" not in app_js
     assert "sandbox:logs" in app_js
     assert "Sandbox Logs" in app_js
@@ -337,8 +337,8 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "authState.authenticated" in app_js
     assert "fetch('/login/csrf'" in app_js
     assert "openGithub" in app_js
-    assert "https://github.com/billroy/toady" in app_js
-    assert "Toady on GitHub" in app_js
+    assert "https://github.com/billroy/hoosegow" in app_js
+    assert "Hoosegow on GitHub" in app_js
     assert 'data-lucide="external-link"' in app_js
     assert 'data-lucide="log-out"' in app_js
     assert '<span class="menu-item-label">Logout</span>' in app_js
@@ -411,11 +411,11 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "connection-dot" in app_js
     assert "Connected" not in app_js
     assert 'title="Refresh"' not in app_js
-    assert "Toady sandbox terminal" not in (ROOT / "guest" / "toady-ptyd.py").read_text(encoding="utf-8")
+    assert "Hoosegow sandbox terminal" not in (ROOT / "guest" / "hoosegow-ptyd.py").read_text(encoding="utf-8")
     assert "terminal-title" not in app_js
     assert ".terminal-title" not in css
     assert "beginSidebarResize" in app_js
-    assert "toady-sidebar-collapsed" in app_js
+    assert "hoosegow-sidebar-collapsed" in app_js
     assert "sidebarCollapsed" in app_js
     assert "toggleSidebar" in app_js
     assert "Show sandboxes" in app_js
@@ -427,7 +427,7 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert "terminal-sidebar-toggle" in app_js
     assert "if (sidebarCollapsed.value) return;" in app_js
     assert "sidebar-collapsed" in css
-    assert ".toady-shell.sidebar-collapsed .workspace" in css
+    assert ".hoosegow-shell.sidebar-collapsed .workspace" in css
     assert "grid-column: 1 / -1;" in css
     assert ".empty-state" in css
     assert ".menu-panel" in css
@@ -453,19 +453,19 @@ def test_toady_shell_has_clear_empty_and_error_states():
     assert ".terminal-tab-add" in css
 
 
-def test_real_microsandbox_smokes_default_to_toady_base():
+def test_real_microsandbox_smokes_default_to_hoosegow_base():
     for relative in (
         "scripts/microsandbox_port_smoke.py",
         "scripts/microsandbox_raw_tcp_smoke.py",
         "scripts/pty_controller_microsandbox_smoke.py",
     ):
         text = (ROOT / relative).read_text(encoding="utf-8")
-        assert 'SNAPSHOT_DEFAULT = "toady-microsandbox-local"' in text
-        assert "TOADY_MICROSANDBOX_BASE" in text
+        assert 'SNAPSHOT_DEFAULT = "hoosegow-microsandbox-local"' in text
+        assert "HOOSEGOW_MICROSANDBOX_BASE" in text
         assert "bullpen-microsandbox-local" not in text
 
 
-def test_toady_base_installs_declared_agent_clis():
+def test_hoosegow_base_installs_declared_agent_clis():
     base_py = (ROOT / "server" / "base.py").read_text(encoding="utf-8")
 
     assert "npm install -g --no-audit --no-fund --no-progress --omit=dev @anthropic-ai/claude-code" in base_py

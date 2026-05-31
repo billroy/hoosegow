@@ -1,4 +1,4 @@
-"""HTTP client for the in-sandbox Toady PTY controller."""
+"""HTTP client for the in-sandbox Hoosegow PTY controller."""
 
 from __future__ import annotations
 

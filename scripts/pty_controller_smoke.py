@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke-test the local toady-ptyd protocol over loopback TCP."""
+"""Smoke-test the local hoosegow-ptyd protocol over loopback TCP."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PTYD = ROOT / "guest" / "toady-ptyd.py"
+PTYD = ROOT / "guest" / "hoosegow-ptyd.py"
 TOKEN = "smoke-token"
 
 
@@ -93,7 +93,7 @@ def main() -> int:
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
-    with tempfile.TemporaryDirectory(prefix="toady-ptyd-smoke-", dir="/private/tmp") as home:
+    with tempfile.TemporaryDirectory(prefix="hoosegow-ptyd-smoke-", dir="/private/tmp") as home:
         port = reserve_loopback_port()
         address = ("127.0.0.1", port)
         env = os.environ.copy()
@@ -126,7 +126,7 @@ def main() -> int:
                 client.send({"op": "resize", "id": "smoke", "cols": 90, "rows": 28})
                 client.wait_for("resized")
 
-                command = b"printf 'TOADY_PTYD_SMOKE:%s\\n' \"$PWD\"; exit 7\n"
+                command = b"printf 'HOOSEGOW_PTYD_SMOKE:%s\\n' \"$PWD\"; exit 7\n"
                 client.send(
                     {
                         "op": "write",
@@ -134,7 +134,7 @@ def main() -> int:
                         "data": base64.b64encode(command).decode("ascii"),
                     }
                 )
-                output = client.wait_for_output_containing(b"TOADY_PTYD_SMOKE:")
+                output = client.wait_for_output_containing(b"HOOSEGOW_PTYD_SMOKE:")
                 exited = client.wait_for("exit")
                 if exited.get("exit_code") != 7:
                     raise RuntimeError(f"unexpected exit payload: {exited}")

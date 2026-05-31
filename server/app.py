@@ -23,10 +23,10 @@ from flask import (
 from flask_socketio import SocketIO, join_room
 
 from server import auth
-from server import base as toady_base
+from server import base as hoosegow_base
 from server.pty_driver import PtyDriver, PtyDriverError
 from server.sandboxes import SandboxService, SandboxServiceError, browse_roots_from_env
-from server.toady_validation import ValidationError, validate_slug
+from server.hoosegow_validation import ValidationError, validate_slug
 
 
 socketio = SocketIO()
@@ -39,7 +39,7 @@ _DEFAULT_SESSION_DAYS = 30
 _MAX_SESSION_DAYS = 365
 _TERMINAL_REPLAY_LIMIT_BYTES = 5 * 1024 * 1024
 _TERMINAL_REPLAY_LIMIT_LINES = 10_000
-_TERMINAL_REPLAY_TRUNCATED_MARKER = b"\r\n[Toady replay truncated]\r\n"
+_TERMINAL_REPLAY_TRUNCATED_MARKER = b"\r\n[Hoosegow replay truncated]\r\n"
 _SERVER_LOG_MAX_BYTES = 10 * 1024 * 1024
 _SERVER_LOG_BACKUPS = 5
 
@@ -79,11 +79,11 @@ def _append_json_log(log_path, event, **fields):
         return
 
 
-class ToadyStateManager:
-    """Minimal state-directory holder for the Toady sandbox UI."""
+class HoosegowStateManager:
+    """Minimal state-directory holder for the Hoosegow sandbox UI."""
 
     def __init__(self, global_dir=None):
-        self._global_dir = os.path.abspath(os.path.expanduser(global_dir or os.environ.get("TOADY_HOME", "~/.toady")))
+        self._global_dir = os.path.abspath(os.path.expanduser(global_dir or os.environ.get("HOOSEGOW_HOME", "~/.hoosegow")))
         os.makedirs(self._global_dir, exist_ok=True)
 
     @property
@@ -149,13 +149,13 @@ def _safe_int(value, default=0):
 
 
 def _session_lifetime():
-    days = _safe_int(os.environ.get("TOADY_SESSION_DAYS", os.environ.get("BULLPEN_SESSION_DAYS", "")), _DEFAULT_SESSION_DAYS)
+    days = _safe_int(os.environ.get("HOOSEGOW_SESSION_DAYS", os.environ.get("BULLPEN_SESSION_DAYS", "")), _DEFAULT_SESSION_DAYS)
     days = max(1, min(days, _MAX_SESSION_DAYS))
     return timedelta(days=days)
 
 
 def _configured_allowed_origins():
-    raw = os.environ.get("TOADY_ALLOWED_ORIGINS", os.environ.get("BULLPEN_ALLOWED_ORIGINS", ""))
+    raw = os.environ.get("HOOSEGOW_ALLOWED_ORIGINS", os.environ.get("BULLPEN_ALLOWED_ORIGINS", ""))
     allowed = set()
     for item in raw.split(","):
         normalized = _normalize_origin(item.strip())
@@ -203,7 +203,7 @@ def create_app(
     """Create and configure the Flask + SocketIO app."""
     workspace = os.path.abspath(workspace)
     start_without_project = True
-    manager = ToadyStateManager(global_dir=global_dir)
+    manager = HoosegowStateManager(global_dir=global_dir)
     startup_id = None
     bp_dir = None
 
@@ -220,7 +220,7 @@ def create_app(
     auth.reset_auth_cache()
     auth.load_credentials(manager.global_dir)
     app.config["SECRET_KEY"] = auth.load_or_create_secret_key(manager.global_dir)
-    production = os.environ.get("TOADY_PRODUCTION", os.environ.get("BULLPEN_PRODUCTION", "")) == "1"
+    production = os.environ.get("HOOSEGOW_PRODUCTION", os.environ.get("BULLPEN_PRODUCTION", "")) == "1"
     session_lifetime = _session_lifetime()
     app.config.update(
         PERMANENT_SESSION_LIFETIME=session_lifetime,
@@ -236,27 +236,27 @@ def create_app(
         user_count = len(users)
         primary = auth.get_username() or "unknown"
         print(
-            f"Toady auth: ENABLED ({user_count} user(s), primary={primary}, "
+            f"Hoosegow auth: ENABLED ({user_count} user(s), primary={primary}, "
             f"session_days={session_lifetime.days})",
             file=sys.stderr,
         )
     else:
         print(
-            "Toady auth: DISABLED (no credentials configured). "
-            "Run `python3 toady.py --set-password` to enable login.",
+            "Hoosegow auth: DISABLED (no credentials configured). "
+            "Run `python3 hoosegow.py --set-password` to enable login.",
             file=sys.stderr,
         )
     # --------------------------------------------------------------------
 
     app.config["manager"] = manager
-    app.config["toady_sandboxes"] = SandboxService(
+    app.config["hoosegow_sandboxes"] = SandboxService(
         home=manager.global_dir,
         browse_roots=browse_roots_from_env(),
         source_root=os.path.dirname(os.path.dirname(__file__)),
-        port_pool=os.environ.get("TOADY_PORT_POOL", "3000-3099"),
-        max_sandboxes=os.environ.get("TOADY_MAX_SANDBOXES", 8),
-        max_total_vcpus=os.environ.get("TOADY_MAX_TOTAL_VCPUS"),
-        max_total_memory_mib=os.environ.get("TOADY_MAX_TOTAL_MEMORY_MIB"),
+        port_pool=os.environ.get("HOOSEGOW_PORT_POOL", "3000-3099"),
+        max_sandboxes=os.environ.get("HOOSEGOW_MAX_SANDBOXES", 8),
+        max_total_vcpus=os.environ.get("HOOSEGOW_MAX_TOTAL_VCPUS"),
+        max_total_memory_mib=os.environ.get("HOOSEGOW_MAX_TOTAL_MEMORY_MIB"),
     )
     app.config["startup_workspace_id"] = startup_id
     # Backward-compat: existing handlers still use these directly
@@ -268,7 +268,7 @@ def create_app(
     def _server_log(event, **fields):
         _append_json_log(os.path.join(manager.global_dir, "logs", "server.log"), event, **fields)
 
-    app.config["toady_server_log"] = _server_log
+    app.config["hoosegow_server_log"] = _server_log
 
     login_failures = {}
 
@@ -322,12 +322,12 @@ def create_app(
         engineio_logger=websocket_debug,
     )
     app.config["terminal_manager"] = None
-    app.config["toady_terminals"] = {}
-    app.config["toady_terminal_numbers"] = {}
-    app.config["toady_terminals_lock"] = threading.RLock()
-    app.config["toady_terminal_limit"] = max(
+    app.config["hoosegow_terminals"] = {}
+    app.config["hoosegow_terminal_numbers"] = {}
+    app.config["hoosegow_terminals_lock"] = threading.RLock()
+    app.config["hoosegow_terminal_limit"] = max(
         1,
-        _safe_int(terminal_limit or os.environ.get("TOADY_TERMINAL_LIMIT", ""), 32),
+        _safe_int(terminal_limit or os.environ.get("HOOSEGOW_TERMINAL_LIMIT", ""), 32),
     )
 
     app.config["host"] = host
@@ -360,12 +360,12 @@ def create_app(
 
     @app.before_request
     def _assign_request_id():
-        request.environ["toady.request_id"] = uuid.uuid4().hex[:12]
+        request.environ["hoosegow.request_id"] = uuid.uuid4().hex[:12]
 
     @app.after_request
     def _log_http_response(response):
-        request_id = request.environ.get("toady.request_id") or uuid.uuid4().hex[:12]
-        response.headers["X-Toady-Request-Id"] = request_id
+        request_id = request.environ.get("hoosegow.request_id") or uuid.uuid4().hex[:12]
+        response.headers["X-Hoosegow-Request-Id"] = request_id
         _server_log(
             "http_request",
             request_id=request_id,
@@ -412,12 +412,12 @@ def create_app(
         return jsonify({"ok": True}), 200
 
     def _sandbox_service():
-        return app.config["toady_sandboxes"]
+        return app.config["hoosegow_sandboxes"]
 
     def _sandbox_error_payload(exc):
         return {"ok": False, "error": str(exc)}
 
-    def _toady_terminal_error_payload(exc):
+    def _hoosegow_terminal_error_payload(exc):
         return {"ok": False, "error": str(exc)}
 
     def _log_socket_event(socket_event, *, sandbox_id=None, terminal_id=None, ok=True, error=None, **fields):
@@ -437,10 +437,10 @@ def create_app(
     def _emit_base_status(status):
         socketio.emit("base:status", {"base": status}, to="authenticated")
 
-    def _toady_terminal_room(terminal_id):
-        return f"toady-terminal:{terminal_id}"
+    def _hoosegow_terminal_room(terminal_id):
+        return f"hoosegow-terminal:{terminal_id}"
 
-    def _toady_terminal_driver(manifest):
+    def _hoosegow_terminal_driver(manifest):
         controller = dict(manifest.controller or {})
         host_port = int(controller.get("host_port") or 0)
         token = str(controller.get("token") or "")
@@ -448,16 +448,16 @@ def create_app(
             raise SandboxServiceError("Sandbox terminal controller is not configured.")
         return PtyDriver(base_url=f"http://127.0.0.1:{host_port}", token=token)
 
-    def _toady_terminal_session(terminal_id):
-        with app.config["toady_terminals_lock"]:
-            session_info = app.config["toady_terminals"].get(terminal_id)
+    def _hoosegow_terminal_session(terminal_id):
+        with app.config["hoosegow_terminals_lock"]:
+            session_info = app.config["hoosegow_terminals"].get(terminal_id)
         if not session_info:
             raise SandboxServiceError("Unknown terminal session.")
         if request.sid not in session_info.get("clients", set()):
             raise SandboxServiceError("Join the terminal before controlling it.")
         return session_info
 
-    def _toady_terminal_payload(session_info):
+    def _hoosegow_terminal_payload(session_info):
         return {
             "id": session_info.get("id"),
             "sandbox_id": session_info.get("sandbox_id"),
@@ -468,7 +468,7 @@ def create_app(
             "exit_code": session_info.get("exit_code"),
         }
 
-    def _toady_terminal_replay(session_info):
+    def _hoosegow_terminal_replay(session_info):
         replay = bytes(session_info.get("replay") or b"")
         if session_info.get("replay_truncated"):
             replay = _TERMINAL_REPLAY_TRUNCATED_MARKER + replay
@@ -477,15 +477,15 @@ def create_app(
             "truncated": bool(session_info.get("replay_truncated")),
         }
 
-    def _record_toady_terminal_output(terminal_id, data_b64):
+    def _record_hoosegow_terminal_output(terminal_id, data_b64):
         try:
             chunk = base64.b64decode(str(data_b64 or "").encode("ascii"))
         except Exception:
             chunk = b""
         if not chunk:
             return
-        with app.config["toady_terminals_lock"]:
-            session_info = app.config["toady_terminals"].get(terminal_id)
+        with app.config["hoosegow_terminals_lock"]:
+            session_info = app.config["hoosegow_terminals"].get(terminal_id)
             if not session_info:
                 return
             replay = session_info.setdefault("replay", bytearray())
@@ -507,9 +507,9 @@ def create_app(
                     del replay[: trim_index + 1]
                     session_info["replay_truncated"] = True
 
-    def _close_toady_terminal(terminal_id, *, emit_closed=True):
-        with app.config["toady_terminals_lock"]:
-            session_info = app.config["toady_terminals"].pop(terminal_id, None)
+    def _close_hoosegow_terminal(terminal_id, *, emit_closed=True):
+        with app.config["hoosegow_terminals_lock"]:
+            session_info = app.config["hoosegow_terminals"].pop(terminal_id, None)
             if session_info:
                 session_info["alive"] = False
         if not session_info:
@@ -519,23 +519,23 @@ def create_app(
         except Exception:
             pass
         if emit_closed:
-            socketio.emit("sandbox:terminal:closed", {"terminal_id": terminal_id}, to=_toady_terminal_room(terminal_id))
+            socketio.emit("sandbox:terminal:closed", {"terminal_id": terminal_id}, to=_hoosegow_terminal_room(terminal_id))
 
-    def _close_toady_sandbox_terminals(sandbox_id):
-        with app.config["toady_terminals_lock"]:
+    def _close_hoosegow_sandbox_terminals(sandbox_id):
+        with app.config["hoosegow_terminals_lock"]:
             terminal_ids = [
                 terminal_id
-                for terminal_id, session_info in app.config["toady_terminals"].items()
+                for terminal_id, session_info in app.config["hoosegow_terminals"].items()
                 if session_info.get("sandbox_id") == sandbox_id
             ]
         for terminal_id in terminal_ids:
-            _close_toady_terminal(terminal_id)
+            _close_hoosegow_terminal(terminal_id)
 
-    def _toady_sandbox_terminal_count(sandbox_id):
-        with app.config["toady_terminals_lock"]:
+    def _hoosegow_sandbox_terminal_count(sandbox_id):
+        with app.config["hoosegow_terminals_lock"]:
             return sum(
                 1
-                for session_info in app.config["toady_terminals"].values()
+                for session_info in app.config["hoosegow_terminals"].values()
                 if session_info.get("sandbox_id") == sandbox_id
             )
 
@@ -553,10 +553,10 @@ def create_app(
             payload["logs"] = list(state.get("logs") or [])
         return payload
 
-    def _toady_terminal_poll(terminal_id):
+    def _hoosegow_terminal_poll(terminal_id):
         while True:
-            with app.config["toady_terminals_lock"]:
-                session_info = app.config["toady_terminals"].get(terminal_id)
+            with app.config["hoosegow_terminals_lock"]:
+                session_info = app.config["hoosegow_terminals"].get(terminal_id)
                 if not session_info or not session_info.get("alive"):
                     return
                 driver = session_info["driver"]
@@ -567,10 +567,10 @@ def create_app(
                 socketio.emit(
                     "sandbox:terminal:error",
                     {"terminal_id": terminal_id, "error": str(exc)},
-                    to=_toady_terminal_room(terminal_id),
+                    to=_hoosegow_terminal_room(terminal_id),
                 )
-                with app.config["toady_terminals_lock"]:
-                    session_info = app.config["toady_terminals"].get(terminal_id)
+                with app.config["hoosegow_terminals_lock"]:
+                    session_info = app.config["hoosegow_terminals"].get(terminal_id)
                     if session_info:
                         session_info["alive"] = False
                         session_info["status"] = "error"
@@ -578,8 +578,8 @@ def create_app(
 
             events = payload.get("events") or []
             next_seq = int(payload.get("next_seq") or since)
-            with app.config["toady_terminals_lock"]:
-                session_info = app.config["toady_terminals"].get(terminal_id)
+            with app.config["hoosegow_terminals_lock"]:
+                session_info = app.config["hoosegow_terminals"].get(terminal_id)
                 if not session_info:
                     return
                 session_info["seq"] = next_seq
@@ -587,15 +587,15 @@ def create_app(
             for event in events:
                 event_name = event.get("event")
                 if event_name == "output":
-                    _record_toady_terminal_output(terminal_id, event.get("data") or "")
+                    _record_hoosegow_terminal_output(terminal_id, event.get("data") or "")
                     socketio.emit(
                         "sandbox:terminal:output",
                         {"terminal_id": terminal_id, "data": event.get("data") or ""},
-                        to=_toady_terminal_room(terminal_id),
+                        to=_hoosegow_terminal_room(terminal_id),
                     )
                 elif event_name == "exit":
-                    with app.config["toady_terminals_lock"]:
-                        session_info = app.config["toady_terminals"].get(terminal_id)
+                    with app.config["hoosegow_terminals_lock"]:
+                        session_info = app.config["hoosegow_terminals"].get(terminal_id)
                         if session_info:
                             session_info["status"] = "exited"
                             session_info["exit_code"] = event.get("exit_code")
@@ -603,14 +603,14 @@ def create_app(
                     socketio.emit(
                         "sandbox:terminal:exit",
                         {"terminal_id": terminal_id, "exit_code": event.get("exit_code")},
-                        to=_toady_terminal_room(terminal_id),
+                        to=_hoosegow_terminal_room(terminal_id),
                     )
                     return
                 elif event_name == "error":
                     socketio.emit(
                         "sandbox:terminal:error",
                         {"terminal_id": terminal_id, "error": event.get("error") or "Terminal error"},
-                        to=_toady_terminal_room(terminal_id),
+                        to=_hoosegow_terminal_room(terminal_id),
                     )
 
     def _base_prepare_status_message(rebuild=False, automatic=False):
@@ -677,7 +677,7 @@ def create_app(
             socketio.emit("base:log", {"line": line}, to="authenticated")
 
         _emit_base_status({
-            "name": "toady-microsandbox-local",
+            "name": "hoosegow-microsandbox-local",
             "prepared": False,
             "state": "preparing",
             "message": _base_prepare_status_message(rebuild=rebuild, automatic=automatic),
@@ -685,7 +685,7 @@ def create_app(
         root = os.path.dirname(os.path.dirname(__file__))
         command = [
             sys.executable,
-            os.path.join(root, "toady.py"),
+            os.path.join(root, "hoosegow.py"),
             "--prepare-base" if not rebuild else "--rebuild-base",
             "--home",
             manager.global_dir,
@@ -722,7 +722,7 @@ def create_app(
                     state["duration_seconds"] = round(state["finished_at"] - state["started_at"], 1)
             import asyncio
 
-            status = asyncio.run(toady_base.base_status())
+            status = asyncio.run(hoosegow_base.base_status())
             if state["returncode"] not in (None, 0) and not status.get("prepared"):
                 status["state"] = "error"
                 status["error"] = status.get("error") or f"prepare exited with code {state['returncode']}"
@@ -813,30 +813,30 @@ def create_app(
 
     @socketio.on("disconnect")
     def on_disconnect():
-        with app.config["toady_terminals_lock"]:
-            for session_info in app.config["toady_terminals"].values():
+        with app.config["hoosegow_terminals_lock"]:
+            for session_info in app.config["hoosegow_terminals"].values():
                 session_info.get("clients", set()).discard(request.sid)
 
     @socketio.on("sandbox:list")
-    def toady_socket_list_sandboxes(_payload=None):
+    def hoosegow_socket_list_sandboxes(_payload=None):
         import asyncio
 
         return {"ok": True, "sandboxes": asyncio.run(_sandbox_service().reconcile())}
 
     @socketio.on("base:status")
-    def toady_socket_base_status(_payload=None):
+    def hoosegow_socket_base_status(_payload=None):
         import asyncio
 
-        status = asyncio.run(toady_base.base_status())
+        status = asyncio.run(hoosegow_base.base_status())
         _auto_start_base_prepare_if_needed(status)
         return {"ok": True, "base": _overlay_base_prepare_status(status)}
 
     @socketio.on("base:logs")
-    def toady_socket_base_logs(_payload=None):
+    def hoosegow_socket_base_logs(_payload=None):
         return {"ok": True, "prepare": _base_prepare_payload(include_logs=True)}
 
     @socketio.on("base:prepare")
-    def toady_socket_base_prepare(payload=None):
+    def hoosegow_socket_base_prepare(payload=None):
         state = app.config["base_prepare"]
         if state.get("running"):
             _log_socket_event("base:prepare", ok=True, started=False)
@@ -846,7 +846,7 @@ def create_app(
         return {"ok": True, "started": started}
 
     @socketio.on("sandbox:create")
-    def toady_socket_create_sandbox(payload):
+    def hoosegow_socket_create_sandbox(payload):
         try:
             manifest = _sandbox_service().create_manifest(payload or {})
         except (SandboxServiceError, ValidationError) as exc:
@@ -858,7 +858,7 @@ def create_app(
         return {"ok": True, "sandbox": manifest}
 
     @socketio.on("sandbox:get")
-    def toady_socket_get_sandbox(payload):
+    def hoosegow_socket_get_sandbox(payload):
         try:
             manifest = _sandbox_service().get((payload or {}).get("slug") or (payload or {}).get("id") or "")
         except ValidationError as exc:
@@ -868,7 +868,7 @@ def create_app(
         return {"ok": True, "sandbox": manifest}
 
     @socketio.on("sandbox:logs")
-    def toady_socket_sandbox_logs(payload):
+    def hoosegow_socket_sandbox_logs(payload):
         slug = str((payload or {}).get("slug") or (payload or {}).get("id") or "")
         try:
             logs = _sandbox_service().read_logs(slug)
@@ -878,7 +878,7 @@ def create_app(
             return _sandbox_error_payload(exc)
 
     @socketio.on("workspace:browse")
-    def toady_socket_browse_workspace(payload):
+    def hoosegow_socket_browse_workspace(payload):
         try:
             browse = _sandbox_service().browse_workspaces((payload or {}).get("path"))
         except (SandboxServiceError, ValidationError) as exc:
@@ -886,7 +886,7 @@ def create_app(
         return {"ok": True, "browse": browse}
 
     @socketio.on("sandbox:start")
-    def toady_socket_start_sandbox(payload):
+    def hoosegow_socket_start_sandbox(payload):
         import asyncio
 
         slug = (payload or {}).get("slug") or (payload or {}).get("id") or ""
@@ -898,13 +898,13 @@ def create_app(
             socketio.emit("sandbox:error", {"id": slug, "error": str(exc)}, to=request.sid)
             return _sandbox_error_payload(exc)
         _log_socket_event("sandbox:start", sandbox_id=manifest["slug"], ok=True, status=manifest["last_status"])
-        _close_toady_sandbox_terminals(manifest["slug"])
+        _close_hoosegow_sandbox_terminals(manifest["slug"])
         _emit_sandboxes_updated()
         socketio.emit("sandbox:status", {"id": manifest["slug"], "status": manifest["last_status"]}, to="authenticated")
         return {"ok": True, "sandbox": manifest}
 
     @socketio.on("sandbox:stop")
-    def toady_socket_stop_sandbox(payload):
+    def hoosegow_socket_stop_sandbox(payload):
         import asyncio
 
         slug = (payload or {}).get("slug") or (payload or {}).get("id") or ""
@@ -920,14 +920,14 @@ def create_app(
         return {"ok": True, "sandbox": manifest}
 
     @socketio.on("sandbox:refresh-runtime")
-    def toady_socket_refresh_sandbox_runtime(payload):
+    def hoosegow_socket_refresh_sandbox_runtime(payload):
         import asyncio
 
         slug = (payload or {}).get("slug") or (payload or {}).get("id") or ""
         if app.config["base_prepare"].get("running"):
             exc = SandboxServiceError("Base image setup is already running. Try the update again when it finishes.")
             return _sandbox_error_payload(exc)
-        _close_toady_sandbox_terminals(slug)
+        _close_hoosegow_sandbox_terminals(slug)
         socketio.emit("sandbox:status", {"id": slug, "status": "refreshing"}, to="authenticated")
         try:
             result = asyncio.run(_sandbox_service().refresh_runtime_dependencies(slug))
@@ -950,7 +950,7 @@ def create_app(
         return {"ok": True, **result}
 
     @socketio.on("sandbox:clock:check")
-    def toady_socket_check_sandbox_clock(payload=None):
+    def hoosegow_socket_check_sandbox_clock(payload=None):
         import asyncio
 
         payload = payload or {}
@@ -977,7 +977,7 @@ def create_app(
         }
 
     @socketio.on("sandbox:clock:sync")
-    def toady_socket_sync_sandbox_clock(payload):
+    def hoosegow_socket_sync_sandbox_clock(payload):
         import asyncio
 
         slug = (payload or {}).get("slug") or (payload or {}).get("id") or ""
@@ -997,7 +997,7 @@ def create_app(
         return {"ok": True, "sandbox": manifest, "clock": manifest.get("clock") or {}}
 
     @socketio.on("sandbox:destroy")
-    def toady_socket_destroy_sandbox(payload):
+    def hoosegow_socket_destroy_sandbox(payload):
         import asyncio
 
         payload = payload or {}
@@ -1012,13 +1012,13 @@ def create_app(
             _log_socket_event("sandbox:destroy", sandbox_id=slug, ok=False, error="Unknown sandbox")
             return {"ok": False, "error": "Unknown sandbox"}
         _log_socket_event("sandbox:destroy", sandbox_id=slug, ok=True, purge=bool(payload.get("purge")))
-        _close_toady_sandbox_terminals(slug)
+        _close_hoosegow_sandbox_terminals(slug)
         _emit_sandboxes_updated()
         socketio.emit("sandbox:destroyed", {"id": slug}, to="authenticated")
         return {"ok": True}
 
     @socketio.on("sandbox:terminal:open")
-    def toady_socket_open_terminal(payload):
+    def hoosegow_socket_open_terminal(payload):
         payload = payload or {}
         slug = payload.get("sandbox_id") or payload.get("slug") or payload.get("id") or ""
         try:
@@ -1034,8 +1034,8 @@ def create_app(
                 _emit_sandboxes_updated()
             except Exception as exc:
                 _log_socket_event("sandbox:clock:check", sandbox_id=manifest.slug, ok=False, error=exc)
-            terminal_limit_value = int(app.config.get("toady_terminal_limit") or 32)
-            if _toady_sandbox_terminal_count(manifest.slug) >= terminal_limit_value:
+            terminal_limit_value = int(app.config.get("hoosegow_terminal_limit") or 32)
+            if _hoosegow_sandbox_terminal_count(manifest.slug) >= terminal_limit_value:
                 raise SandboxServiceError(
                     f"Terminal limit reached for {manifest.slug} ({terminal_limit_value}). "
                     "Close a terminal before opening another."
@@ -1043,12 +1043,12 @@ def create_app(
             cols = max(20, min(300, int(payload.get("cols") or 100)))
             rows = max(5, min(100, int(payload.get("rows") or 30)))
             terminal_id = f"{manifest.slug}-{uuid.uuid4().hex[:12]}"
-            driver = _toady_terminal_driver(manifest)
+            driver = _hoosegow_terminal_driver(manifest)
             opened = driver.open(terminal_id, cwd="/workspace", shell="/bin/bash", cols=cols, rows=rows)
-            with app.config["toady_terminals_lock"]:
-                terminal_number = int(app.config["toady_terminal_numbers"].get(manifest.slug, 0)) + 1
-                app.config["toady_terminal_numbers"][manifest.slug] = terminal_number
-                app.config["toady_terminals"][terminal_id] = {
+            with app.config["hoosegow_terminals_lock"]:
+                terminal_number = int(app.config["hoosegow_terminal_numbers"].get(manifest.slug, 0)) + 1
+                app.config["hoosegow_terminal_numbers"][manifest.slug] = terminal_number
+                app.config["hoosegow_terminals"][terminal_id] = {
                     "id": terminal_id,
                     "sandbox_id": manifest.slug,
                     "number": terminal_number,
@@ -1063,114 +1063,114 @@ def create_app(
                     "replay": bytearray(),
                     "replay_truncated": False,
                 }
-            join_room(_toady_terminal_room(terminal_id))
-            socketio.start_background_task(_toady_terminal_poll, terminal_id)
-            session_info = _toady_terminal_session(terminal_id)
+            join_room(_hoosegow_terminal_room(terminal_id))
+            socketio.start_background_task(_hoosegow_terminal_poll, terminal_id)
+            session_info = _hoosegow_terminal_session(terminal_id)
             _log_socket_event("sandbox:terminal:open", sandbox_id=manifest.slug, terminal_id=terminal_id, ok=True)
             return {
                 "ok": True,
-                "terminal": _toady_terminal_payload(session_info),
+                "terminal": _hoosegow_terminal_payload(session_info),
             }
         except (SandboxServiceError, ValidationError, PtyDriverError, ValueError) as exc:
             _log_socket_event("sandbox:terminal:open", sandbox_id=slug, ok=False, error=exc)
             socketio.emit("sandbox:terminal:error", {"sandbox_id": slug, "error": str(exc)}, to=request.sid)
-            return _toady_terminal_error_payload(exc)
+            return _hoosegow_terminal_error_payload(exc)
 
     @socketio.on("sandbox:terminal:list")
-    def toady_socket_list_terminals(payload):
+    def hoosegow_socket_list_terminals(payload):
         payload = payload or {}
         slug = payload.get("sandbox_id") or payload.get("slug") or payload.get("id") or ""
         try:
             slug = validate_slug(str(slug))
-            with app.config["toady_terminals_lock"]:
+            with app.config["hoosegow_terminals_lock"]:
                 terminal_payloads = [
-                    _toady_terminal_payload(session_info)
-                    for session_info in app.config["toady_terminals"].values()
+                    _hoosegow_terminal_payload(session_info)
+                    for session_info in app.config["hoosegow_terminals"].values()
                     if session_info.get("sandbox_id") == slug
                 ]
             return {"ok": True, "terminals": terminal_payloads}
         except (SandboxServiceError, ValidationError) as exc:
-            return _toady_terminal_error_payload(exc)
+            return _hoosegow_terminal_error_payload(exc)
 
     @socketio.on("sandbox:terminal:join")
-    def toady_socket_join_terminal(payload):
+    def hoosegow_socket_join_terminal(payload):
         payload = payload or {}
         terminal_id = str(payload.get("terminal_id") or "")
         try:
-            with app.config["toady_terminals_lock"]:
-                session_info = app.config["toady_terminals"].get(terminal_id)
+            with app.config["hoosegow_terminals_lock"]:
+                session_info = app.config["hoosegow_terminals"].get(terminal_id)
                 if not session_info:
                     raise SandboxServiceError("Unknown terminal session.")
                 session_info.setdefault("clients", set()).add(request.sid)
-                terminal_payload = _toady_terminal_payload(session_info)
-                replay_payload = _toady_terminal_replay(session_info)
-            join_room(_toady_terminal_room(terminal_id))
+                terminal_payload = _hoosegow_terminal_payload(session_info)
+                replay_payload = _hoosegow_terminal_replay(session_info)
+            join_room(_hoosegow_terminal_room(terminal_id))
             return {"ok": True, "terminal": terminal_payload, "replay": replay_payload}
         except (SandboxServiceError, ValidationError) as exc:
             socketio.emit("sandbox:terminal:error", {"terminal_id": terminal_id, "error": str(exc)}, to=request.sid)
-            return _toady_terminal_error_payload(exc)
+            return _hoosegow_terminal_error_payload(exc)
 
     @socketio.on("sandbox:terminal:status")
-    def toady_socket_terminal_status(payload):
+    def hoosegow_socket_terminal_status(payload):
         payload = payload or {}
         terminal_id = str(payload.get("terminal_id") or "")
         try:
-            session_info = _toady_terminal_session(terminal_id)
+            session_info = _hoosegow_terminal_session(terminal_id)
             status = session_info["driver"].status(terminal_id)
             session_info["status"] = status.get("status") or session_info.get("status") or "running"
             session_info["exit_code"] = status.get("exit_code")
             return {"ok": True, "status": status}
         except (SandboxServiceError, PtyDriverError) as exc:
             socketio.emit("sandbox:terminal:error", {"terminal_id": terminal_id, "error": str(exc)}, to=request.sid)
-            return _toady_terminal_error_payload(exc)
+            return _hoosegow_terminal_error_payload(exc)
 
     @socketio.on("sandbox:terminal:input")
-    def toady_socket_terminal_input(payload):
+    def hoosegow_socket_terminal_input(payload):
         payload = payload or {}
         terminal_id = str(payload.get("terminal_id") or "")
         data = payload.get("data")
         if not isinstance(data, str):
-            return _toady_terminal_error_payload(SandboxServiceError("Terminal input must be text."))
+            return _hoosegow_terminal_error_payload(SandboxServiceError("Terminal input must be text."))
         try:
-            session_info = _toady_terminal_session(terminal_id)
+            session_info = _hoosegow_terminal_session(terminal_id)
             session_info["driver"].write(terminal_id, data)
             return {"ok": True}
         except (SandboxServiceError, PtyDriverError) as exc:
             socketio.emit("sandbox:terminal:error", {"terminal_id": terminal_id, "error": str(exc)}, to=request.sid)
-            return _toady_terminal_error_payload(exc)
+            return _hoosegow_terminal_error_payload(exc)
 
     @socketio.on("sandbox:terminal:resize")
-    def toady_socket_terminal_resize(payload):
+    def hoosegow_socket_terminal_resize(payload):
         payload = payload or {}
         terminal_id = str(payload.get("terminal_id") or "")
         try:
             cols = max(20, min(300, int(payload.get("cols") or 100)))
             rows = max(5, min(100, int(payload.get("rows") or 30)))
-            session_info = _toady_terminal_session(terminal_id)
+            session_info = _hoosegow_terminal_session(terminal_id)
             session_info["driver"].resize(terminal_id, cols=cols, rows=rows)
             return {"ok": True}
         except (SandboxServiceError, PtyDriverError, ValueError) as exc:
             socketio.emit("sandbox:terminal:error", {"terminal_id": terminal_id, "error": str(exc)}, to=request.sid)
-            return _toady_terminal_error_payload(exc)
+            return _hoosegow_terminal_error_payload(exc)
 
     @socketio.on("sandbox:terminal:close")
-    def toady_socket_terminal_close(payload):
+    def hoosegow_socket_terminal_close(payload):
         payload = payload or {}
         terminal_id = str(payload.get("terminal_id") or "")
         try:
-            session_info = _toady_terminal_session(terminal_id)
+            session_info = _hoosegow_terminal_session(terminal_id)
             sandbox_id = session_info.get("sandbox_id")
             session_info["alive"] = False
-            _close_toady_terminal(terminal_id)
+            _close_hoosegow_terminal(terminal_id)
             _log_socket_event("sandbox:terminal:close", sandbox_id=sandbox_id, terminal_id=terminal_id, ok=True)
             return {"ok": True}
         except (SandboxServiceError, PtyDriverError) as exc:
             _log_socket_event("sandbox:terminal:close", terminal_id=terminal_id, ok=False, error=exc)
             socketio.emit("sandbox:terminal:error", {"terminal_id": terminal_id, "error": str(exc)}, to=request.sid)
-            return _toady_terminal_error_payload(exc)
+            return _hoosegow_terminal_error_payload(exc)
 
     @socketio.on("port:list")
-    def toady_socket_list_ports(payload):
+    def hoosegow_socket_list_ports(payload):
         slug = (payload or {}).get("sandbox_id") or (payload or {}).get("id") or ""
         try:
             return {"ok": True, "ports": _sandbox_service().list_ports(slug)}
@@ -1178,7 +1178,7 @@ def create_app(
             return _sandbox_error_payload(exc)
 
     @socketio.on("port:publish")
-    def toady_socket_publish_port(payload):
+    def hoosegow_socket_publish_port(payload):
         payload = payload or {}
         slug = payload.get("sandbox_id") or payload.get("id") or ""
         try:
@@ -1200,7 +1200,7 @@ def create_app(
         return {"ok": True, "port": mapping, "ports": ports}
 
     @socketio.on("port:unpublish")
-    def toady_socket_unpublish_port(payload):
+    def hoosegow_socket_unpublish_port(payload):
         payload = payload or {}
         slug = payload.get("sandbox_id") or payload.get("id") or ""
         try:
@@ -1222,7 +1222,7 @@ def create_app(
         return {"ok": True, "port": mapping, "ports": ports}
 
     @socketio.on("port:reassign")
-    def toady_socket_reassign_port(payload):
+    def hoosegow_socket_reassign_port(payload):
         payload = payload or {}
         slug = payload.get("sandbox_id") or payload.get("id") or ""
         try:

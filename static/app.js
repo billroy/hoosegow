@@ -54,7 +54,7 @@ const TERMINAL_THEMES = {
 createApp({
   setup() {
     const socket = io({ transports: ['websocket', 'polling'] });
-    const storedTheme = window.localStorage.getItem('toady-theme');
+    const storedTheme = window.localStorage.getItem('hoosegow-theme');
     const preferredTheme = window.matchMedia?.('(prefers-color-scheme: light)')?.matches ? 'light' : 'dark';
     const theme = ref(storedTheme === 'light' || storedTheme === 'dark' ? storedTheme : preferredTheme);
     const connected = ref(false);
@@ -65,7 +65,7 @@ createApp({
     const baseStatus = reactive({
       prepared: false,
       state: 'checking',
-      name: 'toady-microsandbox-local',
+      name: 'hoosegow-microsandbox-local',
       message: 'Checking base image...',
     });
     const baseLogs = reactive([]);
@@ -135,9 +135,9 @@ createApp({
     const createModalOpen = ref(false);
     const detailsModalOpen = ref(false);
     const portsModalOpen = ref(false);
-    const storedSidebarWidth = Number(window.localStorage.getItem('toady-sidebar-width') || 308);
+    const storedSidebarWidth = Number(window.localStorage.getItem('hoosegow-sidebar-width') || 308);
     const sidebarWidth = ref(Math.max(220, Math.min(460, storedSidebarWidth || 308)));
-    const sidebarCollapsed = ref(window.localStorage.getItem('toady-sidebar-collapsed') === 'true');
+    const sidebarCollapsed = ref(window.localStorage.getItem('hoosegow-sidebar-collapsed') === 'true');
     const sidebarResize = reactive({
       active: false,
       startX: 0,
@@ -200,7 +200,7 @@ createApp({
 
     function toggleSidebar() {
       sidebarCollapsed.value = !sidebarCollapsed.value;
-      window.localStorage.setItem('toady-sidebar-collapsed', String(sidebarCollapsed.value));
+      window.localStorage.setItem('hoosegow-sidebar-collapsed', String(sidebarCollapsed.value));
       closeMenus();
       scheduleTerminalFit();
       refreshIcons();
@@ -224,7 +224,7 @@ createApp({
 
     function openGithub() {
       closeMenus();
-      window.open('https://github.com/billroy/toady', '_blank', 'noopener,noreferrer');
+      window.open('https://github.com/billroy/hoosegow', '_blank', 'noopener,noreferrer');
     }
 
     function logout() {
@@ -288,7 +288,7 @@ createApp({
       sidebarResize.active = false;
       window.removeEventListener('pointermove', updateSidebarResize);
       window.removeEventListener('pointerup', endSidebarResize);
-      window.localStorage.setItem('toady-sidebar-width', String(sidebarWidth.value));
+      window.localStorage.setItem('hoosegow-sidebar-width', String(sidebarWidth.value));
       scheduleTerminalFit();
     }
 
@@ -320,7 +320,7 @@ createApp({
 
     function applyTheme() {
       document.documentElement.dataset.theme = theme.value;
-      window.localStorage.setItem('toady-theme', theme.value);
+      window.localStorage.setItem('hoosegow-theme', theme.value);
       applyTerminalTheme();
     }
 
@@ -1237,7 +1237,7 @@ createApp({
     };
   },
   template: `
-    <div class="toady-shell" :class="{ 'sidebar-collapsed': sidebarCollapsed }" :style="{ '--sidebar-width': sidebarWidth + 'px' }">
+    <div class="hoosegow-shell" :class="{ 'sidebar-collapsed': sidebarCollapsed }" :style="{ '--sidebar-width': sidebarWidth + 'px' }">
       <header class="topbar">
         <div class="brand">
           <div class="menu-wrap">
@@ -1256,7 +1256,7 @@ createApp({
               </button>
               <div class="menu-divider" aria-hidden="true"></div>
               <button class="menu-item" type="button" @click="openGithub">
-                <i class="menu-item-icon" data-lucide="external-link"></i><span class="menu-item-label">Toady on GitHub</span>
+                <i class="menu-item-icon" data-lucide="external-link"></i><span class="menu-item-label">Hoosegow on GitHub</span>
               </button>
               <button class="menu-item" v-if="authState.authenticated" type="button" @click="logout">
                 <i class="menu-item-icon" data-lucide="log-out"></i><span class="menu-item-label">Logout</span>
@@ -1264,7 +1264,7 @@ createApp({
             </div>
           </div>
           <div>
-            <h1>Toady</h1>
+            <h1>Hoosegow</h1>
           </div>
         </div>
         <div class="topbar-actions">
@@ -1429,7 +1429,7 @@ createApp({
               <div>
                 <strong>{{ baseStatus.message || 'Setting up base image...' }}</strong>
                 <span v-if="baseStatus.error">{{ baseStatus.error }}</span>
-                <span v-else>Toady is doing this automatically. Sandbox creation will be available when setup finishes.</span>
+                <span v-else>Hoosegow is doing this automatically. Sandbox creation will be available when setup finishes.</span>
               </div>
             </div>
             <form class="create-form modal-create-form" @submit.prevent="createSandbox">

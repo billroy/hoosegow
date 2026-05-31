@@ -1,4 +1,4 @@
-"""Atomic Toady sandbox manifest persistence."""
+"""Atomic Hoosegow sandbox manifest persistence."""
 
 from __future__ import annotations
 

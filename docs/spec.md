@@ -1,4 +1,4 @@
-# Toady: Functional Specification
+# Hoosegow: Functional Specification
 
 > "Toad in a hole for agents." A small, single-binary web app that runs CLI
 > coding agents (Claude, Codex, Gemini, opencode, ...) inside Microsandbox
@@ -13,17 +13,17 @@
 - Vendor/port Bullpen's proven Microsandbox provisioning, base-image
   preparation, dirty runtime workarounds, and xterm.js/Socket.IO terminal stack
   where they fit.
-- Ship as a single Python entry point (`toady.py`) with a CDN-loaded Vue 3
+- Ship as a single Python entry point (`hoosegow.py`) with a CDN-loaded Vue 3
   frontend (no build step).
 
 ### Non-Goals
-- Multi-tenant hosting. Toady is a local developer tool, even when bound to a
+- Multi-tenant hosting. Hoosegow is a local developer tool, even when bound to a
   non-loopback interface.
 - Tickets, kanban, workers, profiles, stats, commits, scheduling, MCP,
   auto-PR. Those are explicitly cut from Bullpen.
 - Remote hosted deployment. No Sprite / Droplet / Docker production story in
   v1.
-- Agent orchestration. Toady does not invoke agents itself; the user types
+- Agent orchestration. Hoosegow does not invoke agents itself; the user types
   `claude` / `codex` / etc. into a terminal inside a sandbox.
 
 ## 2. User Stories
@@ -35,8 +35,8 @@
    same work root, and I want to switch between them in a single browser tab."
 3. **Many terminals per sandbox.** "I want terminals for the dev server, the
    agent, git, tests, logs, and scratch commands, all in the same sandbox."
-4. **Browser reattach.** "If I close my browser but leave Toady running, my
-   sandboxes and terminals keep running. When I reopen Toady I can reattach."
+4. **Browser reattach.** "If I close my browser but leave Hoosegow running, my
+   sandboxes and terminals keep running. When I reopen Hoosegow I can reattach."
 5. **Tear down cleanly.** "When I'm done, one click destroys the sandbox and
    its scratch storage; the host workspace root is untouched."
 
@@ -45,9 +45,9 @@
 | Concept | Definition |
 |---|---|
 | **Workspace root** | A canonical host directory mounted read-write into a sandbox as `/workspace`. This is usually a shared parent directory containing many projects, matching Bullpen Monitor's workspace-root picker, not a single project directory. |
-| **Sandbox** | A named Microsandbox microVM with the Toady base image (Python, Node, git, gh, nano, ripgrep, tmux, Claude/Codex/Gemini/opencode CLIs). Has persistent `/home/agent` storage. |
+| **Sandbox** | A named Microsandbox microVM with the Hoosegow base image (Python, Node, git, gh, nano, ripgrep, tmux, Claude/Codex/Gemini/opencode CLIs). Has persistent `/home/agent` storage. |
 | **Terminal** | A PTY session running inside a sandbox, bridged to a browser xterm.js tab over Socket.IO. |
-| **PTY controller** | A small in-sandbox process (`toady-ptyd`) that owns PTYs and exposes a token-protected HTTP control/data API to the host Toady server through a Microsandbox-published localhost port. |
+| **PTY controller** | A small in-sandbox process (`hoosegow-ptyd`) that owns PTYs and exposes a token-protected HTTP control/data API to the host Hoosegow server through a Microsandbox-published localhost port. |
 | **Base image** | Reusable Microsandbox snapshot, prepared automatically on first run. Mirrors Bullpen's `deploy-sandbox.py --prepare-base` flow internally. |
 
 A sandbox has 0..N terminals. Multiple sandboxes may mount the same workspace
@@ -55,7 +55,7 @@ root concurrently; this is expected to be the common local configuration.
 
 ## 4. User Experience
 
-1. Start the server: `python3 toady.py`. Browser opens at
+1. Start the server: `python3 hoosegow.py`. Browser opens at
    `http://localhost:6060`.
 2. Open the Sandboxes menu and choose **Create sandbox**. Pick a workspace root
    using the server-side directory picker or type a path. This should feel like
@@ -85,7 +85,7 @@ There is no step 6.
 
 ### Empty / First-Run State
 
-If the Toady base image is not yet prepared, the server starts setup
+If the Hoosegow base image is not yet prepared, the server starts setup
 automatically the first time the app checks base status. The UI should frame
 this as a short first-run sandbox-runtime setup delay, not as a command the user
 must learn. Sandbox creation remains unavailable until setup succeeds, but the
@@ -99,11 +99,11 @@ before the app shell. If auth is disabled, there is no login screen.
 
 ### 5.1 Sandbox Lifecycle
 
-- **Create**: name (slug-validated, unique across Toady-known and pre-existing
+- **Create**: name (slug-validated, unique across Hoosegow-known and pre-existing
   Microsandbox instances), workspace root (canonicalized, allowed, existing
   directory, readable and writable), optional vCPU/RAM caps. Shared workspace
-  roots are allowed by default and should not trigger a confirmation. Toady
-  spins up a Microsandbox instance using the Toady base, mounts the workspace
+  roots are allowed by default and should not trigger a confirmation. Hoosegow
+  spins up a Microsandbox instance using the Hoosegow base, mounts the workspace
   root at `/workspace`, mounts a
   per-sandbox persistent home at `/home/agent`, applies the Bullpen-derived
   host FD, guest FD, network, user, CA, IPv6, and CLI bootstrap workarounds in
@@ -123,18 +123,18 @@ before the app shell. If auth is disabled, there is no login screen.
 
 - **Open**: backend asks the sandbox's PTY controller to allocate a PTY running
   the agent shell (default `/bin/bash -l`; per-sandbox shell choice deferred
-  post-v1). Frontend opens an xterm.js instance bridged through the host Toady
+  post-v1). Frontend opens an xterm.js instance bridged through the host Hoosegow
   server over Socket.IO.
 - **PTY driver contract**: the driver must support raw byte input/output,
   UTF-8 and control-code fidelity, resize, exit status, EOF propagation,
   signal or close-based teardown, foreground-process detection where available,
-  and reconnect to a still-running PTY within the same Toady server process.
-- **PTY controller architecture**: v1 requires an in-sandbox `toady-ptyd`
+  and reconnect to a still-running PTY within the same Hoosegow server process.
+- **PTY controller architecture**: v1 requires an in-sandbox `hoosegow-ptyd`
   process. The selected host bridge is HTTP, not a raw TCP stream: a P-1 spike
   proved that Microsandbox-published HTTP ports work, while generic raw TCP
   connections can be accepted and then closed before reaching the guest process.
-  `toady-ptyd` therefore binds inside the sandbox on a dedicated controller
-  port, published by Microsandbox to host `127.0.0.1` only. The host Toady
+  `hoosegow-ptyd` therefore binds inside the sandbox on a dedicated controller
+  port, published by Microsandbox to host `127.0.0.1` only. The host Hoosegow
   server is the only intended client and the only browser-facing web endpoint.
   Every controller request includes a per-sandbox secret. Unix sockets and raw
   newline JSON remain useful for local development diagnostics, but not for the
@@ -146,7 +146,7 @@ before the app shell. If auth is disabled, there is no login screen.
   (default 60 seconds) so tab refresh does not kill an in-flight agent. After
   the grace period, close idle PTYs. PTYs with foreground processes remain
   alive until explicit close, sandbox stop, or server exit.
-- **Reattach**: when the browser reconnects to the same running Toady server,
+- **Reattach**: when the browser reconnects to the same running Hoosegow server,
   the frontend calls `sandbox:terminal:list` over Socket.IO to discover active
   PTYs, then joins each terminal room by ID and receives bounded replay.
 - **Per-sandbox limit**: configurable; default 32 terminals per sandbox. v1
@@ -157,10 +157,10 @@ before the app shell. If auth is disabled, there is no login screen.
 
 ### 5.3 Persistence
 
-Toady state lives under `~/.toady/`:
+Hoosegow state lives under `~/.hoosegow/`:
 
 ```
-~/.toady/
+~/.hoosegow/
   .env                   # auth users, secret key, production/session settings
   config.json            # global settings (port, theme, base image name, ...)
   sandboxes/
@@ -175,21 +175,21 @@ Toady state lives under `~/.toady/`:
     sandbox-<slug>.log
 ```
 
-Sandboxes and sandbox homes persist across Toady server restarts. Terminals do
-not. A Toady server exit terminates PTY sessions owned by that server; the
-sandbox disk/home state remains. On server boot, Toady reconciles
+Sandboxes and sandbox homes persist across Hoosegow server restarts. Terminals do
+not. A Hoosegow server exit terminates PTY sessions owned by that server; the
+sandbox disk/home state remains. On server boot, Hoosegow reconciles
 `sandboxes/*.json` against Microsandbox's view of running VMs and updates
 statuses accordingly. Manifests are written atomically (temp + rename).
 
 ### 5.4 Configuration
 
-Single CLI: `toady.py`.
+Single CLI: `hoosegow.py`.
 
 | Flag | Default | Description |
 |---|---|---|
 | `--port` | `6060` | UI port. |
 | `--host` | `127.0.0.1` | Bind address. Non-loopback binds require auth. |
-| `--home` | `~/.toady` | State directory. |
+| `--home` | `~/.hoosegow` | State directory. |
 | `--no-browser` | off | Do not auto-open. |
 | `--prepare-base` | off | Build the base snapshot and exit. |
 | `--rebuild-base` | off | Force a base rebuild. |
@@ -205,22 +205,22 @@ Single CLI: `toady.py`.
 | `--host-nofile` | `12000` | Target host `RLIMIT_NOFILE` before creating Microsandbox runtimes. |
 | `--guest-nofile` | `65536` | Target in-sandbox `agent` user `RLIMIT_NOFILE`. |
 | `--network-max-connections` | `8192` | Microsandbox network max concurrent guest connections. |
-| `--shutdown-sandboxes-on-exit` | off | Stop sandboxes when Toady exits. |
+| `--shutdown-sandboxes-on-exit` | off | Stop sandboxes when Hoosegow exits. |
 | `--set-password [USERNAME]` | off | Bullpen-style interactive set/update of login user(s), then exit. Repeatable. |
 | `--delete-user USERNAME` | off | Delete configured login user(s), then exit. Repeatable. |
-| `--bootstrap-credentials` | off | Create credentials from `TOADY_BOOTSTRAP_USER` (default `admin`) and `TOADY_BOOTSTRAP_PASSWORD`, then exit. |
+| `--bootstrap-credentials` | off | Create credentials from `HOOSEGOW_BOOTSTRAP_USER` (default `admin`) and `HOOSEGOW_BOOTSTRAP_PASSWORD`, then exit. |
 
 If the UI port is known to be blocked by Chromium-based browsers, such as
-`6000`, Toady must fail early when auto-opening a browser and must warn when
+`6000`, Hoosegow must fail early when auto-opening a browser and must warn when
 started with `--no-browser`.
 
 There are no subcommands and no deployment modes. Environment variables:
 
-- `TOADY_PRODUCTION=1`: trust forwarded proxy headers and mark session cookies
+- `HOOSEGOW_PRODUCTION=1`: trust forwarded proxy headers and mark session cookies
   `Secure` for TLS deployments.
-- `TOADY_ALLOWED_ORIGINS`: comma-separated extra allowed Socket.IO origins.
-- `TOADY_SESSION_DAYS`: persistent login duration, bounded to 1-365 days.
-- `TOADY_BOOTSTRAP_FORCE=1`: overwrite existing bootstrapped credentials.
+- `HOOSEGOW_ALLOWED_ORIGINS`: comma-separated extra allowed Socket.IO origins.
+- `HOOSEGOW_SESSION_DAYS`: persistent login duration, bounded to 1-365 days.
+- `HOOSEGOW_BOOTSTRAP_FORCE=1`: overwrite existing bootstrapped credentials.
 
 ### 5.5 Base Image
 
@@ -237,16 +237,16 @@ There are no subcommands and no deployment modes. Environment variables:
   1. create a temporary Microsandbox from the OCI source image;
   2. install OS packages with `DEBIAN_FRONTEND=noninteractive` and
      `--no-install-recommends`;
-  3. install Python dependencies into `/opt/toady-venv`;
+  3. install Python dependencies into `/opt/hoosegow-venv`;
   4. install npm CLIs with audit/fund/progress disabled and dev deps omitted;
-  5. write `/opt/toady-microsandbox-base-versions.txt`;
+  5. write `/opt/hoosegow-microsandbox-base-versions.txt`;
   6. stop the prepare sandbox, create the local snapshot, then boot a fresh
      validation sandbox from the snapshot and verify every required CLI.
 - Codex validation must keep Bullpen's architecture-specific package integrity
   check for `@openai/codex-linux-arm64` / `@openai/codex-linux-x64`, because a
   `codex --version` alone is not enough to prove the packaged native binary is
   present.
-- Toady detects base image absence and starts preparation automatically; manual
+- Hoosegow detects base image absence and starts preparation automatically; manual
   `--prepare-base` remains available for diagnostics.
 - Acceptance target: base prep <=10 minutes and base artifacts <=4 GiB on the
   representative dev machine. The first implementation milestone includes a
@@ -259,22 +259,22 @@ There are no subcommands and no deployment modes. Environment variables:
 - **Outbound** from sandboxes is allowed by default; agents need it. A
   per-sandbox egress allow-list is deferred post-v1.
 - **Inbound** dev-server publishing is explicit. The user clicks **Publish
-  Port**, enters an internal TCP port (for example 3000, 5173, 8000), and Toady
+  Port**, enters an internal TCP port (for example 3000, 5173, 8000), and Hoosegow
   allocates a host port from `--port-pool`.
 - A sandbox may have multiple published TCP ports. Port mappings persist in the
   sandbox manifest and are restored on sandbox start if the host port is free.
-  If the host port is occupied, Toady marks the mapping `conflict` and offers
+  If the host port is occupied, Hoosegow marks the mapping `conflict` and offers
   "reassign".
-- Published ports are bound to the same interface as Toady itself. A
-  loopback-bound Toady cannot accidentally publish a sandbox port to the LAN.
+- Published ports are bound to the same interface as Hoosegow itself. A
+  loopback-bound Hoosegow cannot accidentally publish a sandbox port to the LAN.
 - Sandbox cards show each mapping as `http://<host>:<host_port> -> :<guest_port>`
-  with copy/open actions. Toady does not auto-detect framework ports in v1.
+  with copy/open actions. Hoosegow does not auto-detect framework ports in v1.
 
 ### 5.7 Sandbox Naming and Collisions
 
 - Slugs are `[a-z0-9][a-z0-9-]{0,30}`.
-- Before creating a Microsandbox VM, Toady lists existing Microsandbox
-  instances on the host. If the slug collides with an instance Toady does not
+- Before creating a Microsandbox VM, Hoosegow lists existing Microsandbox
+  instances on the host. If the slug collides with an instance Hoosegow does not
   own (for example a Bullpen instance from a sibling tool), creation is refused
   with an actionable error.
 - Sandbox manifests record the Microsandbox instance ID so subsequent
@@ -286,18 +286,18 @@ There are no subcommands and no deployment modes. Environment variables:
   New Sandbox modal.
 - Host-wide admission checks run before create/start. If admitting a sandbox
   would exceed `--max-sandboxes`, `--max-total-vcpus`, or
-  `--max-total-memory-mib`, Toady refuses the operation with a clear error and
+  `--max-total-memory-mib`, Hoosegow refuses the operation with a clear error and
   a list of currently running sandboxes.
 - These are planning/admission limits, not a hard anti-DoS guarantee. Runtime
   enforcement remains Microsandbox's vCPU/RAM cap.
 
 ### 5.9 Bullpen Microsandbox Deployment Inheritance
 
-Toady reuses the maximum practical amount of Bullpen's `deploy-sandbox.py`
-architecture through extracted Toady modules. The legacy deploy script itself
+Hoosegow reuses the maximum practical amount of Bullpen's `deploy-sandbox.py`
+architecture through extracted Hoosegow modules. The legacy deploy script itself
 is no longer present in the runtime tree; its reusable pieces live in
 `server/microsandbox_runtime.py`, `server/sandbox_bootstrap.py`, and
-`server/base.py`. Operational workarounds remain unless a Toady-specific test
+`server/base.py`. Operational workarounds remain unless a Hoosegow-specific test
 proves they are unnecessary.
 
 Required inherited pieces:
@@ -316,7 +316,7 @@ Required inherited pieces:
   before final sandbox creation. Default target is 12000. If the soft limit
   cannot be raised, warn loudly; do not silently continue as if capacity is
   normal.
-- **Guest FD mitigation**: write `/etc/security/limits.d/toady-fd.conf` for the
+- **Guest FD mitigation**: write `/etc/security/limits.d/hoosegow-fd.conf` for the
   `agent` user with soft/hard `nofile=65536`, then verify via
   `su -s /bin/bash agent -c 'ulimit -Sn; ulimit -Hn'`. This preserves Bullpen's
   fix for FD pressure surfacing as misleading TLS, DNS, and filesystem errors.
@@ -327,14 +327,14 @@ Required inherited pieces:
 - **Runtime user creation**: create an `agent` user/group inside the sandbox
   with UID/GID from the invoking host user where practical, matching Bullpen's
   group-collision handling. Prepare `/workspace`, `/home/agent/logs`,
-  `/home/agent/bin`, `/home/agent/.codex`, and `/var/lib/toady`; validate
+  `/home/agent/bin`, `/home/agent/.codex`, and `/var/lib/hoosegow`; validate
   write access after ownership changes.
 - **Small create-time env**: keep Bullpen's pattern of passing only minimal
   env (`HOME`, `USER`, `LOGNAME`) to `Sandbox.create`, then exporting the full
   runtime env inside exec/attach commands. This avoids SDK/runtime env bloat.
 - **Command helpers**: port Bullpen's `run_sandbox_shell`,
   `run_configured_sandbox_shell`, `run_as_<user>`, output normalization, labeled
-  error wrapping, and secret redaction. Toady logs must redact bootstrap
+  error wrapping, and secret redaction. Hoosegow logs must redact bootstrap
   passwords and common provider tokens.
 - **CA environment**: set `SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt`,
   `SSL_CERT_DIR=/etc/ssl/certs`, `NODE_EXTRA_CA_CERTS` to the system bundle,
@@ -345,15 +345,15 @@ Required inherited pieces:
   IPv6 has produced TLS EOFs that Claude reports as certificate failures.
 - **Codex file-auth setup**: initialize `/home/agent/.codex/config.toml` with
   `cli_auth_credentials_store = "file"`, clear stale Codex tmp/lock state
-  copied from Bullpen's flow, and verify the real Codex binary path. Toady does
+  copied from Bullpen's flow, and verify the real Codex binary path. Hoosegow does
   not serialize all Codex invocations in v1, but it should keep the file-backed
   auth setting.
 - **Localhost callback bridge helper**: keep Bullpen's URL detection and
   sandbox-local callback delivery helper available for future provider-login
-  flows. Toady's terminal-first UX may make this less visible, but the helper
+  flows. Hoosegow's terminal-first UX may make this less visible, but the helper
   should be ported rather than rediscovered.
 - **PTY controller launch point**: extend Bullpen's sandbox bootstrap flow to
-  install and start `toady-ptyd` inside each sandbox after runtime directories,
+  install and start `hoosegow-ptyd` inside each sandbox after runtime directories,
   FD limits, network caps, CA env, IPv6 mitigation, and Codex config are in
   place. Start it with the HTTP transport on an internal controller port
   published to host loopback only; do not attempt a raw TCP controller bridge
@@ -364,14 +364,14 @@ Required inherited pieces:
   diagnostic pattern for port-pool conflicts so errors tell the user what is
   listening.
 
-Bullpen's Node front proxy is not required for Toady v1 because Toady itself is
+Bullpen's Node front proxy is not required for Hoosegow v1 because Hoosegow itself is
 the host web server, but its useful constraints still apply to any future
 in-sandbox proxy: cache static assets, keep upstream connections short-lived,
 strip hop-by-hop headers, and handle WebSocket upgrades explicitly.
 
 ## 6. Security Model
 
-Toady's value proposition is isolation, so this section is load-bearing.
+Hoosegow's value proposition is isolation, so this section is load-bearing.
 
 ### Threat Model
 
@@ -388,27 +388,27 @@ Toady's value proposition is isolation, so this section is load-bearing.
    the user-selected workspace root. Projects inside that root are intentionally
    visible to the sandbox; `~/.ssh`, `~/.aws`, and other host paths outside the
    root are not mounted.
-3. **No host shell**: Toady deliberately does not expose a host-side terminal.
+3. **No host shell**: Hoosegow deliberately does not expose a host-side terminal.
    Every terminal runs inside a sandbox.
 4. **Bullpen-style optional auth with network-bind guard**:
    - Credentials are configured explicitly via `--set-password` or
      `--bootstrap-credentials`. If no credentials exist, auth is disabled and
      local loopback use has no login screen.
-   - If `--host` is not loopback (`127.0.0.1`, `localhost`, `::1`), Toady
+   - If `--host` is not loopback (`127.0.0.1`, `localhost`, `::1`), Hoosegow
      refuses to start unless auth credentials already exist.
    - Auth supports multiple local users, stored as password hashes in
-     `~/.toady/.env` mode 0600. This is not multi-tenancy; all authenticated
-     users control the same local Toady instance.
+     `~/.hoosegow/.env` mode 0600. This is not multi-tenancy; all authenticated
+     users control the same local Hoosegow instance.
    - Browser sessions are cookie-based, HTTP-only, SameSite=Lax, persistent by
-     default for 30 days, and backed by a stable secret key in `~/.toady/.env`.
+     default for 30 days, and backed by a stable secret key in `~/.hoosegow/.env`.
    - Login has CSRF protection, session fixation protection, and in-process
      per-IP/per-user throttling.
-   - For non-localhost use, TLS is expected in front of Toady (Caddy, nginx,
-     Cloudflare Tunnel, etc.). `TOADY_PRODUCTION=1` enables secure cookies and
+   - For non-localhost use, TLS is expected in front of Hoosegow (Caddy, nginx,
+     Cloudflare Tunnel, etc.). `HOOSEGOW_PRODUCTION=1` enables secure cookies and
      forwarded-proxy handling.
 5. **Socket.IO origin/auth checks**: WebSocket upgrades require an authenticated
    session when auth is enabled and must come from loopback, same-origin,
-   forwarded same-origin, or `TOADY_ALLOWED_ORIGINS`.
+   forwarded same-origin, or `HOOSEGOW_ALLOWED_ORIGINS`.
 6. **CSRF checks**: state-changing REST calls require same-origin plus an
    authenticated session when auth is enabled. Login/logout use CSRF tokens.
 7. **Canonical workspace-root validation**:
@@ -417,15 +417,15 @@ Toady's value proposition is isolation, so this section is load-bearing.
      `--workspace-root`.
    - Symlink escapes outside browse roots are rejected.
    - Hard-reject `/`, `/etc`, `/var`, `/usr`, `/bin`, `/sbin`, `/boot`,
-     `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config`, `~/.toady`, and any ancestor
-     of `~/.toady`.
+     `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config`, `~/.hoosegow`, and any ancestor
+     of `~/.hoosegow`.
    - Warn and require typed confirmation for `$HOME` itself and for paths whose
      ancestors contain sensitive directories.
    - Revalidate on sandbox create and start.
-8. **Process boundary on host**: the Toady server runs as the invoking user. No
-   setuid, no root requirement from Toady itself.
+8. **Process boundary on host**: the Hoosegow server runs as the invoking user. No
+   setuid, no root requirement from Hoosegow itself.
 9. **Agent auth tokens stay inside the sandbox** as a consequence of the
-   sandbox model. Toady neither reads nor writes agent auth files.
+   sandbox model. Hoosegow neither reads nor writes agent auth files.
 10. **No arbitrary host command execution endpoints**: HTTP/WS API accepts only
     sandbox CRUD, terminal CRUD, PTY forwarding, directory listing rooted at
     allowed paths, dev-port mapping, and base-image prep.
@@ -440,7 +440,7 @@ Toady's value proposition is isolation, so this section is load-bearing.
 ## 7. Architecture
 
 ```
-toady.py                  # CLI entry, arg parsing, browser launch
+hoosegow.py                  # CLI entry, arg parsing, browser launch
 server/
   app.py                  # Flask + Flask-SocketIO factory, routes
   auth.py                 # Bullpen-style password/session middleware
@@ -450,7 +450,7 @@ server/
   pty_driver.py           # PTY-inside-VM driver interface + implementation
   terminals.py            # PTY session manager, Socket.IO bridge, replay
   base.py                 # Base-image preparation + status detection
-  persistence.py          # Atomic writes for ~/.toady state
+  persistence.py          # Atomic writes for ~/.hoosegow state
   validation.py           # Path / slug / port / resource validation
   picker.py               # Server-side directory listing for picker
 static/
@@ -465,7 +465,7 @@ static/
     BasePrepView.vue
   style.css
 guest/
-  toady-ptyd.py           # In-sandbox PTY controller installed in base image
+  hoosegow-ptyd.py           # In-sandbox PTY controller installed in base image
 ```
 
 - **Backend**: Flask + Flask-SocketIO (threading async mode), borrowed from
@@ -476,15 +476,15 @@ guest/
   xterm.js is vendored under `static/vendor/xterm/`.
 - **Sandboxing**: Microsandbox Python SDK.
 - **Host-to-controller bridge**: token-protected HTTP RPC and long-poll event
-  reads from host Toady to `toady-ptyd`, over a Microsandbox-published
-  localhost-only port. Browser traffic still goes only to the host Toady
+  reads from host Hoosegow to `hoosegow-ptyd`, over a Microsandbox-published
+  localhost-only port. Browser traffic still goes only to the host Hoosegow
   Flask/Socket.IO server.
 
 ### Relationship to Bullpen
 
-Toady is not a slimmed-down Bullpen; it is a different product that shares
+Hoosegow is not a slimmed-down Bullpen; it is a different product that shares
 specific subsystems. Bullpen's usage model is "drive an agent by ticket";
-Toady's is "work with the agent in a terminal." Concretely:
+Hoosegow's is "work with the agent in a terminal." Concretely:
 
 - **Reused, largely unchanged**: base-image preparation pipeline,
   Microsandbox SDK adapter, host/guest FD fixes, network cap fixes, runtime
@@ -494,7 +494,7 @@ Toady's is "work with the agent in a terminal." Concretely:
   and xterm.js terminal bridge.
 - **New**: a PTY that runs inside the sandbox VM rather than on the host.
 - **Removed wholesale**: tickets, workers, kanban, stats, commits, MCP, the
-  Manager/host-orchestration model. None of this has a Toady analog.
+  Manager/host-orchestration model. None of this has a Hoosegow analog.
 
 ### Implementation Strategy
 
@@ -502,7 +502,7 @@ Implementation starts from a short PTY-controller spike, then Bullpen
 excavation. It does not start from an empty tree. The goal is to preserve
 Bullpen's infrastructure scars and delete Bullpen's product model.
 
-After the P-1 PTY controller spike, copy the Bullpen tree into Toady, then make
+After the P-1 PTY controller spike, copy the Bullpen tree into Hoosegow, then make
 small, test-backed cuts. Current implementation status: the excavation is
 complete for the v1 runtime; copied Bullpen product modules, the legacy
 `bullpen.py` entry point, `deploy-sandbox.py`, and deploy-only tests have been
@@ -518,12 +518,12 @@ removed after extraction.
 - Delete early: tickets/tasks, workers, service workers, MCP, profiles, model
   catalog, commits, stats, kanban, teams, transfers, worktrees, prompt
   hardening, and Bullpen-specific CLI subcommands.
-- Replace with Toady concepts: sandbox registry, sandbox manifests, workspace
+- Replace with Hoosegow concepts: sandbox registry, sandbox manifests, workspace
   picker, resource admission, dev-port publishing, terminal tabs scoped to
   sandboxes.
 
-The rule of thumb is: infrastructure survives until a Toady test proves it can
-be removed; product features die unless the Toady spec names them.
+The rule of thumb is: infrastructure survives until a Hoosegow test proves it can
+be removed; product features die unless the Hoosegow spec names them.
 
 ## 8. API Sketch
 
@@ -580,12 +580,12 @@ workspace:browse   { path? }                             client -> server ack
 
 ## 9. Observability
 
-- `~/.toady/logs/server.log`: structured JSON-lines server log with request IDs
+- `~/.hoosegow/logs/server.log`: structured JSON-lines server log with request IDs
   and sandbox IDs.
-- `~/.toady/logs/sandbox-<slug>.log`: per-sandbox Microsandbox lifecycle events
+- `~/.hoosegow/logs/sandbox-<slug>.log`: per-sandbox Microsandbox lifecycle events
   (create, start, stop, exit code, errors).
 - Log rotation: size-based, 10 MiB x 5 files per log.
-- No telemetry, no crash reporting, no external network calls from the Toady
+- No telemetry, no crash reporting, no external network calls from the Hoosegow
   process itself except those required for base-image preparation.
 - Logs must not include PTY payloads, passwords, session cookies, auth tokens,
   full directory-picker listings, or agent credential file contents. Debug mode
@@ -603,7 +603,7 @@ workspace:browse   { path? }                             client -> server ack
   resize, EOF, exit status, replay truncation, and 32-terminal concurrency.
 - **Auth tests**: no-login loopback when no credentials exist; refusal to start
   on non-loopback without credentials; login/logout; throttling; CSRF; secure
-  cookies in `TOADY_PRODUCTION=1`; Socket.IO auth/origin rejection.
+  cookies in `HOOSEGOW_PRODUCTION=1`; Socket.IO auth/origin rejection.
 - **Browser smoke tests**: prepare/fake base -> create sandbox -> open terminal
   -> run `echo hello` -> publish a port -> tear down.
 
@@ -615,14 +615,14 @@ Objective: prove the required in-sandbox PTY controller shape before the
 Bullpen excavation begins. Status: complete for the first build spike; details
 live in `docs/pty-controller-spike.md`.
 
-Decision: Toady v1 defaults to an in-sandbox `toady-ptyd` process. The host
+Decision: Hoosegow v1 defaults to an in-sandbox `hoosegow-ptyd` process. The host
 server remains the only browser-facing web server. The spike exists to settle
 protocol details and to check whether Microsandbox's `attach()` / `exec_stream()`
 can simplify the controller, not to postpone the controller decision.
 
 Tasks:
 
-- Built `guest/toady-ptyd.py`: open a PTY with `os.openpty()` +
+- Built `guest/hoosegow-ptyd.py`: open a PTY with `os.openpty()` +
   `subprocess.Popen()`, run `/bin/bash -l`, stream base64 PTY bytes, resize,
   close, record bounded event history, and report exit status.
 - Implemented two transports: raw newline JSON for local diagnostics and HTTP
@@ -631,7 +631,7 @@ Tasks:
 - Proved raw generic TCP is not a viable bridge through the published-port
   path on the target host: a raw echo server listens in the guest, but host
   connections receive EOF without the guest server seeing a client.
-- Proved `toady-ptyd --http 0.0.0.0:<port>` inside a throwaway Microsandbox
+- Proved `hoosegow-ptyd --http 0.0.0.0:<port>` inside a throwaway Microsandbox
   can be reached through host `127.0.0.1:<port>` and can run a PTY command,
   resize, emit output, return EOF, and preserve exit status.
 - Deferred SDK `attach()` / `exec_stream()` probing; the HTTP controller path
@@ -640,7 +640,7 @@ Tasks:
 
 Verification gate:
 
-- `python3 -m py_compile guest/toady-ptyd.py scripts/*.py`
+- `python3 -m py_compile guest/hoosegow-ptyd.py scripts/*.py`
 - `python3 scripts/pty_controller_smoke.py`
 - `python3 scripts/pty_controller_http_smoke.py`
 - `python3 scripts/microsandbox_port_smoke.py`
@@ -648,25 +648,25 @@ Verification gate:
   TCP failure mode and is expected to fail until Microsandbox behavior changes.
 - `python3 scripts/pty_controller_microsandbox_smoke.py --verbose`
 
-The real Microsandbox scripts default to `toady-microsandbox-local`; use
-`TOADY_MICROSANDBOX_BASE` or `--snapshot` to target another prepared base.
+The real Microsandbox scripts default to `hoosegow-microsandbox-local`; use
+`HOOSEGOW_MICROSANDBOX_BASE` or `--snapshot` to target another prepared base.
 
 ### P0 - Bullpen Excavation Baseline (0.5-1 day)
 
-Objective: create a Toady codebase by copying Bullpen and proving the copied
+Objective: create a Hoosegow codebase by copying Bullpen and proving the copied
 baseline still runs before any cuts.
 
 Tasks:
 
-- Copy Bullpen source into the Toady repo as ordinary files. Do not use
+- Copy Bullpen source into the Hoosegow repo as ordinary files. Do not use
   `git subtree` for v1; preserve provenance through `docs/bullpen-excavation.md`
   entries that record original Bullpen paths and notable commits/workarounds.
-- Rename executable entrypoint to `toady.py`, state root to `~/.toady`, env
-  prefixes to `TOADY_`, user-facing strings to Toady, and app port to 6060.
+- Rename executable entrypoint to `hoosegow.py`, state root to `~/.hoosegow`, env
+  prefixes to `HOOSEGOW_`, user-facing strings to Hoosegow, and app port to 6060.
 - Keep Bullpen's `requirements.txt`, Flask/Socket.IO setup, static CDN shape,
   login page, auth tests, Socket.IO CORS tests, terminal tests, and
   deploy-sandbox tests initially; remove deploy-only tests once the extracted
-  Toady runtime/base modules carry equivalent coverage.
+  Hoosegow runtime/base modules carry equivalent coverage.
 - Add an explicit `docs/bullpen-excavation.md` map listing copied files,
   original Bullpen paths, retained subsystems, deleted subsystems, renamed
   environment variables, and known dirty workarounds retained from
@@ -674,8 +674,8 @@ Tasks:
 
 Verification gate:
 
-- `python3 -m py_compile toady.py server/*.py`
-- Auth tests still pass after `BULLPEN_` -> `TOADY_` renaming.
+- `python3 -m py_compile hoosegow.py server/*.py`
+- Auth tests still pass after `BULLPEN_` -> `HOOSEGOW_` renaming.
 - App starts on `127.0.0.1:6060`, `/health` returns 200, and login behavior
   matches Bullpen's optional-auth model.
 
@@ -695,20 +695,20 @@ Tasks:
 - Keep and simplify shared UI pieces: top bar, left pane shell, toast
   container, terminal tab, login page, style variables, Socket.IO connection
   lifecycle.
-- Replace Bullpen's initial state payload with a minimal Toady app-state
+- Replace Bullpen's initial state payload with a minimal Hoosegow app-state
   payload: auth/user status, base status, sandbox list, active terminals.
 
 Verification gate:
 
 - No imports of deleted Bullpen modules.
 - App still starts, serves static assets, connects Socket.IO, and shows an
-  empty Toady shell.
+  empty Hoosegow shell.
 - Remaining tests are either passing or intentionally moved to
   `tests/bullpen_archived/` for reference.
 
 ### P2 - Extract Microsandbox Infrastructure (1-2 days)
 
-Objective: turn `deploy-sandbox.py` from a Bullpen deploy script into Toady's
+Objective: turn `deploy-sandbox.py` from a Bullpen deploy script into Hoosegow's
 runtime substrate, then delete the legacy script.
 
 Tasks:
@@ -721,9 +721,9 @@ Tasks:
     caps, CA env, Claude IPv6 mitigation, Codex file-auth setup, mount checks.
   - `server/base.py`: prepare sandbox, OS package install, Python venv install,
     npm CLI install, version manifest, snapshot creation, validation sandbox.
-- Rename Bullpen paths/users/env vars to Toady equivalents:
-  `/home/bullpen` -> `/home/agent`, `/var/lib/bullpen` -> `/var/lib/toady`,
-  `/opt/bullpen-venv` -> `/opt/toady-venv`.
+- Rename Bullpen paths/users/env vars to Hoosegow equivalents:
+  `/home/bullpen` -> `/home/agent`, `/var/lib/bullpen` -> `/var/lib/hoosegow`,
+  `/opt/bullpen-venv` -> `/opt/hoosegow-venv`.
 - Preserve defaults: host nofile 12000, guest nofile 65536,
   network max connections 8192, source image `node:22-bookworm`.
 - Keep deploy-time secret redaction and labeled sandbox command errors.
@@ -739,13 +739,13 @@ Verification gate:
 - The legacy `deploy-sandbox.py` file and Bullpen proxy are absent from the
   runtime tree after extraction.
 
-### P3 - Toady Persistence and Validation (1 day)
+### P3 - Hoosegow Persistence and Validation (1 day)
 
-Objective: replace Bullpen workspace state with Toady sandbox manifests.
+Objective: replace Bullpen workspace state with Hoosegow sandbox manifests.
 
 Tasks:
 
-- Implement atomic `~/.toady/config.json` and `sandboxes/<slug>.json` writes.
+- Implement atomic `~/.hoosegow/config.json` and `sandboxes/<slug>.json` writes.
 - Implement sandbox manifest schema: slug, display name, workspace path,
   canonical workspace path, home path, resource caps, published ports,
   created-at, last-status, Microsandbox instance ID.
@@ -774,7 +774,7 @@ Tasks:
   selection model.
 - Implement left pane sandbox cards, New Sandbox modal, base-prep first-run
   view, status pills, resource readouts, and destroy confirmation.
-- Implement slug collision checks against Toady manifests and foreign
+- Implement slug collision checks against Hoosegow manifests and foreign
   Microsandbox instances.
 - Treat shared workspace roots as normal. Do not block or warn when multiple
   sandboxes use the same root.
@@ -808,9 +808,9 @@ Objective: turn the P-1 proof into the production terminal driver.
 
 Tasks:
 
-- Add `guest/toady-ptyd.py` to the base image and start it during sandbox
+- Add `guest/hoosegow-ptyd.py` to the base image and start it during sandbox
   bootstrap.
-- Implement `server/pty_driver.py` as the host-side client for `toady-ptyd`.
+- Implement `server/pty_driver.py` as the host-side client for `hoosegow-ptyd`.
 - Define controller operations over HTTP: create PTY (`POST /rpc op=open`),
   read stream (`GET /events?id=&since=&timeout=`), write bytes, resize, close,
   query foreground state, query status, and shutdown.
@@ -820,9 +820,9 @@ Tasks:
 
 Verification gate:
 
-- Real Microsandbox terminal smoke runs `echo hello` through `toady-ptyd`.
+- Real Microsandbox terminal smoke runs `echo hello` through `hoosegow-ptyd`.
 - Controller refuses connections without the per-sandbox secret.
-- PTY survives browser disconnect while the Toady server remains running.
+- PTY survives browser disconnect while the Hoosegow server remains running.
 
 ### P7 - Terminal Manager and Browser Reattach (2-4 days)
 

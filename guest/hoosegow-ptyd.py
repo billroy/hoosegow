@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Tiny PTY controller proof for Toady sandboxes.
+"""Tiny PTY controller proof for Hoosegow sandboxes.
 
 The daemon listens on a Unix domain socket or loopback TCP socket and speaks
 newline-delimited JSON. Binary PTY payloads are base64 encoded so the protocol
-stays easy to inspect and bridge through the host Toady server.
+stays easy to inspect and bridge through the host Hoosegow server.
 """
 
 from __future__ import annotations
@@ -119,7 +119,7 @@ class PtyController:
         self.server = server
         server.listen(32)
         server.settimeout(0.2)
-        print(f"toady-ptyd listening on {listen_label}", file=sys.stderr, flush=True)
+        print(f"hoosegow-ptyd listening on {listen_label}", file=sys.stderr, flush=True)
 
         try:
             while not self.stopping.is_set():
@@ -140,7 +140,7 @@ class PtyController:
         controller = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
-            server_version = "toady-ptyd/0.1"
+            server_version = "hoosegow-ptyd/0.1"
 
             def log_message(self, _format: str, *_args: Any) -> None:
                 return
@@ -194,7 +194,7 @@ class PtyController:
         server.timeout = 0.2
         self.server = server
         host, port = server.server_address
-        print(f"toady-ptyd HTTP listening on {host}:{port}", file=sys.stderr, flush=True)
+        print(f"hoosegow-ptyd HTTP listening on {host}:{port}", file=sys.stderr, flush=True)
         try:
             while not self.stopping.is_set():
                 server.handle_request()
@@ -578,7 +578,7 @@ class PtyController:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Toady in-sandbox PTY controller")
+    parser = argparse.ArgumentParser(description="Hoosegow in-sandbox PTY controller")
     listen = parser.add_mutually_exclusive_group(required=True)
     listen.add_argument("--socket", help="Unix socket path")
     listen.add_argument("--tcp", help="Loopback TCP listener as HOST:PORT")

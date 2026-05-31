@@ -1,7 +1,7 @@
 """End-to-end tests for HTTP + Socket.IO authentication gating.
 
 The test harness relies on the autouse ``_isolate_global_registry`` fixture in
-``tests/conftest.py`` to set ``TOADY_HOME`` to a per-test throwaway directory.
+``tests/conftest.py`` to set ``HOOSEGOW_HOME`` to a per-test throwaway directory.
 For each test that needs auth enabled we write a ``.env`` file into that
 directory *before* calling ``create_app`` so the app picks up the credential.
 """
@@ -39,7 +39,7 @@ def _seed_credentials(global_dir, users=None):
 
 
 def _test_home():
-    return os.environ["TOADY_HOME"]
+    return os.environ["HOOSEGOW_HOME"]
 
 
 # ---------------------------------------------------------------------------
@@ -65,7 +65,7 @@ def auth_client(auth_app):
 @pytest.fixture
 def noauth_app(tmp_path):
     """Flask app with auth DISABLED (no env file written)."""
-    # Sanity: the conftest fixture set TOADY_HOME, and we do NOT seed.
+    # Sanity: the conftest fixture set HOOSEGOW_HOME, and we do NOT seed.
     assert not os.path.exists(auth.env_path(_test_home()))
     with tempfile.TemporaryDirectory(prefix="bullpen_noauth_") as ws:
         app = create_app(ws, no_browser=True)
@@ -126,7 +126,7 @@ class TestHttpAuthEnabled:
         r = auth_client.get("/login")
         assert r.status_code == 200
         assert b"loginForm" in r.data
-        assert b"Toady" in r.data
+        assert b"Hoosegow" in r.data
         assert b"Bullpen" not in r.data
 
     def test_login_page_public_without_session(self, auth_client):

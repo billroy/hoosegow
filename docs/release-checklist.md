@@ -1,12 +1,12 @@
-# Toady 0.1.0 Release Checklist
+# Hoosegow 0.1.0 Release Checklist
 
 ## Verified
 
-- CLI version: `python3 toady.py --version` reports `toady 0.1.0`.
+- CLI version: `python3 hoosegow.py --version` reports `hoosegow 0.1.0`.
 - Host Microsandbox dependency is pinned in `requirements.txt` as
   `microsandbox==0.5.3`; this includes the published-port TCP stall fix needed
-  by Toady.
-- Focused Toady/auth suite passes: latest run `99 passed in 6.83s`.
+  by Hoosegow.
+- Focused Hoosegow/auth suite passes: latest run `99 passed in 6.83s`.
 - Frontend syntax check passes: `node --check static/app.js`.
 - Local health smoke passes: `http://127.0.0.1:5855/health` returns
   `{"ok":true}`.
@@ -18,15 +18,15 @@
   menu, create/details/ports modals, compact sandbox list, automatic terminal
   focus for running sandboxes, terminal-focused workspace without the old
   terminal title header, connection dot, and xterm assets.
-- Toady mode does not register legacy Bullpen product REST routes.
-- Toady mode does not serve legacy Bullpen product static assets.
-- Toady mode does not eagerly import legacy Bullpen product modules.
-- Prepared base `toady-microsandbox-local` exists locally.
+- Hoosegow mode does not register legacy Bullpen product REST routes.
+- Hoosegow mode does not serve legacy Bullpen product static assets.
+- Hoosegow mode does not eagerly import legacy Bullpen product modules.
+- Prepared base `hoosegow-microsandbox-local` exists locally.
 
 ## Ready For Tag
 
 - The first cleanup pass has removed copied Bullpen profile seeds, legacy
-  component UI assets, the Bullpen manager surface, non-Toady remote deployment
+  component UI assets, the Bullpen manager surface, non-Hoosegow remote deployment
   scaffolding, and their legacy-only tests.
 - The second cleanup pass has removed legacy Bullpen REST routes, project
   Socket.IO startup, MCP-token socket auth, legacy terminal-manager wiring, and
@@ -44,12 +44,12 @@
 - Final commands to rerun immediately before tagging, if anything changes:
 
 ```bash
-pytest -q tests/test_toady_sandbox_service.py \
-  tests/test_toady_sandbox_events.py \
-  tests/test_toady_terminal_events.py \
-  tests/test_toady_product_surface.py \
-  tests/test_toady_cli.py \
+pytest -q tests/test_hoosegow_sandbox_service.py \
+  tests/test_hoosegow_sandbox_events.py \
+  tests/test_hoosegow_terminal_events.py \
+  tests/test_hoosegow_product_surface.py \
+  tests/test_hoosegow_cli.py \
   tests/test_auth.py tests/test_auth_e2e.py
 node --check static/app.js
-TOADY_RUN_REAL_MICROSANDBOX=1 pytest -q -m real_microsandbox
+HOOSEGOW_RUN_REAL_MICROSANDBOX=1 pytest -q -m real_microsandbox
 ```

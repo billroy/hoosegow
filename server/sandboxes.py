@@ -1,4 +1,4 @@
-"""Toady sandbox lifecycle service."""
+"""Hoosegow sandbox lifecycle service."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from server import base as toady_base
+from server import base as hoosegow_base
 from server.microsandbox_runtime import (
     BASE_DEFAULT,
     GUEST_NOFILE_DEFAULT,
@@ -19,8 +19,8 @@ from server.microsandbox_runtime import (
     NETWORK_MAX_CONNECTIONS_DEFAULT,
     VCPUS_DEFAULT,
     MicrosandboxRuntime,
-    ToadyRuntimeError,
-    ToadySandboxSpec,
+    HoosegowRuntimeError,
+    HoosegowSandboxSpec,
     ensure_host_ports_available,
     host_port_in_use,
     host_port_owner,
@@ -40,14 +40,14 @@ from server.sandbox_bootstrap import (
     wait_for_controller_health,
 )
 from server.sandbox_store import SCHEMA_VERSION, SandboxManifest, SandboxStore
-from server.toady_validation import (
+from server.hoosegow_validation import (
     ValidationError,
     ensure_descendant,
     normalize_browse_roots,
     validate_slug,
     validate_workspace_path,
 )
-from server.toady_validation import parse_port, parse_port_pool
+from server.hoosegow_validation import parse_port, parse_port_pool
 
 
 class SandboxServiceError(RuntimeError):
@@ -125,7 +125,7 @@ class SandboxService:
         self.clock_drift_warning_seconds = clock_drift_warning_seconds
 
     def _base_metadata_path(self) -> Path:
-        return toady_base.base_metadata_path(self.home, self.base)
+        return hoosegow_base.base_metadata_path(self.home, self.base)
 
     def _sandbox_log_path(self, slug: str) -> str:
         return os.path.join(self.home, "logs", f"sandbox-{slug}.log")
@@ -431,7 +431,7 @@ class SandboxService:
             raise SandboxServiceError(f"Sandbox already exists: {slug}")
         if self._runtime_instance_exists(slug):
             raise SandboxServiceError(
-                f"Sandbox name is already used by an existing Microsandbox instance outside Toady: {slug}"
+                f"Sandbox name is already used by an existing Microsandbox instance outside Hoosegow: {slug}"
             )
         canonical_workspace_path, warnings = validate_workspace_path(
             str(payload.get("workspace_root") or payload.get("workspace_path") or ""),
@@ -501,7 +501,7 @@ class SandboxService:
                 continue
             if not host_port_in_use(port):
                 return port
-        raise SandboxServiceError(f"No free ports in Toady port pool {start}-{end}.")
+        raise SandboxServiceError(f"No free ports in Hoosegow port pool {start}-{end}.")
 
     def _host_port_reserved(self, port: int) -> bool:
         for manifest in self.store.list():
@@ -515,7 +515,7 @@ class SandboxService:
 
     def _ensure_publishable_host_port(self, port: int) -> None:
         if self._host_port_reserved(port):
-            raise SandboxServiceError(f"Host port {port} is already reserved by Toady.")
+            raise SandboxServiceError(f"Host port {port} is already reserved by Hoosegow.")
         if host_port_in_use(port):
             owner = host_port_owner(port)
             detail = f"\n{owner}" if owner else ""
@@ -692,9 +692,9 @@ class SandboxService:
             self.store.save(manifest)
         return controller
 
-    def _base_spec(self) -> ToadySandboxSpec:
-        return ToadySandboxSpec(
-            sandbox_name="toady-base-prepare",
+    def _base_spec(self) -> HoosegowSandboxSpec:
+        return HoosegowSandboxSpec(
+            sandbox_name="hoosegow-base-prepare",
             workspace=self.source_root,
             source_root=self.source_root,
             sandbox_home=Path(self.home) / "base" / "home",
@@ -735,15 +735,15 @@ class SandboxService:
         if manifest is None:
             raise SandboxServiceError(f"Unknown sandbox: {slug}")
 
-        latest_versions = toady_base.latest_agent_cli_versions()
+        latest_versions = hoosegow_base.latest_agent_cli_versions()
         metadata_path = self._base_metadata_path()
-        metadata = toady_base.read_base_metadata(metadata_path)
+        metadata = hoosegow_base.read_base_metadata(metadata_path)
         runtime = MicrosandboxRuntime()
         await runtime.ensure_installed()
         base_exists = await runtime.prepared_base_exists(self.base)
         rebuilt_base = False
-        if not base_exists or toady_base.base_needs_dependency_refresh(metadata, latest_versions):
-            await toady_base.prepare_base(
+        if not base_exists or hoosegow_base.base_needs_dependency_refresh(metadata, latest_versions):
+            await hoosegow_base.prepare_base(
                 runtime,
                 self._base_spec(),
                 source=self.source_root,
@@ -751,7 +751,7 @@ class SandboxService:
                 metadata_path=metadata_path,
                 dependency_versions=latest_versions,
             )
-            metadata = toady_base.read_base_metadata(metadata_path)
+            metadata = hoosegow_base.read_base_metadata(metadata_path)
             rebuilt_base = True
         if not metadata:
             raise SandboxServiceError("Agent CLI update did not produce base metadata.")
@@ -868,7 +868,7 @@ class SandboxService:
             ports[int(mapping["host_port"])] = int(mapping["guest_port"])
         ensure_host_ports_available(list(ports))
 
-        spec = ToadySandboxSpec(
+        spec = HoosegowSandboxSpec(
             sandbox_name=manifest.slug,
             workspace=Path(manifest.canonical_workspace_path),
             source_root=self.source_root,
@@ -988,5 +988,5 @@ class SandboxService:
 
 
 def browse_roots_from_env() -> list[str]:
-    raw = os.environ.get("TOADY_WORKSPACE_ROOTS", "")
+    raw = os.environ.get("HOOSEGOW_WORKSPACE_ROOTS", "")
     return [item for item in raw.split(os.pathsep) if item] if raw else []

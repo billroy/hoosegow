@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from server import base as toady_base
-from server.microsandbox_runtime import ToadyRuntimeError, ToadySandboxSpec
+from server import base as hoosegow_base
+from server.microsandbox_runtime import HoosegowRuntimeError, HoosegowSandboxSpec
 
 
 class FakePrepareSandbox:
@@ -50,12 +50,12 @@ def _spec(tmp_path):
     home = tmp_path / "home"
     workspace.mkdir()
     source.mkdir()
-    return ToadySandboxSpec(
+    return HoosegowSandboxSpec(
         sandbox_name="demo",
         workspace=workspace,
         source_root=source,
         sandbox_home=home,
-        base="toady-test-base",
+        base="hoosegow-test-base",
     )
 
 
@@ -80,27 +80,27 @@ def test_prepare_base_runs_bullpen_style_steps_and_cleans_prepare_sandbox(tmp_pa
             assert "opencode --version" in command
         return SimpleNamespace(stdout_text="", stderr_text="", returncode=0)
 
-    monkeypatch.setattr(toady_base, "run_logged_sandbox_shell", fake_run)
+    monkeypatch.setattr(hoosegow_base, "run_logged_sandbox_shell", fake_run)
 
-    asyncio.run(toady_base.prepare_base(runtime, spec, source_image="node:test"))
+    asyncio.run(hoosegow_base.prepare_base(runtime, spec, source_image="node:test"))
 
     assert labels == [
         "Installing OS packages",
-        "Installing Toady Python dependencies",
+        "Installing Hoosegow Python dependencies",
         "Installing agent CLIs",
         "Verifying prepared base",
         "Validating prepared base snapshot",
     ]
     assert runtime.events == [
-        ("stop", "toady-test-base-prepare"),
-        ("remove", "toady-test-base-prepare"),
-        ("create_prepare", "toady-test-base-prepare", "node:test", str(spec.source_root)),
+        ("stop", "hoosegow-test-base-prepare"),
+        ("remove", "hoosegow-test-base-prepare"),
+        ("create_prepare", "hoosegow-test-base-prepare", "node:test", str(spec.source_root)),
         ("sandbox.stop_and_wait",),
-        ("snapshot", "toady-test-base-prepare", "toady-test-base"),
-        ("create_validation", "toady-test-base-v", "toady-test-base", "demo"),
-        ("stop", "toady-test-base-v"),
-        ("remove", "toady-test-base-v"),
-        ("remove", "toady-test-base-prepare"),
+        ("snapshot", "hoosegow-test-base-prepare", "hoosegow-test-base"),
+        ("create_validation", "hoosegow-test-base-v", "hoosegow-test-base", "demo"),
+        ("stop", "hoosegow-test-base-v"),
+        ("remove", "hoosegow-test-base-v"),
+        ("remove", "hoosegow-test-base-prepare"),
     ]
 
 
@@ -110,16 +110,16 @@ def test_prepare_base_removes_prepare_sandbox_when_step_fails(tmp_path, monkeypa
 
     async def fake_run(_sandbox, _command, *, label):
         if label == "Installing agent CLIs":
-            raise ToadyRuntimeError("npm failed")
+            raise HoosegowRuntimeError("npm failed")
         return SimpleNamespace(stdout_text="", stderr_text="", returncode=0)
 
-    monkeypatch.setattr(toady_base, "run_logged_sandbox_shell", fake_run)
+    monkeypatch.setattr(hoosegow_base, "run_logged_sandbox_shell", fake_run)
 
-    with pytest.raises(ToadyRuntimeError, match="npm failed"):
-        asyncio.run(toady_base.prepare_base(runtime, spec))
+    with pytest.raises(HoosegowRuntimeError, match="npm failed"):
+        asyncio.run(hoosegow_base.prepare_base(runtime, spec))
 
-    assert ("snapshot", "toady-test-base-prepare", "toady-test-base") not in runtime.events
-    assert runtime.events[-1] == ("remove", "toady-test-base-prepare")
+    assert ("snapshot", "hoosegow-test-base-prepare", "hoosegow-test-base") not in runtime.events
+    assert runtime.events[-1] == ("remove", "hoosegow-test-base-prepare")
 
 
 def test_ensure_prepared_base_auto_prepares_when_missing(tmp_path, monkeypatch):
@@ -130,9 +130,9 @@ def test_ensure_prepared_base_auto_prepares_when_missing(tmp_path, monkeypatch):
     async def fake_prepare(got_runtime, got_spec, *, force):
         calls.append((got_runtime, got_spec, force))
 
-    monkeypatch.setattr(toady_base, "prepare_base", fake_prepare)
+    monkeypatch.setattr(hoosegow_base, "prepare_base", fake_prepare)
 
-    asyncio.run(toady_base.ensure_prepared_base(runtime, spec, auto_prepare=True))
+    asyncio.run(hoosegow_base.ensure_prepared_base(runtime, spec, auto_prepare=True))
 
     assert calls == [(runtime, spec, True)]
 
@@ -141,8 +141,8 @@ def test_ensure_prepared_base_can_still_require_manual_prepare(tmp_path):
     runtime = FakeRuntime(prepared=False)
     spec = _spec(tmp_path)
 
-    with pytest.raises(ToadyRuntimeError, match="--prepare-base"):
-        asyncio.run(toady_base.ensure_prepared_base(runtime, spec, auto_prepare=False))
+    with pytest.raises(HoosegowRuntimeError, match="--prepare-base"):
+        asyncio.run(hoosegow_base.ensure_prepared_base(runtime, spec, auto_prepare=False))
 
 
 def test_base_dependency_refresh_detects_missing_or_changed_metadata():
@@ -153,9 +153,9 @@ def test_base_dependency_refresh_detects_missing_or_changed_metadata():
         "opencode": "4.0.0",
     }
 
-    assert toady_base.base_needs_dependency_refresh(None, latest) is True
-    assert toady_base.base_needs_dependency_refresh({"agent_versions": latest}, latest) is False
-    assert toady_base.base_needs_dependency_refresh(
+    assert hoosegow_base.base_needs_dependency_refresh(None, latest) is True
+    assert hoosegow_base.base_needs_dependency_refresh({"agent_versions": latest}, latest) is False
+    assert hoosegow_base.base_needs_dependency_refresh(
         {"agent_versions": {**latest, "codex": "1.9.9"}},
         latest,
     ) is True
@@ -170,10 +170,10 @@ def test_latest_agent_cli_versions_queries_npm_packages(tmp_path, monkeypatch):
         envs.append(kwargs["env"])
         return SimpleNamespace(returncode=0, stdout=f"{argv[2]}-version\n", stderr="")
 
-    monkeypatch.setattr(toady_base.subprocess, "run", fake_run)
+    monkeypatch.setattr(hoosegow_base.subprocess, "run", fake_run)
 
     cache_dir = tmp_path / "npm-cache"
-    versions = toady_base.latest_agent_cli_versions(cache_dir=cache_dir)
+    versions = hoosegow_base.latest_agent_cli_versions(cache_dir=cache_dir)
 
     assert versions == {
         "claude": "@anthropic-ai/claude-code-version",
@@ -204,9 +204,9 @@ def test_base_status_opens_snapshot_when_path_is_lazy(monkeypatch):
             assert base == "lazy-base"
             return Snapshot()
 
-    monkeypatch.setattr(toady_base, "MicrosandboxRuntime", Runtime)
+    monkeypatch.setattr(hoosegow_base, "MicrosandboxRuntime", Runtime)
 
-    status = asyncio.run(toady_base.base_status("lazy-base"))
+    status = asyncio.run(hoosegow_base.base_status("lazy-base"))
 
     assert status["prepared"] is True
     assert status["state"] == "ready"

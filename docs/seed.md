@@ -1,4 +1,4 @@
-# Toady: toad in a hole for agents
+# Hoosegow: toad in a hole for agents
 
 ## Use case
 

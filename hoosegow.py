@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Toady — PTY-first sandbox runner for coding agents."""
+"""Hoosegow — PTY-first sandbox runner for coding agents."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 LOCALHOST_BINDS = {"127.0.0.1", "localhost", "::1"}
-DEFAULT_HOME = "~/.toady"
+DEFAULT_HOME = "~/.hoosegow"
 DEFAULT_PORT = 6060
 __version__ = "0.1.0"
 
@@ -30,13 +30,13 @@ BROWSER_BLOCKED_PORTS = {
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="toady",
-        description="Toady — run coding agents inside Microsandbox terminals",
+        prog="hoosegow",
+        description="Hoosegow — run coding agents inside Microsandbox terminals",
     )
-    parser.add_argument("--port", type=int, default=int(os.environ.get("TOADY_PORT", os.environ.get("PORT", DEFAULT_PORT))))
-    parser.add_argument("--version", action="version", version=f"toady {__version__}")
-    parser.add_argument("--host", default=os.environ.get("TOADY_HOST", "127.0.0.1"))
-    parser.add_argument("--home", default=os.environ.get("TOADY_HOME", DEFAULT_HOME), help="State directory (default: ~/.toady)")
+    parser.add_argument("--port", type=int, default=int(os.environ.get("HOOSEGOW_PORT", os.environ.get("PORT", DEFAULT_PORT))))
+    parser.add_argument("--version", action="version", version=f"hoosegow {__version__}")
+    parser.add_argument("--host", default=os.environ.get("HOOSEGOW_HOST", "127.0.0.1"))
+    parser.add_argument("--home", default=os.environ.get("HOOSEGOW_HOME", DEFAULT_HOME), help="State directory (default: ~/.hoosegow)")
     parser.add_argument("--no-browser", action="store_true", help="Do not open a browser on startup")
     parser.add_argument(
         "--workspace",
@@ -49,8 +49,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=[],
         help="Browse root for future sandbox workspace picker; repeatable",
     )
-    parser.add_argument("--prepare-base", action="store_true", help="Build the Toady Microsandbox base image and exit")
-    parser.add_argument("--rebuild-base", action="store_true", help="Force a Toady Microsandbox base rebuild")
+    parser.add_argument("--prepare-base", action="store_true", help="Build the Hoosegow Microsandbox base image and exit")
+    parser.add_argument("--rebuild-base", action="store_true", help="Force a Hoosegow Microsandbox base rebuild")
     parser.add_argument("--base-image", default="node:22-bookworm")
     parser.add_argument("--vcpus", type=int, default=4)
     parser.add_argument("--memory-mib", type=int, default=4096)
@@ -86,29 +86,29 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--bootstrap-credentials",
         action="store_true",
-        help="Create login credentials from TOADY_BOOTSTRAP_USER and TOADY_BOOTSTRAP_PASSWORD, then exit",
+        help="Create login credentials from HOOSEGOW_BOOTSTRAP_USER and HOOSEGOW_BOOTSTRAP_PASSWORD, then exit",
     )
     return parser.parse_args(argv)
 
 
 def configure_environment(args: argparse.Namespace) -> str:
     home = os.path.abspath(os.path.expanduser(args.home))
-    os.environ["TOADY_HOME"] = home
+    os.environ["HOOSEGOW_HOME"] = home
     if args.workspace_root:
-        os.environ["TOADY_WORKSPACE_ROOTS"] = os.pathsep.join(
+        os.environ["HOOSEGOW_WORKSPACE_ROOTS"] = os.pathsep.join(
             os.path.abspath(os.path.expanduser(path)) for path in args.workspace_root
         )
-    os.environ["TOADY_PORT_POOL"] = args.port_pool
-    os.environ["TOADY_TERMINAL_LIMIT"] = str(max(1, int(args.terminal_limit or 32)))
-    os.environ["TOADY_MAX_SANDBOXES"] = str(max(1, int(args.max_sandboxes or 8)))
+    os.environ["HOOSEGOW_PORT_POOL"] = args.port_pool
+    os.environ["HOOSEGOW_TERMINAL_LIMIT"] = str(max(1, int(args.terminal_limit or 32)))
+    os.environ["HOOSEGOW_MAX_SANDBOXES"] = str(max(1, int(args.max_sandboxes or 8)))
     if args.max_total_vcpus:
-        os.environ["TOADY_MAX_TOTAL_VCPUS"] = str(max(1, int(args.max_total_vcpus)))
+        os.environ["HOOSEGOW_MAX_TOTAL_VCPUS"] = str(max(1, int(args.max_total_vcpus)))
     else:
-        os.environ.pop("TOADY_MAX_TOTAL_VCPUS", None)
+        os.environ.pop("HOOSEGOW_MAX_TOTAL_VCPUS", None)
     if args.max_total_memory_mib:
-        os.environ["TOADY_MAX_TOTAL_MEMORY_MIB"] = str(max(1, int(args.max_total_memory_mib)))
+        os.environ["HOOSEGOW_MAX_TOTAL_MEMORY_MIB"] = str(max(1, int(args.max_total_memory_mib)))
     else:
-        os.environ.pop("TOADY_MAX_TOTAL_MEMORY_MIB", None)
+        os.environ.pop("HOOSEGOW_MAX_TOTAL_MEMORY_MIB", None)
     return home
 
 
@@ -122,7 +122,7 @@ def set_password_cli(home: str, set_usernames: list[str] | None = None, delete_u
     existing = auth.parse_env_file(path)
     users = auth.parse_credentials_mapping(existing)
 
-    print(f"Updating Toady login credentials in {path}")
+    print(f"Updating Hoosegow login credentials in {path}")
     for requested_username in list(set_usernames or []):
         username = (requested_username or "").strip()
         if not username:
@@ -165,7 +165,7 @@ def set_password_cli(home: str, set_usernames: list[str] | None = None, delete_u
     updated = auth.apply_credentials_mapping(existing, users)
     auth.write_env_file(path, updated)
     print(f"Credentials written to {path} (mode 600). {len(users)} user(s) configured.")
-    print("Restart Toady to apply.")
+    print("Restart Hoosegow to apply.")
     return 0
 
 
@@ -176,16 +176,16 @@ def bootstrap_credentials(home: str) -> int:
     path = auth.env_path(home)
     existing = auth.parse_env_file(path)
     users = auth.parse_credentials_mapping(existing)
-    force = os.environ.get("TOADY_BOOTSTRAP_FORCE", "").strip().lower() in {"1", "true", "yes", "y", "on"}
+    force = os.environ.get("HOOSEGOW_BOOTSTRAP_FORCE", "").strip().lower() in {"1", "true", "yes", "y", "on"}
     if users and not force:
         print(f"Credentials already exist ({len(users)} user(s)); skipping bootstrap.")
         return 0
 
-    password = os.environ.get("TOADY_BOOTSTRAP_PASSWORD", "")
+    password = os.environ.get("HOOSEGOW_BOOTSTRAP_PASSWORD", "")
     if not password:
-        print("Error: TOADY_BOOTSTRAP_PASSWORD not set.", file=sys.stderr)
+        print("Error: HOOSEGOW_BOOTSTRAP_PASSWORD not set.", file=sys.stderr)
         return 1
-    username = os.environ.get("TOADY_BOOTSTRAP_USER", "admin").strip() or "admin"
+    username = os.environ.get("HOOSEGOW_BOOTSTRAP_USER", "admin").strip() or "admin"
 
     users[username] = auth.generate_password_hash(password)
     updated = auth.apply_credentials_mapping(existing, users)
@@ -207,7 +207,7 @@ def require_auth_for_network_bind(host: str, home: str) -> None:
 
     raise RuntimeError(
         f"refusing to bind to '{host}' without authentication enabled; "
-        "run `python3 toady.py --set-password` first"
+        "run `python3 hoosegow.py --set-password` first"
     )
 
 
@@ -239,8 +239,8 @@ def run_server(args: argparse.Namespace, home: str) -> int:
 
     import pyfiglet
 
-    print(pyfiglet.figlet_format("toady"), end="")
-    print(f"Toady starting — home: {home}, bootstrap workspace: {workspace}, host: {args.host}, port: {args.port}")
+    print(pyfiglet.figlet_format("hoosegow"), end="")
+    print(f"Hoosegow starting — home: {home}, bootstrap workspace: {workspace}, host: {args.host}, port: {args.port}")
 
     from server.app import create_app, socketio
 
@@ -255,7 +255,7 @@ def run_server(args: argparse.Namespace, home: str) -> int:
     )
 
     if args.shutdown_sandboxes_on_exit:
-        service = app.config.get("toady_sandboxes")
+        service = app.config.get("hoosegow_sandboxes")
 
         def _shutdown_sandboxes() -> None:
             if service is None:
@@ -287,8 +287,8 @@ async def run_prepare_base(args: argparse.Namespace, home: str) -> int:
     from server.microsandbox_runtime import (
         BASE_DEFAULT,
         MicrosandboxRuntime,
-        ToadyRuntimeError,
-        ToadySandboxSpec,
+        HoosegowRuntimeError,
+        HoosegowSandboxSpec,
         detect_supported_host,
     )
 
@@ -297,8 +297,8 @@ async def run_prepare_base(args: argparse.Namespace, home: str) -> int:
         return 1
 
     root = Path(__file__).resolve().parent
-    spec = ToadySandboxSpec(
-        sandbox_name="toady-base-prepare",
+    spec = HoosegowSandboxSpec(
+        sandbox_name="hoosegow-base-prepare",
         workspace=Path(args.workspace).resolve(),
         source_root=root,
         sandbox_home=Path(home) / "base" / "home",
@@ -322,7 +322,7 @@ async def run_prepare_base(args: argparse.Namespace, home: str) -> int:
             metadata_path=base_metadata_path(home, BASE_DEFAULT),
             dependency_versions=dependency_versions,
         )
-    except ToadyRuntimeError as exc:
+    except HoosegowRuntimeError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     return 0

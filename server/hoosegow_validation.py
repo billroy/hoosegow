@@ -1,4 +1,4 @@
-"""Validation helpers for Toady sandbox state and API inputs."""
+"""Validation helpers for Hoosegow sandbox state and API inputs."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ SENSITIVE_HOME_NAMES = {
     ".config",
     ".gnupg",
     ".ssh",
-    ".toady",
+    ".hoosegow",
 }
 
 
