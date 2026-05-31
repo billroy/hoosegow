@@ -643,6 +643,7 @@ class SandboxService:
     def _mark_conflicting_published_ports(self, manifest: SandboxManifest, mappings: list[dict[str, Any]]) -> None:
         conflicts = []
         next_mappings = []
+        changed = False
         for mapping in manifest.published_ports:
             if mapping not in mappings:
                 next_mappings.append(mapping)
@@ -655,12 +656,19 @@ class SandboxService:
                 if owner:
                     conflict["conflict"] = owner
                 conflicts.append(conflict)
+                changed = changed or conflict != mapping
                 next_mappings.append(conflict)
             else:
                 clean = dict(mapping)
                 clean.pop("conflict", None)
+                if clean.get("status") == "conflict":
+                    clean["status"] = "active"
+                changed = changed or clean != mapping
                 next_mappings.append(clean)
         if not conflicts:
+            if changed:
+                manifest.published_ports = next_mappings
+                self.store.save(manifest)
             return
         manifest.published_ports = next_mappings
         manifest.last_status = "error"
@@ -827,6 +835,19 @@ class SandboxService:
         manifest.last_status = "starting"
         self.store.save(manifest)
         self._log_sandbox_event(manifest.slug, "starting", status=manifest.last_status)
+        runtime = MicrosandboxRuntime()
+        runtime_ready = False
+        created_runtime = False
+        try:
+            await runtime.ensure_installed()
+            runtime_ready = True
+            await self._remove_runtime_instance(runtime, manifest.slug)
+        except Exception as exc:
+            manifest.last_status = "error"
+            self.store.save(manifest)
+            self._log_sandbox_event(manifest.slug, "start_failed", status=manifest.last_status, error=str(exc))
+            raise
+
         controller = self._ensure_controller_endpoint(manifest)
         host_port = int(controller["host_port"])
         guest_port = int(controller.get("guest_port") or 5859)
@@ -862,10 +883,9 @@ class SandboxService:
         )
         build_runtime_env(spec, controller_port=guest_port, controller_token=str(controller.get("token") or ""))
         mark_open_fds_close_on_exec()
-        runtime = MicrosandboxRuntime()
-        await runtime.ensure_installed()
         try:
             sandbox = await runtime.create(spec)
+            created_runtime = True
             await self._sync_manifest_clock(runtime, manifest, sandbox=sandbox, reason="start")
             await prepare_runtime_dirs(sandbox, spec)
             await disable_guest_ipv6_for_claude(sandbox)
@@ -875,10 +895,20 @@ class SandboxService:
             wait_for_controller_health(int(host_port))
             await detach_sandbox(sandbox)
             await verify_detached_sandbox(runtime, spec)
-        except Exception:
+        except Exception as exc:
+            if runtime_ready and created_runtime:
+                try:
+                    await self._remove_runtime_instance(runtime, manifest.slug)
+                except Exception as cleanup_exc:
+                    self._log_sandbox_event(
+                        manifest.slug,
+                        "start_cleanup_failed",
+                        status="error",
+                        error=str(cleanup_exc),
+                    )
             manifest.last_status = "error"
             self.store.save(manifest)
-            self._log_sandbox_event(manifest.slug, "start_failed", status=manifest.last_status)
+            self._log_sandbox_event(manifest.slug, "start_failed", status=manifest.last_status, error=str(exc))
             raise
 
         manifest.last_status = "running"

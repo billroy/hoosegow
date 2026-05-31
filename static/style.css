@@ -1171,6 +1171,7 @@ input:focus {
   right: 18px;
   bottom: 18px;
   max-width: min(520px, calc(100vw - 36px));
+  max-height: min(360px, calc(100vh - 36px));
   padding: 12px 14px;
   border: 1px solid #3f5363;
   border-radius: 8px;
@@ -1178,6 +1179,10 @@ input:focus {
   color: var(--text);
   box-shadow: var(--shadow);
   font-size: 13px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  z-index: 50;
 }
 
 .toast[data-tone="success"] {

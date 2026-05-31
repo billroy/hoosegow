@@ -303,6 +303,18 @@ def test_sandbox_service_marks_published_port_conflict_on_start(tmp_path, monkey
     occupied = set()
     monkeypatch.setattr("server.sandboxes.host_port_in_use", lambda port: port in occupied)
     monkeypatch.setattr("server.sandboxes.host_port_owner", lambda port: f"python 123 *:{port}")
+
+    class FakeRuntime:
+        async def ensure_installed(self):
+            return None
+
+        async def stop(self, _name):
+            return None
+
+        async def remove(self, _name):
+            return None
+
+    monkeypatch.setattr("server.sandboxes.MicrosandboxRuntime", FakeRuntime)
     workspace = tmp_path / "project"
     workspace.mkdir()
     service = SandboxService(
@@ -343,6 +355,12 @@ def test_sandbox_service_reassigns_occupied_controller_port_on_start(tmp_path, m
         async def ensure_installed(self):
             return None
 
+        async def stop(self, _name):
+            return None
+
+        async def remove(self, _name):
+            return None
+
         async def create(self, spec):
             captured["ports"] = spec.ports
             return object()
@@ -370,6 +388,159 @@ def test_sandbox_service_reassigns_occupied_controller_port_on_start(tmp_path, m
     assert started["controller"]["host_port"] == 63101
     assert captured["ports"] == {63101: 5859}
     assert fd_guard_calls == [True]
+
+
+def test_sandbox_service_removes_stopped_runtime_before_start(tmp_path, monkeypatch):
+    monkeypatch.setattr("server.sandboxes.host_port_in_use", lambda _port: False)
+    monkeypatch.setattr("server.sandboxes.ensure_host_ports_available", lambda _ports: None)
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    service = SandboxService(
+        home=str(tmp_path / "state"),
+        browse_roots=[str(tmp_path)],
+        port_pool="63100-63105",
+    )
+    service.create_manifest({"name": "demo", "workspace_root": str(workspace)})
+    calls = []
+
+    class FakeRuntime:
+        async def ensure_installed(self):
+            calls.append(("ensure",))
+
+        async def stop(self, name):
+            calls.append(("stop", name))
+
+        async def remove(self, name):
+            calls.append(("remove", name))
+
+        async def create(self, spec):
+            calls.append(("create", spec.sandbox_name))
+            return object()
+
+    async def async_noop(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr("server.sandboxes.MicrosandboxRuntime", FakeRuntime)
+    monkeypatch.setattr(service, "_sync_manifest_clock", async_noop)
+    monkeypatch.setattr("server.sandboxes.prepare_runtime_dirs", async_noop)
+    monkeypatch.setattr("server.sandboxes.disable_guest_ipv6_for_claude", async_noop)
+    monkeypatch.setattr("server.sandboxes.verify_mount_access", async_noop)
+    monkeypatch.setattr("server.sandboxes.configure_codex_cli", async_noop)
+    monkeypatch.setattr("server.sandboxes.start_pty_controller", async_noop)
+    monkeypatch.setattr("server.sandboxes.detach_sandbox", async_noop)
+    monkeypatch.setattr("server.sandboxes.verify_detached_sandbox", async_noop)
+    monkeypatch.setattr("server.sandboxes.wait_for_controller_health", lambda _port: None)
+
+    started = asyncio.run(service.start("demo"))
+
+    assert started["last_status"] == "running"
+    assert calls == [
+        ("ensure",),
+        ("stop", "demo"),
+        ("remove", "demo"),
+        ("create", "demo"),
+    ]
+
+
+def test_sandbox_service_clears_stale_self_conflict_before_start(tmp_path, monkeypatch):
+    monkeypatch.setattr("server.sandboxes.host_port_in_use", lambda _port: False)
+    monkeypatch.setattr("server.sandboxes.ensure_host_ports_available", lambda _ports: None)
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    service = SandboxService(
+        home=str(tmp_path / "state"),
+        browse_roots=[str(tmp_path)],
+        port_pool="63100-63105",
+    )
+    service.create_manifest({"name": "demo", "workspace_root": str(workspace)})
+    manifest = service.store.get("demo")
+    manifest.published_ports = [
+        {"guest_port": 8000, "host_port": 63103, "status": "conflict", "conflict": "old msb listener"}
+    ]
+    service.store.save(manifest)
+
+    class FakeRuntime:
+        async def ensure_installed(self):
+            return None
+
+        async def stop(self, _name):
+            return None
+
+        async def remove(self, _name):
+            return None
+
+        async def create(self, _spec):
+            return object()
+
+    async def async_noop(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr("server.sandboxes.MicrosandboxRuntime", FakeRuntime)
+    monkeypatch.setattr(service, "_sync_manifest_clock", async_noop)
+    monkeypatch.setattr("server.sandboxes.prepare_runtime_dirs", async_noop)
+    monkeypatch.setattr("server.sandboxes.disable_guest_ipv6_for_claude", async_noop)
+    monkeypatch.setattr("server.sandboxes.verify_mount_access", async_noop)
+    monkeypatch.setattr("server.sandboxes.configure_codex_cli", async_noop)
+    monkeypatch.setattr("server.sandboxes.start_pty_controller", async_noop)
+    monkeypatch.setattr("server.sandboxes.detach_sandbox", async_noop)
+    monkeypatch.setattr("server.sandboxes.verify_detached_sandbox", async_noop)
+    monkeypatch.setattr("server.sandboxes.wait_for_controller_health", lambda _port: None)
+
+    started = asyncio.run(service.start("demo"))
+
+    assert started["last_status"] == "running"
+    assert started["published_ports"] == [{"guest_port": 8000, "host_port": 63103, "status": "active"}]
+
+
+def test_sandbox_service_cleans_created_runtime_when_bootstrap_fails(tmp_path, monkeypatch):
+    monkeypatch.setattr("server.sandboxes.host_port_in_use", lambda _port: False)
+    monkeypatch.setattr("server.sandboxes.ensure_host_ports_available", lambda _ports: None)
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    service = SandboxService(
+        home=str(tmp_path / "state"),
+        browse_roots=[str(tmp_path)],
+        port_pool="63100-63105",
+    )
+    service.create_manifest({"name": "demo", "workspace_root": str(workspace)})
+    calls = []
+
+    class FakeRuntime:
+        async def ensure_installed(self):
+            calls.append(("ensure",))
+
+        async def stop(self, name):
+            calls.append(("stop", name))
+
+        async def remove(self, name):
+            calls.append(("remove", name))
+
+        async def create(self, spec):
+            calls.append(("create", spec.sandbox_name))
+            return object()
+
+    async def fail_prepare(*_args, **_kwargs):
+        raise RuntimeError("prepare failed")
+
+    async def async_noop(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr("server.sandboxes.MicrosandboxRuntime", FakeRuntime)
+    monkeypatch.setattr(service, "_sync_manifest_clock", async_noop)
+    monkeypatch.setattr("server.sandboxes.prepare_runtime_dirs", fail_prepare)
+
+    with pytest.raises(RuntimeError, match="prepare failed"):
+        asyncio.run(service.start("demo"))
+
+    assert service.store.get("demo").last_status == "error"
+    assert calls == [
+        ("ensure",),
+        ("stop", "demo"),
+        ("remove", "demo"),
+        ("create", "demo"),
+        ("stop", "demo"),
+        ("remove", "demo"),
+    ]
 
 
 def test_sandbox_service_check_clock_records_drift(tmp_path, monkeypatch):

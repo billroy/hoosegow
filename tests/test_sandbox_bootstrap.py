@@ -86,6 +86,7 @@ def test_prepare_runtime_dirs_writes_guest_fd_limit(tmp_path, monkeypatch):
 
     assert captured["spec"] is spec
     assert captured["label"] == "prepare Microsandbox runtime user"
+    assert 'chown agent:"$group_name" /workspace /home/agent /home/agent/logs' in captured["command"]
     assert "agent soft nofile 7777" in captured["command"]
     assert "agent hard nofile 7777" in captured["command"]
     assert "pam_limits may not be enforcing" in captured["command"]

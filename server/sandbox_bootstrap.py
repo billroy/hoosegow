@@ -91,7 +91,8 @@ async def run_sandbox_shell(sandbox: Any, command: str, *, check: bool = True) -
     failed = returncode not in (None, 0) or success is False
     if check and failed:
         details = result_output_text(result)
-        raise ToadyRuntimeError(f"Sandbox command failed: {command}\n{details}")
+        command_preview = command.splitlines()[0] if command else ""
+        raise ToadyRuntimeError(f"Sandbox command failed: {command_preview}\n{details}")
     return result
 
 
@@ -183,7 +184,7 @@ if [ "$actual_uid" != "$uid" ]; then
   exit 1
 fi
 mkdir -p /workspace /home/agent/logs /home/agent/bin /home/agent/.codex /var/lib/toady
-chown agent:"$group_name" /home/agent/logs /home/agent/bin /home/agent/.codex
+chown agent:"$group_name" /workspace /home/agent /home/agent/logs /home/agent/bin /home/agent/.codex
 chown -R agent:"$group_name" /var/lib/toady
 chmod 700 /var/lib/toady 2>/dev/null || true
 mkdir -p /etc/security/limits.d
