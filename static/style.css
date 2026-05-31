@@ -1091,6 +1091,12 @@ input:focus {
   height: 100%;
 }
 
+.terminal-viewport .xterm,
+.terminal-viewport .xterm-viewport,
+.terminal-viewport .xterm-screen {
+  background: var(--terminal-bg);
+}
+
 .terminal-placeholder {
   display: grid;
   flex: 1 1 auto;

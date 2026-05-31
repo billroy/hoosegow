@@ -297,6 +297,14 @@ def test_hoosegow_shell_has_theme_toggle_assets():
     assert "color: var(--terminal-text);" in css
 
 
+def test_terminal_xterm_viewport_inherits_theme_background():
+    css = (ROOT / "static" / "style.css").read_text(encoding="utf-8")
+
+    assert ".terminal-viewport .xterm-viewport" in css
+    assert ".terminal-viewport .xterm-screen" in css
+    assert "background: var(--terminal-bg);" in css
+
+
 def test_hoosegow_shell_has_clear_empty_and_error_states():
     app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
     css = (ROOT / "static" / "style.css").read_text(encoding="utf-8")
