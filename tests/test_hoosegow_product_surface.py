@@ -300,9 +300,10 @@ def test_hoosegow_shell_has_theme_toggle_assets():
 def test_terminal_xterm_viewport_inherits_theme_background():
     css = (ROOT / "static" / "style.css").read_text(encoding="utf-8")
 
-    assert ".terminal-viewport .xterm-viewport" in css
-    assert ".terminal-viewport .xterm-screen" in css
-    assert "background: var(--terminal-bg);" in css
+    assert ".terminal-viewport {" in css
+    assert ".terminal-viewport .xterm .xterm-viewport" in css
+    assert ".terminal-viewport .xterm .xterm-screen" in css
+    assert "background-color: var(--terminal-bg);" in css
 
 
 def test_hoosegow_shell_has_clear_empty_and_error_states():

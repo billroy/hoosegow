@@ -1085,6 +1085,7 @@ input:focus {
   min-height: 0;
   height: auto;
   padding: 5px;
+  background-color: var(--terminal-bg);
 }
 
 .terminal-viewport .xterm {
@@ -1092,9 +1093,9 @@ input:focus {
 }
 
 .terminal-viewport .xterm,
-.terminal-viewport .xterm-viewport,
-.terminal-viewport .xterm-screen {
-  background: var(--terminal-bg);
+.terminal-viewport .xterm .xterm-viewport,
+.terminal-viewport .xterm .xterm-screen {
+  background-color: var(--terminal-bg);
 }
 
 .terminal-placeholder {
