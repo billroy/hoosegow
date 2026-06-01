@@ -227,8 +227,7 @@ There are no subcommands and no deployment modes. Environment variables:
 - Built once via a direct port of Bullpen's `deploy-sandbox.py` base-prep
   logic, not a greenfield rewrite. Contents: Python 3, Node 22, bash,
   bubblewrap, ca-certificates, curl, gh, git, iproute2, jq, Python venv
-  support, nano, netcat (`nc`), ripgrep, strace, tmux, `claude`, `codex`,
-  `gemini`, and `opencode` CLIs.
+  support, nano, ripgrep, strace, tmux, `claude`, `codex`, `gemini`, and `opencode` CLIs.
   Install packages include `@anthropic-ai/claude-code`, `@openai/codex`,
   `@google/gemini-cli`, and `opencode-ai`.
   Agent CLIs are not pre-authenticated; the user authenticates inside the

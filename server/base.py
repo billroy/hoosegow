@@ -174,21 +174,6 @@ codex --version
 '''
 
 
-def netcat_smoke_command() -> str:
-    return r'''
-command -v nc
-nc_smoke=$(mktemp)
-nc_port=41237
-nc -l -p "$nc_port" > "$nc_smoke" &
-nc_pid=$!
-sleep 0.2
-printf 'hoosegow-netcat-ok\n' | nc -N 127.0.0.1 "$nc_port"
-wait "$nc_pid"
-grep -qx 'hoosegow-netcat-ok' "$nc_smoke"
-rm -f "$nc_smoke"
-'''
-
-
 async def run_logged_sandbox_shell(sandbox: Any, command: str, *, label: str) -> Any:
     print(f"==> {label}", flush=True)
     try:
@@ -228,7 +213,7 @@ async def validate_prepared_base_snapshot(runtime: MicrosandboxRuntime, spec: Ho
     try:
         await run_logged_sandbox_shell(
             sandbox,
-            "set -euo pipefail\n" + netcat_smoke_command() + codex_cli_integrity_command(),
+            "set -euo pipefail\n" + codex_cli_integrity_command(),
             label="Validating prepared base snapshot",
         )
     finally:
@@ -274,7 +259,7 @@ async def prepare_base(
             export DEBIAN_FRONTEND=noninteractive
             apt-get update
             apt-get install -y --no-install-recommends \
-              bash bubblewrap ca-certificates curl gh git iproute2 jq nano netcat-openbsd python3 python3-pip python3-venv ripgrep strace tmux
+              bash bubblewrap ca-certificates curl gh git iproute2 jq nano python3 python3-pip python3-venv ripgrep strace tmux
             rm -rf /var/lib/apt/lists/*
             """,
             label="Installing OS packages",
@@ -318,7 +303,6 @@ PY
               /opt/hoosegow-venv/bin/python -c 'import flask, flask_socketio, pyfiglet'
               git --version
               gh --version
-              command -v nc
               node --version
               npm --version
               claude --version
@@ -326,7 +310,6 @@ PY
               gemini --version
               opencode --version
             }} > "$versions_file"
-            {netcat_smoke_command()}
             cat "$versions_file"
             test -s "$versions_file"
             sync
