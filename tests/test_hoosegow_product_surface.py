@@ -415,6 +415,9 @@ def test_hoosegow_shell_has_clear_empty_and_error_states():
     assert "convertEol: false" in app_js
     assert "terminal.value?._core?._renderService?.dimensions?.css?.cell" in app_js
     assert "if (terminalReplayMuted.value) return;" in app_js
+    assert "isTerminalQueryResponse(data)" in app_js
+    assert "terminal_query_response: true" in app_js
+    assert "const csiResponse = /^\\x1b\\[(?:[?>]?[0-9;]*)[cRt]$/;" in app_js
     assert "await writeTerminalReplay(record.transcript)" in app_js
     assert "if (terminalReplayToken.value === replayToken) terminalReplayMuted.value = false;" in app_js
     assert "connection-dot" in app_js

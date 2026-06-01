@@ -1,6 +1,7 @@
 """Flask + socket.io app factory."""
 
 import os
+import re
 import subprocess
 import sys
 import json
@@ -40,8 +41,18 @@ _MAX_SESSION_DAYS = 365
 _TERMINAL_REPLAY_LIMIT_BYTES = 5 * 1024 * 1024
 _TERMINAL_REPLAY_LIMIT_LINES = 10_000
 _TERMINAL_REPLAY_TRUNCATED_MARKER = b"\r\n[Hoosegow replay truncated]\r\n"
+_TERMINAL_CSI_QUERY_RESPONSE_RE = re.compile(r"^\x1b\[(?:[?>]?[0-9;]*)[cRt]$")
+_TERMINAL_OSC_COLOR_RESPONSE_RE = re.compile(
+    r"^\x1b\](?:4;\d+|1[012]);(?:rgb:[0-9a-fA-F/]+|#[0-9a-fA-F]{6})(?:\x07|\x1b\\)$"
+)
 _SERVER_LOG_MAX_BYTES = 10 * 1024 * 1024
 _SERVER_LOG_BACKUPS = 5
+
+
+def _is_terminal_query_response(data):
+    if not isinstance(data, str) or not data or len(data) > 256:
+        return False
+    return bool(_TERMINAL_CSI_QUERY_RESPONSE_RE.match(data) or _TERMINAL_OSC_COLOR_RESPONSE_RE.match(data))
 
 
 def _rotate_log_if_needed(path, *, max_bytes=_SERVER_LOG_MAX_BYTES, backups=_SERVER_LOG_BACKUPS):
@@ -1133,6 +1144,11 @@ def create_app(
             return _hoosegow_terminal_error_payload(SandboxServiceError("Terminal input must be text."))
         try:
             session_info = _hoosegow_terminal_session(terminal_id)
+            if payload.get("terminal_query_response") and _is_terminal_query_response(data):
+                status = session_info["driver"].status(terminal_id)
+                foreground = status.get("foreground") if isinstance(status, dict) else {}
+                if not isinstance(foreground, dict) or not foreground.get("busy"):
+                    return {"ok": True, "dropped": True}
             session_info["driver"].write(terminal_id, data)
             return {"ok": True}
         except (SandboxServiceError, PtyDriverError) as exc:

@@ -369,6 +369,13 @@ createApp({
       return new TextDecoder().decode(bytes);
     }
 
+    function isTerminalQueryResponse(data) {
+      if (!data || data.length > 256) return false;
+      const csiResponse = /^\x1b\[(?:[?>]?[0-9;]*)[cRt]$/;
+      const oscColorResponse = /^\x1b\](?:4;\d+|1[012]);(?:rgb:[0-9a-fA-F/]+|#[0-9a-fA-F]{6})(?:\x07|\x1b\\)$/;
+      return csiResponse.test(data) || oscColorResponse.test(data);
+    }
+
     function nextSandboxName() {
       const used = new Set(sandboxes.map((sandbox) => sandbox.slug));
       if (!used.has('sandbox')) return 'sandbox';
@@ -474,6 +481,14 @@ createApp({
       terminalDataDisposable.value = terminal.value.onData((data) => {
         if (terminalReplayMuted.value) return;
         if (!activeTerminal.id || activeTerminal.status !== 'running') return;
+        if (isTerminalQueryResponse(data)) {
+          socket.emit('sandbox:terminal:input', {
+            terminal_id: activeTerminal.id,
+            data,
+            terminal_query_response: true,
+          });
+          return;
+        }
         socket.emit('sandbox:terminal:input', { terminal_id: activeTerminal.id, data });
       });
       terminalResizeDisposable.value = terminal.value.onResize(({ cols, rows }) => {

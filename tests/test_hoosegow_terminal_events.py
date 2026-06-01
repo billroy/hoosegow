@@ -41,6 +41,33 @@ class FakePtyDriver:
         return {"event": "ok"}
 
 
+class IdleShellPtyDriver(FakePtyDriver):
+    writes = []
+
+    def write(self, terminal_id, data):
+        self.__class__.writes.append((terminal_id, data))
+        return {"event": "ok"}
+
+    def status(self, terminal_id):
+        payload = super().status(terminal_id)
+        payload["foreground"] = {
+            "supported": True,
+            "busy": False,
+            "pgrp": 1234,
+            "pid": 1234,
+            "command": "/bin/bash -l",
+        }
+        return payload
+
+
+class RecordingBusyPtyDriver(FakePtyDriver):
+    writes = []
+
+    def write(self, terminal_id, data):
+        self.__class__.writes.append((terminal_id, data))
+        return {"event": "ok"}
+
+
 class ReplayPtyDriver(FakePtyDriver):
     polled = set()
     output = b"one\ntwo\nthree\nfour\n"
@@ -95,6 +122,78 @@ def test_hoosegow_terminal_limit_rejects_extra_sessions(tmp_path, monkeypatch):
     assert first["ok"] is True
     assert second["ok"] is False
     assert "Terminal limit reached" in second["error"]
+
+
+def test_generated_terminal_query_response_is_dropped_at_idle_shell(tmp_path, monkeypatch):
+    IdleShellPtyDriver.writes = []
+    monkeypatch.setattr("server.app.PtyDriver", IdleShellPtyDriver)
+    app = create_app(
+        str(tmp_path),
+        no_browser=True,
+        global_dir=str(tmp_path / "state"),
+        start_without_project=True,
+    )
+    _running_sandbox(app, tmp_path)
+    client = socketio.test_client(app)
+    opened = client.emit(
+        "sandbox:terminal:open",
+        {"sandbox_id": "demo", "cols": 80, "rows": 24},
+        callback=True,
+    )
+
+    terminal_id = opened["terminal"]["id"]
+    dropped = client.emit(
+        "sandbox:terminal:input",
+        {
+            "terminal_id": terminal_id,
+            "data": "\x1b[>0;276;0c",
+            "terminal_query_response": True,
+        },
+        callback=True,
+    )
+    typed = client.emit(
+        "sandbox:terminal:input",
+        {"terminal_id": terminal_id, "data": "echo ok\n"},
+        callback=True,
+    )
+
+    client.disconnect()
+    assert dropped == {"ok": True, "dropped": True}
+    assert typed == {"ok": True}
+    assert IdleShellPtyDriver.writes == [(terminal_id, "echo ok\n")]
+
+
+def test_generated_terminal_query_response_is_forwarded_to_busy_program(tmp_path, monkeypatch):
+    RecordingBusyPtyDriver.writes = []
+    monkeypatch.setattr("server.app.PtyDriver", RecordingBusyPtyDriver)
+    app = create_app(
+        str(tmp_path),
+        no_browser=True,
+        global_dir=str(tmp_path / "state"),
+        start_without_project=True,
+    )
+    _running_sandbox(app, tmp_path)
+    client = socketio.test_client(app)
+    opened = client.emit(
+        "sandbox:terminal:open",
+        {"sandbox_id": "demo", "cols": 80, "rows": 24},
+        callback=True,
+    )
+
+    terminal_id = opened["terminal"]["id"]
+    response = client.emit(
+        "sandbox:terminal:input",
+        {
+            "terminal_id": terminal_id,
+            "data": "\x1b[>0;276;0c",
+            "terminal_query_response": True,
+        },
+        callback=True,
+    )
+
+    client.disconnect()
+    assert response == {"ok": True}
+    assert RecordingBusyPtyDriver.writes == [(terminal_id, "\x1b[>0;276;0c")]
 
 
 def test_hoosegow_terminal_limit_allows_default_32_sessions(tmp_path, monkeypatch):
