@@ -69,15 +69,22 @@ def test_prepare_base_runs_bullpen_style_steps_and_cleans_prepare_sandbox(tmp_pa
         if label == "Installing OS packages":
             assert "tmux" in command
             assert "nano" in command
+            assert "netcat-openbsd" in command
         if label == "Installing agent CLIs":
             assert "@anthropic-ai/claude-code" in command
             assert "@openai/codex" in command
             assert "@google/gemini-cli" in command
             assert "opencode-ai" in command
         if label == "Verifying prepared base":
+            assert "command -v nc" in command
+            assert "hoosegow-netcat-ok" in command
             assert "codex --version" in command
             assert "gemini --version" in command
             assert "opencode --version" in command
+        if label == "Validating prepared base snapshot":
+            assert "command -v nc" in command
+            assert "hoosegow-netcat-ok" in command
+            assert "codex --version" in command
         return SimpleNamespace(stdout_text="", stderr_text="", returncode=0)
 
     monkeypatch.setattr(hoosegow_base, "run_logged_sandbox_shell", fake_run)

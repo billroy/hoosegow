@@ -202,7 +202,7 @@ The base includes the shared pieces Hoosegow expects inside each sandbox:
 
 - Python and the Hoosegow PTY controller
 - Node/npm tooling
-- git, gh, nano, ripgrep, tmux, and common CLI dependencies
+- git, gh, nano, netcat (`nc`), ripgrep, tmux, and common CLI dependencies
 - Claude Code, Codex, Gemini, and opencode CLIs installed globally
 - Bullpen-derived file-descriptor, network-cap, CA, Codex auth, and Claude IPv6
   workarounds
