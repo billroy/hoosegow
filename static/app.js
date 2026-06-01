@@ -123,11 +123,14 @@ createApp({
     const terminalRef = ref(null);
     const terminal = ref(null);
     const terminalDataDisposable = ref(null);
+    const terminalBellDisposable = ref(null);
     const terminalResizeDisposable = ref(null);
     const terminalResizeObserver = ref(null);
     const terminalFitTimer = ref(null);
     const terminalReplayMuted = ref(false);
     const terminalReplayToken = ref(0);
+    const terminalBellContext = ref(null);
+    const terminalBellLastAt = ref(0);
     const terminalTextDecoders = new Map();
     const mainMenuOpen = ref(false);
     const sandboxMenuOpen = ref(false);
@@ -461,6 +464,59 @@ createApp({
       terminalFitTimer.value = window.setTimeout(() => fitTerminal(), 50);
     }
 
+    function terminalAudioContext() {
+      if (terminalBellContext.value) return terminalBellContext.value;
+      const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextCtor) return null;
+      terminalBellContext.value = new AudioContextCtor();
+      return terminalBellContext.value;
+    }
+
+    function unlockTerminalBellAudio() {
+      const context = terminalAudioContext();
+      if (!context || context.state !== 'suspended') return;
+      context.resume().catch(() => {});
+    }
+
+    function playTerminalBellTone(context) {
+      try {
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        const start = context.currentTime;
+        const stop = start + 0.09;
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(880, start);
+        oscillator.frequency.exponentialRampToValueAtTime(660, stop);
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(0.08, start + 0.012);
+        gain.gain.exponentialRampToValueAtTime(0.0001, stop);
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+        oscillator.start(start);
+        oscillator.stop(stop);
+        oscillator.onended = () => {
+          oscillator.disconnect();
+          gain.disconnect();
+        };
+      } catch (_error) {
+        // Ignore browsers that expose Web Audio but refuse playback.
+      }
+    }
+
+    function synthesizeTerminalBell() {
+      if (terminalReplayMuted.value) return;
+      const now = window.performance?.now?.() ?? Date.now();
+      if (now - terminalBellLastAt.value < 70) return;
+      terminalBellLastAt.value = now;
+      const context = terminalAudioContext();
+      if (!context) return;
+      if (context.state === 'suspended') {
+        context.resume().then(() => playTerminalBellTone(context)).catch(() => {});
+        return;
+      }
+      playTerminalBellTone(context);
+    }
+
     async function ensureTerminal() {
       if (!terminalRef.value || terminal.value) return;
       if (!window.Terminal) {
@@ -479,6 +535,7 @@ createApp({
       });
       terminal.value.open(terminalRef.value);
       terminalDataDisposable.value = terminal.value.onData((data) => {
+        unlockTerminalBellAudio();
         if (terminalReplayMuted.value) return;
         if (!activeTerminal.id || activeTerminal.status !== 'running') return;
         if (isTerminalQueryResponse(data)) {
@@ -491,6 +548,7 @@ createApp({
         }
         socket.emit('sandbox:terminal:input', { terminal_id: activeTerminal.id, data });
       });
+      terminalBellDisposable.value = terminal.value.onBell(() => synthesizeTerminalBell());
       terminalResizeDisposable.value = terminal.value.onResize(({ cols, rows }) => {
         if (!activeTerminal.id || activeTerminal.status !== 'running') return;
         socket.emit('sandbox:terminal:resize', { terminal_id: activeTerminal.id, cols, rows });
@@ -541,6 +599,10 @@ createApp({
       if (terminalDataDisposable.value) {
         terminalDataDisposable.value.dispose();
         terminalDataDisposable.value = null;
+      }
+      if (terminalBellDisposable.value) {
+        terminalBellDisposable.value.dispose();
+        terminalBellDisposable.value = null;
       }
       if (terminalResizeDisposable.value) {
         terminalResizeDisposable.value.dispose();

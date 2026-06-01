@@ -412,6 +412,12 @@ def test_hoosegow_shell_has_clear_empty_and_error_states():
     assert "silent: true" in app_js
     assert "terminalReplayMuted" in app_js
     assert "terminalReplayToken" in app_js
+    assert "terminalBellContext" in app_js
+    assert "terminal.value.onBell(() => synthesizeTerminalBell())" in app_js
+    assert "window.AudioContext || window.webkitAudioContext" in app_js
+    assert "oscillator.frequency.setValueAtTime(880, start)" in app_js
+    assert "gain.gain.exponentialRampToValueAtTime(0.08, start + 0.012)" in app_js
+    assert "unlockTerminalBellAudio();" in app_js
     assert "convertEol: false" in app_js
     assert "terminal.value?._core?._renderService?.dimensions?.css?.cell" in app_js
     assert "if (terminalReplayMuted.value) return;" in app_js
