@@ -1,5 +1,6 @@
 """Flask + socket.io app factory."""
 
+import atexit
 import os
 import re
 import subprocess
@@ -24,6 +25,7 @@ from flask import (
 from flask_socketio import SocketIO, join_room
 
 from server import auth
+from server.local_pty import LocalPtyDriver, LocalPtyError
 from server import base as hoosegow_base
 from server.pty_driver import PtyDriver, PtyDriverError
 from server.sandboxes import SandboxService, SandboxServiceError, browse_roots_from_env
@@ -335,11 +337,19 @@ def create_app(
     app.config["terminal_manager"] = None
     app.config["hoosegow_terminals"] = {}
     app.config["hoosegow_terminal_numbers"] = {}
+    app.config["hoosegow_local_pty_driver"] = LocalPtyDriver()
     app.config["hoosegow_terminals_lock"] = threading.RLock()
     app.config["hoosegow_terminal_limit"] = max(
         1,
         _safe_int(terminal_limit or os.environ.get("HOOSEGOW_TERMINAL_LIMIT", ""), 32),
     )
+
+    def _shutdown_local_pty_driver():
+        close_all = getattr(app.config.get("hoosegow_local_pty_driver"), "close_all", None)
+        if callable(close_all):
+            close_all()
+
+    atexit.register(_shutdown_local_pty_driver)
 
     app.config["host"] = host
     app.config["port"] = port
@@ -471,7 +481,9 @@ def create_app(
     def _hoosegow_terminal_payload(session_info):
         return {
             "id": session_info.get("id"),
+            "kind": session_info.get("kind") or "sandbox",
             "sandbox_id": session_info.get("sandbox_id"),
+            "label": session_info.get("label"),
             "number": session_info.get("number"),
             "cwd": session_info.get("cwd") or "/workspace",
             "pid": session_info.get("pid"),
@@ -547,7 +559,15 @@ def create_app(
             return sum(
                 1
                 for session_info in app.config["hoosegow_terminals"].values()
-                if session_info.get("sandbox_id") == sandbox_id
+                if session_info.get("kind", "sandbox") == "sandbox" and session_info.get("sandbox_id") == sandbox_id
+            )
+
+    def _hoosegow_local_terminal_count():
+        with app.config["hoosegow_terminals_lock"]:
+            return sum(
+                1
+                for session_info in app.config["hoosegow_terminals"].values()
+                if session_info.get("kind") == "local"
             )
 
     def _base_prepare_payload(*, include_logs=True):
@@ -574,7 +594,7 @@ def create_app(
                 since = int(session_info.get("seq") or 0)
             try:
                 payload = driver.poll(terminal_id, since=since, timeout=1.0)
-            except PtyDriverError as exc:
+            except (PtyDriverError, LocalPtyError) as exc:
                 socketio.emit(
                     "sandbox:terminal:error",
                     {"terminal_id": terminal_id, "error": str(exc)},
@@ -598,10 +618,11 @@ def create_app(
             for event in events:
                 event_name = event.get("event")
                 if event_name == "output":
-                    _record_hoosegow_terminal_output(terminal_id, event.get("data") or "")
+                    data_b64 = event.get("data") or ""
+                    _record_hoosegow_terminal_output(terminal_id, data_b64)
                     socketio.emit(
                         "sandbox:terminal:output",
-                        {"terminal_id": terminal_id, "data": event.get("data") or ""},
+                        {"terminal_id": terminal_id, "data": data_b64},
                         to=_hoosegow_terminal_room(terminal_id),
                     )
                 elif event_name == "exit":
@@ -1061,7 +1082,9 @@ def create_app(
                 app.config["hoosegow_terminal_numbers"][manifest.slug] = terminal_number
                 app.config["hoosegow_terminals"][terminal_id] = {
                     "id": terminal_id,
+                    "kind": "sandbox",
                     "sandbox_id": manifest.slug,
+                    "label": payload.get("label") or "shell",
                     "number": terminal_number,
                     "driver": driver,
                     "clients": {request.sid},
@@ -1082,10 +1105,68 @@ def create_app(
                 "ok": True,
                 "terminal": _hoosegow_terminal_payload(session_info),
             }
-        except (SandboxServiceError, ValidationError, PtyDriverError, ValueError) as exc:
+        except (SandboxServiceError, ValidationError, PtyDriverError, LocalPtyError, ValueError) as exc:
             _log_socket_event("sandbox:terminal:open", sandbox_id=slug, ok=False, error=exc)
             socketio.emit("sandbox:terminal:error", {"sandbox_id": slug, "error": str(exc)}, to=request.sid)
             return _hoosegow_terminal_error_payload(exc)
+
+    @socketio.on("terminal:local:open")
+    def hoosegow_socket_open_local_terminal(payload):
+        payload = payload or {}
+        try:
+            terminal_limit_value = int(app.config.get("hoosegow_terminal_limit") or 32)
+            if _hoosegow_local_terminal_count() >= terminal_limit_value:
+                raise SandboxServiceError(
+                    f"Local terminal limit reached ({terminal_limit_value}). Close a terminal before opening another."
+                )
+            cols = max(20, min(300, int(payload.get("cols") or 100)))
+            rows = max(5, min(100, int(payload.get("rows") or 30)))
+            cwd = os.path.abspath(os.path.expanduser(str(payload.get("cwd") or workspace or os.getcwd())))
+            shell = os.path.abspath(os.path.expanduser(str(payload.get("shell") or os.environ.get("SHELL") or "/bin/sh")))
+            terminal_id = f"local-{uuid.uuid4().hex[:12]}"
+            driver = app.config["hoosegow_local_pty_driver"]
+            opened = driver.open(terminal_id, cwd=cwd, shell=shell, cols=cols, rows=rows)
+            with app.config["hoosegow_terminals_lock"]:
+                terminal_number = int(app.config["hoosegow_terminal_numbers"].get("local", 0)) + 1
+                app.config["hoosegow_terminal_numbers"]["local"] = terminal_number
+                app.config["hoosegow_terminals"][terminal_id] = {
+                    "id": terminal_id,
+                    "kind": "local",
+                    "sandbox_id": None,
+                    "label": payload.get("label") or "shell",
+                    "number": terminal_number,
+                    "driver": driver,
+                    "clients": {request.sid},
+                    "seq": 0,
+                    "alive": True,
+                    "cwd": opened.get("cwd") or cwd,
+                    "pid": opened.get("pid"),
+                    "status": "running",
+                    "exit_code": None,
+                    "replay": bytearray(),
+                    "replay_truncated": False,
+                }
+            join_room(_hoosegow_terminal_room(terminal_id))
+            socketio.start_background_task(_hoosegow_terminal_poll, terminal_id)
+            session_info = _hoosegow_terminal_session(terminal_id)
+            _log_socket_event("terminal:local:open", terminal_id=terminal_id, ok=True)
+            return {
+                "ok": True,
+                "terminal": _hoosegow_terminal_payload(session_info),
+            }
+        except (SandboxServiceError, LocalPtyError, ValueError) as exc:
+            _log_socket_event("terminal:local:open", ok=False, error=exc)
+            socketio.emit("sandbox:terminal:error", {"error": str(exc)}, to=request.sid)
+            return _hoosegow_terminal_error_payload(exc)
+
+    @socketio.on("terminal:list")
+    def hoosegow_socket_list_all_terminals(_payload=None):
+        with app.config["hoosegow_terminals_lock"]:
+            terminal_payloads = [
+                _hoosegow_terminal_payload(session_info)
+                for session_info in app.config["hoosegow_terminals"].values()
+            ]
+        return {"ok": True, "terminals": terminal_payloads}
 
     @socketio.on("sandbox:terminal:list")
     def hoosegow_socket_list_terminals(payload):
@@ -1131,7 +1212,7 @@ def create_app(
             session_info["status"] = status.get("status") or session_info.get("status") or "running"
             session_info["exit_code"] = status.get("exit_code")
             return {"ok": True, "status": status}
-        except (SandboxServiceError, PtyDriverError) as exc:
+        except (SandboxServiceError, PtyDriverError, LocalPtyError) as exc:
             socketio.emit("sandbox:terminal:error", {"terminal_id": terminal_id, "error": str(exc)}, to=request.sid)
             return _hoosegow_terminal_error_payload(exc)
 
@@ -1151,7 +1232,7 @@ def create_app(
                     return {"ok": True, "dropped": True}
             session_info["driver"].write(terminal_id, data)
             return {"ok": True}
-        except (SandboxServiceError, PtyDriverError) as exc:
+        except (SandboxServiceError, PtyDriverError, LocalPtyError) as exc:
             socketio.emit("sandbox:terminal:error", {"terminal_id": terminal_id, "error": str(exc)}, to=request.sid)
             return _hoosegow_terminal_error_payload(exc)
 
@@ -1165,7 +1246,7 @@ def create_app(
             session_info = _hoosegow_terminal_session(terminal_id)
             session_info["driver"].resize(terminal_id, cols=cols, rows=rows)
             return {"ok": True}
-        except (SandboxServiceError, PtyDriverError, ValueError) as exc:
+        except (SandboxServiceError, PtyDriverError, LocalPtyError, ValueError) as exc:
             socketio.emit("sandbox:terminal:error", {"terminal_id": terminal_id, "error": str(exc)}, to=request.sid)
             return _hoosegow_terminal_error_payload(exc)
 
@@ -1180,7 +1261,7 @@ def create_app(
             _close_hoosegow_terminal(terminal_id)
             _log_socket_event("sandbox:terminal:close", sandbox_id=sandbox_id, terminal_id=terminal_id, ok=True)
             return {"ok": True}
-        except (SandboxServiceError, PtyDriverError) as exc:
+        except (SandboxServiceError, PtyDriverError, LocalPtyError) as exc:
             _log_socket_event("sandbox:terminal:close", terminal_id=terminal_id, ok=False, error=exc)
             socketio.emit("sandbox:terminal:error", {"terminal_id": terminal_id, "error": str(exc)}, to=request.sid)
             return _hoosegow_terminal_error_payload(exc)

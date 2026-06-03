@@ -2,6 +2,7 @@ import base64
 import time
 
 from server.app import create_app, socketio
+from server.local_pty import LocalPtyError
 from server.pty_driver import PtyDriverError
 
 
@@ -83,6 +84,38 @@ class ReplayPtyDriver(FakePtyDriver):
         raise PtyDriverError("fake poll stopped")
 
 
+class FakeLocalPtyDriver:
+    def __init__(self):
+        self.opened = []
+        self.closed = []
+
+    def open(self, terminal_id, *, cwd, shell, cols=100, rows=30):
+        self.opened.append((terminal_id, cwd, shell, cols, rows))
+        return {"event": "opened", "id": terminal_id, "cwd": cwd, "pid": 2468}
+
+    def poll(self, terminal_id, *, since, timeout=1.0):
+        raise LocalPtyError("fake local poll stopped")
+
+    def write(self, terminal_id, data):
+        return {"event": "ok"}
+
+    def resize(self, terminal_id, *, cols, rows):
+        return {"event": "ok"}
+
+    def status(self, terminal_id):
+        return {
+            "event": "status",
+            "id": terminal_id,
+            "status": "running",
+            "exit_code": None,
+            "foreground": {"busy": False},
+        }
+
+    def close(self, terminal_id):
+        self.closed.append(terminal_id)
+        return {"event": "ok"}
+
+
 def _running_sandbox(app, tmp_path):
     workspace = tmp_path / "project"
     workspace.mkdir()
@@ -92,6 +125,151 @@ def _running_sandbox(app, tmp_path):
     manifest = service.store.get("demo")
     manifest.last_status = "running"
     service.store.save(manifest)
+
+
+def test_hoosegow_local_terminal_opens_and_lists(tmp_path, monkeypatch):
+    monkeypatch.setattr("server.app.LocalPtyDriver", FakeLocalPtyDriver)
+    app = create_app(
+        str(tmp_path),
+        no_browser=True,
+        global_dir=str(tmp_path / "state"),
+        start_without_project=True,
+    )
+    client = socketio.test_client(app)
+    client.get_received()
+
+    opened = client.emit(
+        "terminal:local:open",
+        {"cols": 80, "rows": 24},
+        callback=True,
+    )
+    listed = client.emit("terminal:list", {}, callback=True)
+
+    assert opened["ok"] is True
+    assert opened["terminal"]["kind"] == "local"
+    assert opened["terminal"]["label"] == "shell"
+    assert opened["terminal"]["sandbox_id"] is None
+    assert opened["terminal"]["cwd"] == str(tmp_path)
+    assert [item["id"] for item in listed["terminals"]] == [opened["terminal"]["id"]]
+    assert listed["terminals"][0]["kind"] == "local"
+    assert listed["terminals"][0]["number"] == 1
+
+
+def test_hoosegow_local_terminal_numbers_do_not_renumber_after_close(tmp_path, monkeypatch):
+    monkeypatch.setattr("server.app.LocalPtyDriver", FakeLocalPtyDriver)
+    app = create_app(
+        str(tmp_path),
+        no_browser=True,
+        global_dir=str(tmp_path / "state"),
+        start_without_project=True,
+    )
+    client = socketio.test_client(app)
+    client.get_received()
+
+    first = client.emit("terminal:local:open", {"cols": 80, "rows": 24}, callback=True)
+    second = client.emit("terminal:local:open", {"cols": 80, "rows": 24}, callback=True)
+    client.emit("sandbox:terminal:close", {"terminal_id": first["terminal"]["id"]}, callback=True)
+    third = client.emit("terminal:local:open", {"cols": 80, "rows": 24}, callback=True)
+    listed = client.emit("terminal:list", {}, callback=True)
+
+    assert first["terminal"]["number"] == 1
+    assert second["terminal"]["number"] == 2
+    assert third["terminal"]["number"] == 3
+    assert [terminal["number"] for terminal in listed["terminals"]] == [2, 3]
+
+
+def test_hoosegow_local_terminal_limit_rejects_extra_sessions_and_close_frees_slot(tmp_path, monkeypatch):
+    monkeypatch.setattr("server.app.LocalPtyDriver", FakeLocalPtyDriver)
+    app = create_app(
+        str(tmp_path),
+        no_browser=True,
+        global_dir=str(tmp_path / "state"),
+        start_without_project=True,
+        terminal_limit=1,
+    )
+    client = socketio.test_client(app)
+    client.get_received()
+
+    first = client.emit("terminal:local:open", {"cols": 80, "rows": 24}, callback=True)
+    blocked = client.emit("terminal:local:open", {"cols": 80, "rows": 24}, callback=True)
+    closed = client.emit("sandbox:terminal:close", {"terminal_id": first["terminal"]["id"]}, callback=True)
+    reopened = client.emit("terminal:local:open", {"cols": 80, "rows": 24}, callback=True)
+    listed = client.emit("terminal:list", {}, callback=True)
+
+    client.disconnect()
+    local_driver = app.config["hoosegow_local_pty_driver"]
+    assert first["ok"] is True
+    assert blocked["ok"] is False
+    assert "Local terminal limit reached" in blocked["error"]
+    assert closed["ok"] is True
+    assert local_driver.closed == [first["terminal"]["id"]]
+    assert reopened["ok"] is True
+    assert reopened["terminal"]["number"] == 2
+    assert [terminal["number"] for terminal in listed["terminals"]] == [2]
+
+
+def test_hoosegow_terminal_list_keeps_local_and_sandbox_numbering_separate(tmp_path, monkeypatch):
+    monkeypatch.setattr("server.app.LocalPtyDriver", FakeLocalPtyDriver)
+    monkeypatch.setattr("server.app.PtyDriver", FakePtyDriver)
+    app = create_app(
+        str(tmp_path),
+        no_browser=True,
+        global_dir=str(tmp_path / "state"),
+        start_without_project=True,
+    )
+    _running_sandbox(app, tmp_path)
+    client = socketio.test_client(app)
+    client.get_received()
+
+    local = client.emit("terminal:local:open", {"cols": 80, "rows": 24}, callback=True)
+    sandbox = client.emit(
+        "sandbox:terminal:open",
+        {"sandbox_id": "demo", "cols": 80, "rows": 24},
+        callback=True,
+    )
+    all_listed = client.emit("terminal:list", {}, callback=True)
+    sandbox_listed = client.emit("sandbox:terminal:list", {"sandbox_id": "demo"}, callback=True)
+
+    client.disconnect()
+    assert local["ok"] is True
+    assert sandbox["ok"] is True
+    assert local["terminal"]["kind"] == "local"
+    assert sandbox["terminal"]["kind"] == "sandbox"
+    assert local["terminal"]["number"] == 1
+    assert sandbox["terminal"]["number"] == 1
+    assert [(terminal["kind"], terminal["number"]) for terminal in all_listed["terminals"]] == [
+        ("local", 1),
+        ("sandbox", 1),
+    ]
+    assert [terminal["kind"] for terminal in sandbox_listed["terminals"]] == ["sandbox"]
+
+
+def test_hoosegow_local_terminal_replay_preserves_driver_bytes(tmp_path, monkeypatch):
+    monkeypatch.setattr("server.app.LocalPtyDriver", FakeLocalPtyDriver)
+    app = create_app(
+        str(tmp_path),
+        no_browser=True,
+        global_dir=str(tmp_path / "state"),
+        start_without_project=True,
+    )
+    client = socketio.test_client(app)
+    client.get_received()
+
+    opened = client.emit("terminal:local:open", {"cols": 80, "rows": 24}, callback=True)
+    terminal_id = opened["terminal"]["id"]
+    raw_replay = (
+        b"%                                                                              \r \r\r"
+        b"bill@Blackbird hoosegow % "
+    )
+    with app.config["hoosegow_terminals_lock"]:
+        app.config["hoosegow_terminals"][terminal_id]["replay"].extend(raw_replay)
+
+    joined = client.emit("sandbox:terminal:join", {"terminal_id": terminal_id}, callback=True)
+    replay = base64.b64decode(joined["replay"]["data"])
+
+    client.disconnect()
+    assert joined["ok"] is True
+    assert replay == raw_replay
 
 
 def test_hoosegow_terminal_limit_rejects_extra_sessions(tmp_path, monkeypatch):
