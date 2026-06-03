@@ -74,7 +74,7 @@ def test_terminal_tabs_live_inside_selected_group_workspace():
 
     assert "class=\"terminal-stack\"" in main
     assert "v-for=\"term in terminals\"" in main
-    assert ":ref=\"(element) => setTerminalHost(term.id, element)\"" in main
+    assert ":ref=\"terminalHostRef(term.id)\"" in main
     assert "v-for=\"term in localTerminals\"" not in main
     assert "v-for=\"term in terminalsForSandbox" not in main
 
@@ -145,8 +145,9 @@ def test_terminal_switching_preserves_renderer_instead_of_replaying_transcript()
     assert "const terminalHosts = new Map();" in app_js
     assert "const terminalRenderers = new Map();" in app_js
     assert "function setTerminalHost(terminalId, element)" in app_js
+    assert "function terminalHostRef(terminalId)" in app_js
     assert "v-for=\"term in terminals\"" in app_js
-    assert ":ref=\"(element) => setTerminalHost(term.id, element)\"" in app_js
+    assert ":ref=\"terminalHostRef(term.id)\"" in app_js
     assert "class=\"terminal-stack\"" in app_js
 
     assert "replaceTranscript: true" in join_body

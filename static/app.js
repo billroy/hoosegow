@@ -481,6 +481,10 @@ createApp({
       }
     }
 
+    function terminalHostRef(terminalId) {
+      return (element) => setTerminalHost(terminalId, element);
+    }
+
     function terminalCellSize(anchor = activeTerminalHost()) {
       const renderedCell = terminal.value?._core?._renderService?.dimensions?.css?.cell;
       if (renderedCell?.width > 0 && renderedCell?.height > 0) {
@@ -1439,6 +1443,7 @@ createApp({
       selectLocalGroup,
       selectSandboxGroup,
       setTerminalHost,
+      terminalHostRef,
       selectWorkspacePath,
       sidebarWidth,
       sortedSandboxes,
@@ -1650,12 +1655,12 @@ createApp({
               <div
                 v-for="term in terminals"
                 :key="'terminal-host-' + term.id"
-                :ref="(element) => setTerminalHost(term.id, element)"
+                :ref="terminalHostRef(term.id)"
                 class="terminal-viewport"
                 :class="{ active: term.id === activeTerminal.id }"
               ></div>
             </div>
-            <div v-else class="terminal-placeholder">
+            <div v-if="!terminalVisible" class="terminal-placeholder">
               <div class="terminal-empty">
                 <strong>{{ selectedGroupLabel }}</strong>
                 <small>No shells open in this group.</small>
