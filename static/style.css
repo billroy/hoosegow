@@ -17,8 +17,8 @@
   --primary-text: #ffffff;
   --terminal-bg: #07090c;
   --terminal-panel: #121922;
-  --terminal-tab: #1a2430;
-  --terminal-tab-active: #1d3435;
+  --terminal-control: #1a2430;
+  --terminal-control-active: #1d3435;
   --terminal-line: #344252;
   --terminal-text: #c5d1df;
   --terminal-muted: #7d8c9f;
@@ -47,8 +47,8 @@ html[data-theme="light"] {
   --primary-text: #ffffff;
   --terminal-bg: #f8fafc;
   --terminal-panel: #e8eef6;
-  --terminal-tab: #f3f7fb;
-  --terminal-tab-active: #dbeafe;
+  --terminal-control: #f3f7fb;
+  --terminal-control-active: #dbeafe;
   --terminal-line: #c8d4e0;
   --terminal-text: #17202a;
   --terminal-muted: #667085;
@@ -337,7 +337,7 @@ button:disabled {
   overflow: auto;
   border-right: 1px solid var(--line);
   background: #151a1f;
-  padding: 10px;
+  padding: 8px;
 }
 
 .hoosegow-shell.sidebar-collapsed .sidebar {
@@ -364,12 +364,12 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 28px;
-  margin-bottom: 6px;
+  min-height: 28px;
+  margin-bottom: 10px;
 }
 
 .sidebar-heading h2 {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--muted);
   text-transform: uppercase;
 }
@@ -397,16 +397,114 @@ button:disabled {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 28px;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   width: 100%;
-  min-height: 36px;
-  margin-bottom: 5px;
-  padding: 4px;
+  min-height: 34px;
+  margin-bottom: 4px;
+  padding: 3px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--panel);
   color: var(--text);
   text-align: left;
+}
+
+.shell-group {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.shell-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 28px;
+  padding: 0 2px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.sandbox-shell-group {
+  display: grid;
+  gap: 4px;
+}
+
+.shell-group-row {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  padding: 3px 4px;
+  text-align: left;
+}
+
+.shell-group-row:hover {
+  background: #1e252c;
+}
+
+.shell-group-row.active {
+  border-color: #3d8c84;
+  background: #172526;
+}
+
+.shell-group-main {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.shell-group-main strong,
+.shell-group-main small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell-group-main strong {
+  font-size: 12px;
+}
+
+.shell-group-main small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.row-add-button {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.row-add-button:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.row-add-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.shell-empty {
+  min-height: 30px;
+  padding: 7px 4px;
+  color: var(--subtle);
+  font-size: 12px;
 }
 
 .sandbox-select {
@@ -448,6 +546,11 @@ button:disabled {
   background: var(--green);
 }
 
+.status-dot[data-status="exited"],
+.status-dot[data-status="closed"] {
+  background: var(--amber);
+}
+
 .status-dot[data-status="error"] {
   background: var(--red);
 }
@@ -458,9 +561,7 @@ button:disabled {
 
 .sandbox-main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(42px, auto);
-  align-items: baseline;
-  gap: 8px;
+  gap: 1px;
   min-width: 0;
 }
 
@@ -779,7 +880,7 @@ input:focus {
   flex-direction: column;
   min-height: 0;
   height: 100%;
-  padding: 5px;
+  padding: 4px;
 }
 
 .detail h2 {
@@ -965,17 +1066,17 @@ input:focus {
   flex-direction: column;
   min-height: 0;
   border: 1px solid var(--terminal-line);
-  border-radius: 6px;
+  border-radius: 5px;
   background: var(--terminal-bg);
-  box-shadow: var(--shadow);
   overflow: hidden;
 }
 
 .terminal-tabs {
   display: flex;
-  gap: 5px;
-  min-height: 32px;
-  padding: 3px;
+  align-items: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 3px 4px;
   overflow-x: auto;
   border-bottom: 1px solid var(--terminal-line);
   background: var(--terminal-panel);
@@ -987,12 +1088,13 @@ input:focus {
   align-items: center;
   gap: 6px;
   min-width: 88px;
-  height: 26px;
+  height: 24px;
   padding: 0 3px 0 9px;
   border: 1px solid var(--terminal-line);
-  border-radius: 7px;
-  background: var(--terminal-tab);
+  border-radius: 5px;
+  background: var(--terminal-control);
   color: var(--terminal-text);
+  font-size: 12px;
 }
 
 .terminal-tab.has-status {
@@ -1002,7 +1104,7 @@ input:focus {
 
 .terminal-tab.active {
   border-color: var(--primary);
-  background: var(--terminal-tab-active);
+  background: var(--terminal-control-active);
 }
 
 .terminal-tab > span {
@@ -1020,16 +1122,16 @@ input:focus {
 }
 
 .terminal-tab[data-status="error"] small {
-  color: var(--danger);
+  color: var(--red);
 }
 
 .terminal-tab-close {
   display: grid;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   place-items: center;
   border: 0;
-  border-radius: 5px;
+  border-radius: 4px;
   background: transparent;
   color: var(--terminal-muted);
 }
@@ -1051,24 +1153,20 @@ input:focus {
 .terminal-sidebar-toggle,
 .terminal-tab-add {
   display: grid;
-  flex: 0 0 26px;
-  width: 26px;
-  height: 26px;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
   place-items: center;
   border: 1px dashed var(--terminal-line);
-  border-radius: 7px;
+  border-radius: 5px;
   background: transparent;
   color: var(--terminal-muted);
-}
-
-.terminal-sidebar-toggle {
-  border-style: solid;
 }
 
 .terminal-sidebar-toggle:hover,
 .terminal-tab-add:hover {
   border-color: var(--primary);
-  background: var(--terminal-tab-active);
+  background: var(--terminal-control-active);
   color: var(--text);
 }
 
@@ -1078,14 +1176,25 @@ input:focus {
   height: 14px;
 }
 
-.terminal-viewport {
+.terminal-stack {
   position: relative;
   flex: 1 1 auto;
+  min-height: 0;
+  background-color: var(--terminal-bg);
+}
+
+.terminal-viewport {
+  position: relative;
+  display: none;
   width: 100%;
   min-height: 0;
-  height: auto;
-  padding: 5px;
+  height: 100%;
+  padding: 4px;
   background-color: var(--terminal-bg);
+}
+
+.terminal-viewport.active {
+  display: block;
 }
 
 .terminal-viewport .xterm {
@@ -1099,17 +1208,38 @@ input:focus {
 }
 
 .terminal-placeholder {
-  display: grid;
+  display: flex;
   flex: 1 1 auto;
   min-height: 0;
-  place-items: center;
-  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
   color: var(--terminal-muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-.terminal-placeholder .primary-button {
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+.terminal-empty {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  max-width: 320px;
+  text-align: center;
+}
+
+.terminal-empty strong {
+  color: var(--terminal-text);
+  font-size: 18px;
+}
+
+.terminal-empty small {
+  color: var(--terminal-muted);
+  font-size: 12px;
+}
+
+.terminal-empty .tool-button {
+  margin-top: 4px;
+  height: 32px;
+  border-radius: 6px;
 }
 
 .empty-state {
@@ -1300,6 +1430,7 @@ html[data-theme="light"] .workspace {
 }
 
 html[data-theme="light"] .sandbox-row,
+html[data-theme="light"] .shell-group-row,
 html[data-theme="light"] .metric,
 html[data-theme="light"] .ports-panel,
 html[data-theme="light"] .terminal-surface,
@@ -1311,6 +1442,8 @@ html[data-theme="light"] .modal-panel {
 
 html[data-theme="light"] .sandbox-row:hover,
 html[data-theme="light"] .sandbox-row.active,
+html[data-theme="light"] .shell-group-row:hover,
+html[data-theme="light"] .shell-group-row.active,
 html[data-theme="light"] .picker-row:hover,
 html[data-theme="light"] .terminal-tab {
   background: #eef4f8;

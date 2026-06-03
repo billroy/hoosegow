@@ -61,6 +61,7 @@ createApp({
     const busy = ref(false);
     let clockCheckTimer = null;
     const selectedSlug = ref('');
+    const selectedGroupKind = ref('local');
     const sandboxes = reactive([]);
     const baseStatus = reactive({
       prepared: false,
@@ -114,26 +115,22 @@ createApp({
     });
     const activeTerminal = reactive({
       id: '',
+      kind: '',
       sandbox_id: '',
+      label: '',
       cwd: '',
       status: 'closed',
       exit_code: null,
     });
     const terminals = reactive([]);
-    const terminalRef = ref(null);
     const terminal = ref(null);
-    const terminalDataDisposable = ref(null);
-    const terminalBellDisposable = ref(null);
-    const terminalResizeDisposable = ref(null);
-    const terminalResizeObserver = ref(null);
+    const terminalHosts = new Map();
+    const terminalRenderers = new Map();
     const terminalFitTimer = ref(null);
-    const terminalReplayMuted = ref(false);
-    const terminalReplayToken = ref(0);
     const terminalBellContext = ref(null);
     const terminalBellLastAt = ref(0);
     const terminalTextDecoders = new Map();
     const mainMenuOpen = ref(false);
-    const sandboxMenuOpen = ref(false);
     const sandboxActionMenuSlug = ref('');
     const createModalOpen = ref(false);
     const detailsModalOpen = ref(false);
@@ -151,14 +148,20 @@ createApp({
     const sortedSandboxes = computed(() => [...sandboxes].sort((a, b) => a.slug.localeCompare(b.slug)));
     const basePreparing = computed(() => baseStatus.state === 'preparing');
     const canStartSelected = computed(() => Boolean(selected.value && baseStatus.prepared && !busy.value));
+    const canOpenLocalTerminal = computed(() => Boolean(connected.value && !busy.value));
     const canOpenTerminal = computed(() => Boolean(selected.value && selected.value.last_status === 'running' && !busy.value));
-    const terminalVisible = computed(() => Boolean(
-      selected.value
-      && activeTerminal.id
-      && activeTerminal.sandbox_id === selected.value.slug
-      && activeTerminal.status !== 'closed'
+    const localTerminals = computed(() => terminals.filter((item) => item.kind === 'local'));
+    const selectedGroupTerminals = computed(() => (
+      selectedGroupKind.value === 'local' ? localTerminals.value : terminalsForSandbox(selected.value)
     ));
-    const selectedTerminals = computed(() => terminals.filter((item) => item.sandbox_id === selected.value?.slug));
+    const terminalVisible = computed(() => Boolean(
+      activeTerminal.id
+      && activeTerminal.status !== 'closed'
+      && selectedGroupTerminals.value.some((item) => item.id === activeTerminal.id)
+    ));
+    const selectedGroupLabel = computed(() => (
+      selectedGroupKind.value === 'local' ? 'Local' : (selected.value?.name || selected.value?.slug || 'Sandbox')
+    ));
 
     function setToast(message, tone = 'info') {
       toast.message = message;
@@ -171,7 +174,6 @@ createApp({
 
     function closeMenus() {
       mainMenuOpen.value = false;
-      sandboxMenuOpen.value = false;
       sandboxActionMenuSlug.value = '';
     }
 
@@ -182,21 +184,12 @@ createApp({
 
     function toggleSandboxActionMenu(slug) {
       mainMenuOpen.value = false;
-      sandboxMenuOpen.value = false;
       sandboxActionMenuSlug.value = sandboxActionMenuSlug.value === slug ? '' : slug;
       refreshIcons();
     }
 
     function toggleMainMenu() {
       mainMenuOpen.value = !mainMenuOpen.value;
-      sandboxMenuOpen.value = false;
-      sandboxActionMenuSlug.value = '';
-      refreshIcons();
-    }
-
-    function toggleSandboxMenu() {
-      sandboxMenuOpen.value = !sandboxMenuOpen.value;
-      mainMenuOpen.value = false;
       sandboxActionMenuSlug.value = '';
       refreshIcons();
     }
@@ -338,9 +331,10 @@ createApp({
     }
 
     function applyTerminalTheme() {
-      if (!terminal.value) return;
-      terminal.value.options.theme = currentTerminalTheme();
-      if (terminal.value.rows) terminal.value.refresh(0, terminal.value.rows - 1);
+      for (const renderer of terminalRenderers.values()) {
+        renderer.terminal.options.theme = currentTerminalTheme();
+        if (renderer.terminal.rows) renderer.terminal.refresh(0, renderer.terminal.rows - 1);
+      }
     }
 
     function currentTerminalRecord() {
@@ -349,7 +343,9 @@ createApp({
 
     function syncActiveTerminal(record) {
       activeTerminal.id = record?.id || '';
+      activeTerminal.kind = record?.kind || '';
       activeTerminal.sandbox_id = record?.sandbox_id || '';
+      activeTerminal.label = record?.label || '';
       activeTerminal.cwd = record?.cwd || '';
       activeTerminal.status = record?.status || 'closed';
       activeTerminal.exit_code = record?.exit_code ?? null;
@@ -393,28 +389,47 @@ createApp({
       return /^sandbox(?:-\d+)?$/.test(String(value || '').trim());
     }
 
-    function upsertTerminalRecord(terminalInfo, transcript = '') {
+    function upsertTerminalRecord(terminalInfo, transcript = '', options = {}) {
       let record = terminals.find((item) => item.id === terminalInfo.id);
+      const terminalKind = terminalInfo.kind || (terminalInfo.sandbox_id ? 'sandbox' : 'local');
       if (!record) {
         record = {
           id: terminalInfo.id,
-          sandbox_id: terminalInfo.sandbox_id,
+          kind: terminalKind,
+          sandbox_id: terminalInfo.sandbox_id || '',
+          label: terminalInfo.label || 'shell',
           number: terminalInfo.number ?? null,
-          cwd: terminalInfo.cwd || '/workspace',
+          cwd: terminalInfo.cwd || (terminalKind === 'local' ? '' : '/workspace'),
           status: terminalInfo.status || 'running',
           exit_code: terminalInfo.exit_code ?? null,
           transcript,
         };
         terminals.push(record);
       } else {
-        record.sandbox_id = terminalInfo.sandbox_id;
+        record.kind = terminalKind || record.kind || 'sandbox';
+        record.sandbox_id = terminalInfo.sandbox_id || record.sandbox_id || '';
+        record.label = terminalInfo.label || record.label || 'shell';
         record.number = terminalInfo.number ?? record.number ?? null;
         record.cwd = terminalInfo.cwd || record.cwd || '/workspace';
         record.status = terminalInfo.status || record.status || 'running';
         record.exit_code = terminalInfo.exit_code ?? record.exit_code ?? null;
-        if (!record.transcript && transcript) record.transcript = transcript;
+        if (options.replaceTranscript) {
+          record.transcript = transcript;
+        } else if (!record.transcript && transcript) {
+          record.transcript = transcript;
+        }
       }
       return record;
+    }
+
+    function terminalsForSandbox(sandbox) {
+      return terminals.filter((item) => item.kind === 'sandbox' && item.sandbox_id === sandbox?.slug);
+    }
+
+    function terminalLabel(term) {
+      if (!term) return 'Term ?';
+      if (term.label && term.label !== 'shell') return term.label;
+      return `Term ${term.number || '?'}`;
     }
 
     function terminalStatusLabel(status) {
@@ -423,12 +438,56 @@ createApp({
       return '';
     }
 
-    function terminalCellSize() {
+    function shellCountLabel(count) {
+      if (!count) return 'No open shells';
+      return `${count} open shell${count === 1 ? '' : 's'}`;
+    }
+
+    async function selectLocalGroup() {
+      selectedGroupKind.value = 'local';
+      const first = localTerminals.value[0] || null;
+      if (first) {
+        await focusTerminal(first.id);
+      } else {
+        deactivateTerminal();
+        syncActiveTerminal(null);
+      }
+      refreshIcons();
+    }
+
+    async function selectSandboxGroup(sandbox) {
+      if (!sandbox?.slug) return;
+      selectedGroupKind.value = 'sandbox';
+      selectedSlug.value = sandbox.slug;
+      const first = terminalsForSandbox(sandbox)[0] || null;
+      if (first) {
+        await focusTerminal(first.id);
+      } else {
+        deactivateTerminal();
+        syncActiveTerminal(null);
+      }
+      refreshIcons();
+    }
+
+    function activeTerminalHost() {
+      return terminalHosts.get(activeTerminal.id) || null;
+    }
+
+    function setTerminalHost(terminalId, element) {
+      if (element) {
+        terminalHosts.set(terminalId, element);
+      } else {
+        terminalHosts.delete(terminalId);
+      }
+    }
+
+    function terminalCellSize(anchor = activeTerminalHost()) {
       const renderedCell = terminal.value?._core?._renderService?.dimensions?.css?.cell;
       if (renderedCell?.width > 0 && renderedCell?.height > 0) {
         return { width: renderedCell.width, height: renderedCell.height };
       }
-      if (!terminalRef.value) return null;
+      const probeHost = anchor || document.body;
+      if (!probeHost) return null;
       const probe = document.createElement('span');
       probe.textContent = 'W';
       probe.style.position = 'absolute';
@@ -437,21 +496,38 @@ createApp({
       probe.style.fontFamily = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
       probe.style.fontSize = '12px';
       probe.style.lineHeight = '15px';
-      terminalRef.value.appendChild(probe);
+      probeHost.appendChild(probe);
       const rect = probe.getBoundingClientRect();
       probe.remove();
       if (!rect.width || !rect.height) return null;
       return { width: rect.width, height: rect.height };
     }
 
+    function initialTerminalSize() {
+      if (terminal.value?.cols && terminal.value?.rows) {
+        return { cols: terminal.value.cols, rows: terminal.value.rows };
+      }
+      const surface = document.querySelector('.terminal-surface');
+      const tabs = document.querySelector('.terminal-tabs');
+      const cell = terminalCellSize(document.body);
+      if (!surface || !cell) return { cols: 80, rows: 24 };
+      const width = Math.max(0, surface.clientWidth - 8);
+      const height = Math.max(0, surface.clientHeight - (tabs?.offsetHeight || 30) - 8);
+      return {
+        cols: Math.max(20, Math.floor(width / cell.width)),
+        rows: Math.max(5, Math.floor(height / cell.height)),
+      };
+    }
+
     function fitTerminal() {
       terminalFitTimer.value = null;
-      if (!terminal.value || !terminalRef.value) return;
-      const cell = terminalCellSize();
+      const host = activeTerminalHost();
+      if (!terminal.value || !host) return;
+      const cell = terminalCellSize(host);
       if (!cell) return;
-      const styles = getComputedStyle(terminalRef.value);
-      const width = terminalRef.value.clientWidth - parseFloat(styles.paddingLeft) - parseFloat(styles.paddingRight);
-      const height = terminalRef.value.clientHeight - parseFloat(styles.paddingTop) - parseFloat(styles.paddingBottom);
+      const styles = getComputedStyle(host);
+      const width = host.clientWidth - parseFloat(styles.paddingLeft) - parseFloat(styles.paddingRight);
+      const height = host.clientHeight - parseFloat(styles.paddingTop) - parseFloat(styles.paddingBottom);
       const cols = Math.max(20, Math.floor(width / cell.width));
       const rows = Math.max(5, Math.floor(height / cell.height));
       if (terminal.value.cols !== cols || terminal.value.rows !== rows) {
@@ -503,8 +579,9 @@ createApp({
       }
     }
 
-    function synthesizeTerminalBell() {
-      if (terminalReplayMuted.value) return;
+    function synthesizeTerminalBell(terminalId) {
+      const renderer = terminalRenderers.get(terminalId);
+      if (renderer?.replayMuted) return;
       const now = window.performance?.now?.() ?? Date.now();
       if (now - terminalBellLastAt.value < 70) return;
       terminalBellLastAt.value = now;
@@ -517,13 +594,18 @@ createApp({
       playTerminalBellTone(context);
     }
 
-    async function ensureTerminal() {
-      if (!terminalRef.value || terminal.value) return;
+    async function ensureTerminalRenderer(record, options = {}) {
+      if (!record?.id) return null;
+      await nextTick();
+      const host = terminalHosts.get(record.id);
+      if (!host) return null;
+      const existing = terminalRenderers.get(record.id);
+      if (existing) return existing;
       if (!window.Terminal) {
         setToast('Terminal renderer did not load.', 'error');
-        return;
+        return null;
       }
-      terminal.value = new window.Terminal({
+      const xterm = new window.Terminal({
         convertEol: false,
         cursorBlink: true,
         disableStdin: false,
@@ -533,85 +615,106 @@ createApp({
         scrollback: 8000,
         theme: currentTerminalTheme(),
       });
-      terminal.value.open(terminalRef.value);
-      terminalDataDisposable.value = terminal.value.onData((data) => {
+      const renderer = {
+        terminal: xterm,
+        dataDisposable: null,
+        bellDisposable: null,
+        resizeDisposable: null,
+        resizeObserver: null,
+        replayMuted: false,
+        replayToken: 0,
+      };
+      terminalRenderers.set(record.id, renderer);
+      xterm.open(host);
+      renderer.dataDisposable = xterm.onData((data) => {
         unlockTerminalBellAudio();
-        if (terminalReplayMuted.value) return;
-        if (!activeTerminal.id || activeTerminal.status !== 'running') return;
+        if (renderer.replayMuted) return;
+        const currentRecord = terminals.find((item) => item.id === record.id);
+        if (!currentRecord || currentRecord.status !== 'running') return;
         if (isTerminalQueryResponse(data)) {
           socket.emit('sandbox:terminal:input', {
-            terminal_id: activeTerminal.id,
+            terminal_id: record.id,
             data,
             terminal_query_response: true,
           });
           return;
         }
-        socket.emit('sandbox:terminal:input', { terminal_id: activeTerminal.id, data });
+        socket.emit('sandbox:terminal:input', { terminal_id: record.id, data });
       });
-      terminalBellDisposable.value = terminal.value.onBell(() => synthesizeTerminalBell());
-      terminalResizeDisposable.value = terminal.value.onResize(({ cols, rows }) => {
-        if (!activeTerminal.id || activeTerminal.status !== 'running') return;
-        socket.emit('sandbox:terminal:resize', { terminal_id: activeTerminal.id, cols, rows });
+      renderer.bellDisposable = xterm.onBell(() => synthesizeTerminalBell(record.id));
+      renderer.resizeDisposable = xterm.onResize(({ cols, rows }) => {
+        const currentRecord = terminals.find((item) => item.id === record.id);
+        if (!currentRecord || currentRecord.status !== 'running') return;
+        socket.emit('sandbox:terminal:resize', { terminal_id: record.id, cols, rows });
       });
       if (typeof ResizeObserver !== 'undefined') {
-        terminalResizeObserver.value = new ResizeObserver(() => scheduleTerminalFit());
-        terminalResizeObserver.value.observe(terminalRef.value);
+        renderer.resizeObserver = new ResizeObserver(() => {
+          if (activeTerminal.id === record.id) scheduleTerminalFit();
+        });
+        renderer.resizeObserver.observe(host);
       }
-      window.addEventListener('resize', scheduleTerminalFit);
-      await nextTick();
-      const record = currentTerminalRecord();
-      if (record?.transcript) await writeTerminalReplay(record.transcript);
-      fitTerminal();
-      terminal.value.focus();
+      if (options.replay && record.transcript) {
+        await writeTerminalReplay(record.id, record.transcript);
+      }
+      return renderer;
     }
 
-    function writeTerminalReplay(transcript) {
-      if (!terminal.value || !transcript) return Promise.resolve();
-      const replayTerminal = terminal.value;
-      const replayToken = terminalReplayToken.value + 1;
-      terminalReplayToken.value = replayToken;
-      terminalReplayMuted.value = true;
+    async function ensureTerminal(options = {}) {
+      const record = currentTerminalRecord();
+      if (!record) return;
+      const renderer = await ensureTerminalRenderer(record, { replay: options.replay !== false });
+      if (!renderer) return;
+      terminal.value = renderer.terminal;
+      fitTerminal();
+      renderer.terminal.focus();
+    }
+
+    function writeTerminalReplay(terminalId, transcript) {
+      const renderer = terminalRenderers.get(terminalId);
+      if (!renderer?.terminal || !transcript) return Promise.resolve();
+      const replayTerminal = renderer.terminal;
+      const replayToken = renderer.replayToken + 1;
+      renderer.replayToken = replayToken;
+      renderer.replayMuted = true;
       return new Promise((resolve, reject) => {
         try {
           replayTerminal.write(transcript, () => {
-            if (terminalReplayToken.value === replayToken) terminalReplayMuted.value = false;
+            if (renderer.replayToken === replayToken) renderer.replayMuted = false;
             resolve();
           });
         } catch (error) {
-          if (terminalReplayToken.value === replayToken) terminalReplayMuted.value = false;
+          if (renderer.replayToken === replayToken) renderer.replayMuted = false;
           reject(error);
         }
       });
     }
 
-    function disposeTerminal() {
-      terminalReplayToken.value += 1;
-      terminalReplayMuted.value = false;
-      if (terminalResizeObserver.value) {
-        terminalResizeObserver.value.disconnect();
-        terminalResizeObserver.value = null;
+    function deactivateTerminal() {
+      terminal.value = null;
+      if (terminalFitTimer.value) window.clearTimeout(terminalFitTimer.value);
+      terminalFitTimer.value = null;
+    }
+
+    function disposeTerminal(terminalId) {
+      const id = terminalId || activeTerminal.id;
+      const renderer = terminalRenderers.get(id);
+      if (!renderer) return;
+      renderer.replayToken += 1;
+      renderer.replayMuted = false;
+      renderer.resizeObserver?.disconnect?.();
+      renderer.dataDisposable?.dispose?.();
+      renderer.bellDisposable?.dispose?.();
+      renderer.resizeDisposable?.dispose?.();
+      renderer.terminal?.dispose?.();
+      terminalRenderers.delete(id);
+      if (terminal.value === renderer.terminal) deactivateTerminal();
+    }
+
+    function disposeAllTerminals() {
+      for (const terminalId of Array.from(terminalRenderers.keys())) {
+        disposeTerminal(terminalId);
       }
-      window.removeEventListener('resize', scheduleTerminalFit);
-      if (terminalFitTimer.value) {
-        window.clearTimeout(terminalFitTimer.value);
-        terminalFitTimer.value = null;
-      }
-      if (terminalDataDisposable.value) {
-        terminalDataDisposable.value.dispose();
-        terminalDataDisposable.value = null;
-      }
-      if (terminalBellDisposable.value) {
-        terminalBellDisposable.value.dispose();
-        terminalBellDisposable.value = null;
-      }
-      if (terminalResizeDisposable.value) {
-        terminalResizeDisposable.value.dispose();
-        terminalResizeDisposable.value = null;
-      }
-      if (terminal.value) {
-        terminal.value.dispose();
-        terminal.value = null;
-      }
+      terminalHosts.clear();
     }
 
     function replaceSandboxes(nextSandboxes) {
@@ -624,6 +727,7 @@ createApp({
       if (!selectedSlug.value && sandboxes.length) selectedSlug.value = sandboxes[0].slug;
       if (selectedSlug.value && !sandboxes.some((sandbox) => sandbox.slug === selectedSlug.value)) {
         selectedSlug.value = sandboxes[0]?.slug || '';
+        if (!selectedSlug.value || selectedGroupKind.value === 'sandbox') selectedGroupKind.value = 'local';
       }
       refreshIcons();
     }
@@ -653,17 +757,19 @@ createApp({
       if (!terminalInfo?.id) return null;
       const response = await call('sandbox:terminal:join', { terminal_id: terminalInfo.id });
       const replayText = decodeBase64Replay(response.replay?.data || '');
-      const record = upsertTerminalRecord(response.terminal || terminalInfo, replayText);
+      const record = upsertTerminalRecord(response.terminal || terminalInfo, replayText, { replaceTranscript: true });
       if (options.focus) await focusTerminal(record.id);
       return record;
     }
 
-    async function loadTerminalSessions(sandbox = selected.value) {
-      if (!sandbox?.slug || !connected.value) return;
-      const response = await call('sandbox:terminal:list', { sandbox_id: sandbox.slug });
+    async function loadTerminalSessions() {
+      if (!connected.value) return;
+      const response = await call('terminal:list');
       const liveIds = new Set((response.terminals || []).map((item) => item.id));
       for (let index = terminals.length - 1; index >= 0; index -= 1) {
-        if (terminals[index].sandbox_id === sandbox.slug && !liveIds.has(terminals[index].id)) {
+        if (!liveIds.has(terminals[index].id)) {
+          disposeTerminal(terminals[index].id);
+          terminalTextDecoders.delete(terminals[index].id);
           terminals.splice(index, 1);
         }
       }
@@ -672,13 +778,35 @@ createApp({
         await joinTerminal(terminalInfo, { focus: !focused });
         focused = true;
       }
-      if (!focused && sandbox.last_status === 'running') {
-        await openTerminal(sandbox, { manageBusy: false, manageAction: false, silent: true });
-        return;
-      }
       if (activeTerminal.id && !terminals.some((item) => item.id === activeTerminal.id)) {
         syncActiveTerminal(null);
-        disposeTerminal();
+        deactivateTerminal();
+      }
+    }
+
+    async function openLocalTerminal(options = {}) {
+      if (!connected.value) {
+        setToast('Socket is not connected.', 'error');
+        return;
+      }
+      if (options.manageBusy !== false) busy.value = true;
+      try {
+        await nextTick();
+        const size = initialTerminalSize();
+        const response = await call('terminal:local:open', {
+          cols: size.cols,
+          rows: size.rows,
+        });
+        const record = upsertTerminalRecord(response.terminal, '');
+        await focusTerminal(record.id);
+        await nextTick();
+        await ensureTerminal();
+        if (!options.silent) setToast(`${terminalLabel(record)} opened.`, 'success');
+      } catch (error) {
+        setToast(error.message, 'error');
+      } finally {
+        if (options.manageBusy !== false) busy.value = false;
+        refreshIcons();
       }
     }
 
@@ -890,17 +1018,19 @@ createApp({
       if (options.manageBusy !== false) busy.value = true;
       try {
         if (options.manageAction !== false) setAction(`Opening terminal for ${sandbox.slug}...`, sandbox.slug);
+        await nextTick();
+        const size = initialTerminalSize();
         const response = await call('sandbox:terminal:open', {
           sandbox_id: sandbox.slug,
-          cols: 100,
-          rows: 30,
+          cols: size.cols,
+          rows: size.rows,
         });
         const record = upsertTerminalRecord(response.terminal, '');
         await focusTerminal(record.id);
         await nextTick();
         await ensureTerminal();
         if (!options.silent) {
-          setToast(`Terminal ${selectedTerminals.value.length} opened for ${sandbox.slug}.`, 'success');
+          setToast(`${terminalLabel(record)} opened for ${sandbox.slug}.`, 'success');
         }
       } catch (error) {
         setToast(error.message, 'error');
@@ -914,11 +1044,17 @@ createApp({
     async function focusTerminal(terminalId) {
       const record = terminals.find((item) => item.id === terminalId);
       if (!record) return;
+      if (record.kind === 'local') {
+        selectedGroupKind.value = 'local';
+      } else {
+        selectedGroupKind.value = 'sandbox';
+        selectedSlug.value = record.sandbox_id || selectedSlug.value;
+      }
       if (activeTerminal.id === terminalId) {
+        await ensureTerminal({ replay: false });
         if (terminal.value) terminal.value.focus();
         return;
       }
-      disposeTerminal();
       syncActiveTerminal(record);
       await nextTick();
       await ensureTerminal();
@@ -937,7 +1073,6 @@ createApp({
 
     async function closeTerminal(options = {}) {
       const terminalId = options.terminalId || activeTerminal.id;
-      const selectedSandbox = selected.value;
       if (terminalId && options.remote !== false && !options.force) {
         const foreground = await foregroundProcessForTerminal(terminalId);
         if (foreground) {
@@ -954,25 +1089,18 @@ createApp({
       }
       const index = terminals.findIndex((item) => item.id === terminalId);
       const wasActive = terminalId === activeTerminal.id;
-      const sandboxId = index >= 0 ? terminals[index].sandbox_id : activeTerminal.sandbox_id;
+      disposeTerminal(terminalId);
       if (index >= 0) terminals.splice(index, 1);
-      const shouldAutoReplace = options.autoReplace !== false
-        && sandboxId
-        && sandboxId === selectedSandbox?.slug
-        && selectedSandbox.last_status === 'running'
-        && !terminals.some((item) => item.sandbox_id === sandboxId);
       terminalTextDecoders.delete(terminalId);
       if (wasActive) {
-        disposeTerminal();
-        const nextRecord = terminals.find((item) => item.sandbox_id === sandboxId) || null;
+        const nextRecord = selectedGroupTerminals.value[0] || null;
         syncActiveTerminal(nextRecord);
         if (nextRecord) {
           await nextTick();
           await ensureTerminal();
+        } else {
+          deactivateTerminal();
         }
-      }
-      if (shouldAutoReplace) {
-        await openTerminal(selectedSandbox, { manageBusy: false, manageAction: false, silent: true });
       }
       if (!options.silent) setToast('Terminal closed.', 'info');
       await nextTick();
@@ -984,7 +1112,7 @@ createApp({
         .filter((item) => item.sandbox_id === sandboxId)
         .map((item) => item.id);
       for (const terminalId of ids) {
-        await closeTerminal({ ...options, autoReplace: false, terminalId });
+        await closeTerminal({ ...options, terminalId });
       }
     }
 
@@ -1157,7 +1285,14 @@ createApp({
       loadSandboxes().catch((error) => setToast(error.message, 'error'));
     });
     socket.on('sandbox:destroyed', (payload) => {
-      if (payload?.id === selectedSlug.value) selectedSlug.value = '';
+      if (payload?.id === selectedSlug.value) {
+        selectedSlug.value = '';
+        selectedGroupKind.value = 'local';
+        for (const record of terminals.filter((item) => item.sandbox_id === payload.id)) {
+          disposeTerminal(record.id);
+        }
+        syncActiveTerminal(localTerminals.value[0] || null);
+      }
       loadSandboxes().catch((error) => setToast(error.message, 'error'));
     });
     socket.on('sandbox:terminal:output', (payload) => {
@@ -1167,7 +1302,8 @@ createApp({
         const text = decodeBase64Text(payload.data, payload.terminal_id);
         record.transcript = `${record.transcript || ''}${text}`;
         if (record.transcript.length > 200000) record.transcript = record.transcript.slice(-200000);
-        if (terminal.value && payload.terminal_id === activeTerminal.id) terminal.value.write(text);
+        const renderer = terminalRenderers.get(payload.terminal_id);
+        if (renderer?.terminal && text) renderer.terminal.write(text);
       } catch (error) {
         setToast(error.message, 'error');
       }
@@ -1179,10 +1315,11 @@ createApp({
       record.exit_code = payload.exit_code;
       const text = `\r\n[terminal exited: ${payload.exit_code ?? 0}]\r\n`;
       record.transcript = `${record.transcript || ''}${text}`;
+      const renderer = terminalRenderers.get(payload.terminal_id);
+      if (renderer?.terminal) renderer.terminal.write(text);
       if (payload.terminal_id === activeTerminal.id) {
         activeTerminal.status = 'exited';
         activeTerminal.exit_code = payload.exit_code;
-        if (terminal.value) terminal.value.write(text);
       }
     });
     socket.on('sandbox:terminal:error', (payload) => {
@@ -1191,8 +1328,9 @@ createApp({
       if (payload?.terminal_id === activeTerminal.id) activeTerminal.status = 'error';
       if (payload?.terminal_id && payload.terminal_id !== activeTerminal.id) return;
       const message = payload?.error || 'Terminal error';
-      if (terminal.value && payload?.terminal_id === activeTerminal.id) {
-        terminal.value.write(`\r\n[terminal error: ${message}]\r\n`);
+      const renderer = terminalRenderers.get(payload?.terminal_id);
+      if (renderer?.terminal) {
+        renderer.terminal.write(`\r\n[terminal error: ${message}]\r\n`);
       }
       setToast(message, 'error');
     });
@@ -1223,13 +1361,16 @@ createApp({
 
     onMounted(() => {
       document.addEventListener('click', closeMenusOnOutsideClick);
+      window.addEventListener('resize', scheduleTerminalFit);
       clockCheckTimer = window.setInterval(checkRunningClocks, 5 * 60 * 1000);
       loadAuthState();
     });
 
     onBeforeUnmount(() => {
       document.removeEventListener('click', closeMenusOnOutsideClick);
+      window.removeEventListener('resize', scheduleTerminalFit);
       if (clockCheckTimer) window.clearInterval(clockCheckTimer);
+      disposeAllTerminals();
     });
 
     applyTheme();
@@ -1249,6 +1390,7 @@ createApp({
       sandboxLogs,
       busy,
       canOpenTerminal,
+      canOpenLocalTerminal,
       canStartSelected,
       closeTerminal,
       closeMenus,
@@ -1267,6 +1409,7 @@ createApp({
       loadSandboxLogs,
       loadTerminalSessions,
       openTerminal,
+      openLocalTerminal,
       openCreateModal,
       openDetailsModal,
       openBaseLogs,
@@ -1288,22 +1431,28 @@ createApp({
       runSandboxAction,
       sandboxActionMenuSlug,
       sidebarCollapsed,
-      sandboxMenuOpen,
       selected,
+      selectedGroupKind,
+      selectedGroupLabel,
+      selectedGroupTerminals,
       selectedSlug,
+      selectLocalGroup,
+      selectSandboxGroup,
+      setTerminalHost,
       selectWorkspacePath,
-      selectedTerminals,
       sidebarWidth,
       sortedSandboxes,
-      terminalRef,
       terminalStatusLabel,
+      terminalLabel,
+      shellCountLabel,
       terminals,
+      terminalsForSandbox,
+      localTerminals,
       terminalVisible,
       theme,
       toggleTheme,
       toggleSidebar,
       toggleMainMenu,
-      toggleSandboxMenu,
       toggleSandboxActionMenu,
       toast,
       logout,
@@ -1354,105 +1503,123 @@ createApp({
 
       <aside class="sidebar">
         <div class="sidebar-heading">
-          <h2>Sandboxes ({{ sortedSandboxes.length }})</h2>
+          <h2>Terminal Groups</h2>
           <span class="sidebar-heading-actions">
             <button
               class="icon-button tiny pane-toggle-button"
               type="button"
-              title="Hide sandboxes"
+              title="Hide shells"
               aria-pressed="false"
               @click="toggleSidebar"
             >
               <i data-lucide="panel-left-close"></i>
             </button>
-            <span class="menu-wrap">
-              <button class="icon-button tiny" type="button" title="Sandbox menu" @click.stop="toggleSandboxMenu">
-                <i data-lucide="ellipsis"></i>
-              </button>
-              <div v-if="sandboxMenuOpen" class="menu-panel sandbox-menu">
-                <button class="menu-item" type="button" @click="openCreateModal">
-                  <i class="menu-item-icon" data-lucide="plus"></i><span class="menu-item-label">Create sandbox</span>
-                </button>
-              </div>
-            </span>
           </span>
         </div>
-        <div
-          v-for="sandbox in sortedSandboxes"
-          :key="sandbox.slug"
-          class="sandbox-row"
-          :class="{ active: selectedSlug === sandbox.slug }"
-        >
-          <button type="button" class="sandbox-select" @click="selectedSlug = sandbox.slug">
-            <span class="status-dot" :data-status="sandbox.last_status"></span>
-            <span class="sandbox-main">
-              <strong>{{ sandbox.name || sandbox.slug }}</strong>
-              <small>{{ basename(sandbox.canonical_workspace_path) }}</small>
-            </span>
-            <span v-if="sandbox.clock?.status === 'drift'" class="clock-warning" :title="'Clock ' + clockStatusText(sandbox.clock)">
-              <i data-lucide="clock"></i>
-            </span>
-            <span class="status-pill" :data-busy="operationBySandbox[sandbox.slug] ? 'true' : null">
-              {{ operationBySandbox[sandbox.slug] || sandbox.last_status }}
-            </span>
-          </button>
-          <span class="menu-wrap sandbox-row-menu">
-            <button class="icon-button tiny" type="button" title="Sandbox actions" @click.stop="toggleSandboxActionMenu(sandbox.slug)">
-              <i data-lucide="ellipsis"></i>
+        <div class="shell-group">
+          <div class="shell-group-header">
+            <span>Local</span>
+            <button class="row-add-button" type="button" title="New local shell" :disabled="!canOpenLocalTerminal" @click.stop="openLocalTerminal">
+              <i data-lucide="plus"></i>
             </button>
-            <div v-if="sandboxActionMenuSlug === sandbox.slug" class="menu-panel row-action-menu">
-              <button class="menu-item" type="button" :disabled="sandbox.last_status !== 'running' || busy" @click="closeMenus(); openTerminal(sandbox)">
-                <i class="menu-item-icon" data-lucide="terminal"></i><span class="menu-item-label">New terminal</span>
-              </button>
-              <button class="menu-item" type="button" :disabled="!baseStatus.prepared || busy || sandbox.last_status === 'running'" @click="closeMenus(); runSandboxAction('sandbox:start', sandbox, 'Start requested.')">
-                <i class="menu-item-icon" data-lucide="play"></i><span class="menu-item-label">Start</span>
-              </button>
-              <button class="menu-item" type="button" :disabled="busy || sandbox.last_status !== 'running'" @click="closeMenus(); runSandboxAction('sandbox:stop', sandbox, 'Stopped.')">
-                <i class="menu-item-icon" data-lucide="square"></i><span class="menu-item-label">Stop</span>
-              </button>
-              <div class="menu-divider" aria-hidden="true"></div>
-              <button class="menu-item" type="button" @click="openDetailsModal(sandbox)">
-                <i class="menu-item-icon" data-lucide="info"></i><span class="menu-item-label">Details</span>
-              </button>
-              <button class="menu-item" type="button" @click="openPortsModal(sandbox)">
-                <i class="menu-item-icon" data-lucide="radio-tower"></i><span class="menu-item-label">Published ports</span>
-              </button>
-              <button class="menu-item" type="button" @click="openSandboxLogs(sandbox)">
-                <i class="menu-item-icon" data-lucide="scroll-text"></i><span class="menu-item-label">Logs</span>
-              </button>
-              <div class="menu-divider" aria-hidden="true"></div>
-              <button class="menu-item" type="button" :disabled="busy || sandbox.last_status !== 'running'" @click="closeMenus(); runSandboxAction('sandbox:clock:sync', sandbox, 'Clock synced.')">
-                <i class="menu-item-icon" data-lucide="clock"></i><span class="menu-item-label">Sync clock</span>
-              </button>
-              <button class="menu-item" type="button" :disabled="busy" @click="closeMenus(); runSandboxAction('sandbox:refresh-runtime', sandbox, 'Agent CLIs are current.')">
-                <i class="menu-item-icon" data-lucide="package-check"></i><span class="menu-item-label">Update agent CLIs</span>
-              </button>
-              <button class="menu-item menu-item-danger" type="button" :disabled="busy" @click="closeMenus(); destroySandbox(sandbox)">
-                <i class="menu-item-icon" data-lucide="trash-2"></i><span class="menu-item-label">Destroy</span>
-              </button>
-            </div>
-          </span>
+          </div>
+          <div
+            class="shell-group-row"
+            :class="{ active: selectedGroupKind === 'local' }"
+            role="button"
+            tabindex="0"
+            @click="selectLocalGroup"
+            @keydown.enter.prevent="selectLocalGroup"
+            @keydown.space.prevent="selectLocalGroup"
+          >
+            <span class="status-dot" :data-status="localTerminals.length ? 'running' : 'closed'"></span>
+            <span class="shell-group-main">
+              <strong>Local</strong>
+              <small>{{ shellCountLabel(localTerminals.length) }}</small>
+            </span>
+          </div>
         </div>
-        <div v-if="!sortedSandboxes.length" class="empty-list">No sandboxes</div>
+        <div class="shell-group">
+          <div class="shell-group-header">
+            <span>Sandboxes</span>
+            <button class="row-add-button" type="button" title="Create sandbox" @click="openCreateModal">
+              <i data-lucide="plus"></i>
+            </button>
+          </div>
+          <div v-for="sandbox in sortedSandboxes" :key="sandbox.slug" class="sandbox-shell-group">
+            <div class="sandbox-row" :class="{ active: selectedGroupKind === 'sandbox' && selectedSlug === sandbox.slug }">
+              <button type="button" class="sandbox-select" @click="selectSandboxGroup(sandbox)">
+                <span class="status-dot" :data-status="sandbox.last_status"></span>
+                <span class="sandbox-main">
+                  <strong>{{ sandbox.name || sandbox.slug }}</strong>
+                  <small>{{ basename(sandbox.canonical_workspace_path) }} / {{ shellCountLabel(terminalsForSandbox(sandbox).length) }}</small>
+                </span>
+                <span v-if="sandbox.clock?.status === 'drift'" class="clock-warning" :title="'Clock ' + clockStatusText(sandbox.clock)">
+                  <i data-lucide="clock"></i>
+                </span>
+                <span class="status-pill" :data-busy="operationBySandbox[sandbox.slug] ? 'true' : null">
+                  {{ operationBySandbox[sandbox.slug] || sandbox.last_status }}
+                </span>
+              </button>
+              <span class="menu-wrap sandbox-row-menu">
+                <button class="icon-button tiny" type="button" title="Sandbox actions" @click.stop="toggleSandboxActionMenu(sandbox.slug)">
+                  <i data-lucide="ellipsis"></i>
+                </button>
+                <div v-if="sandboxActionMenuSlug === sandbox.slug" class="menu-panel row-action-menu">
+                  <button class="menu-item" type="button" :disabled="sandbox.last_status !== 'running' || busy" @click="closeMenus(); openTerminal(sandbox)">
+                    <i class="menu-item-icon" data-lucide="terminal"></i><span class="menu-item-label">New shell</span>
+                  </button>
+                  <button class="menu-item" type="button" :disabled="!baseStatus.prepared || busy || sandbox.last_status === 'running'" @click="closeMenus(); runSandboxAction('sandbox:start', sandbox, 'Start requested.')">
+                    <i class="menu-item-icon" data-lucide="play"></i><span class="menu-item-label">Start</span>
+                  </button>
+                  <button class="menu-item" type="button" :disabled="busy || sandbox.last_status !== 'running'" @click="closeMenus(); runSandboxAction('sandbox:stop', sandbox, 'Stopped.')">
+                    <i class="menu-item-icon" data-lucide="square"></i><span class="menu-item-label">Stop</span>
+                  </button>
+                  <div class="menu-divider" aria-hidden="true"></div>
+                  <button class="menu-item" type="button" @click="openDetailsModal(sandbox)">
+                    <i class="menu-item-icon" data-lucide="info"></i><span class="menu-item-label">Details</span>
+                  </button>
+                  <button class="menu-item" type="button" @click="openPortsModal(sandbox)">
+                    <i class="menu-item-icon" data-lucide="radio-tower"></i><span class="menu-item-label">Published ports</span>
+                  </button>
+                  <button class="menu-item" type="button" @click="openSandboxLogs(sandbox)">
+                    <i class="menu-item-icon" data-lucide="scroll-text"></i><span class="menu-item-label">Logs</span>
+                  </button>
+                  <div class="menu-divider" aria-hidden="true"></div>
+                  <button class="menu-item" type="button" :disabled="busy || sandbox.last_status !== 'running'" @click="closeMenus(); runSandboxAction('sandbox:clock:sync', sandbox, 'Clock synced.')">
+                    <i class="menu-item-icon" data-lucide="clock"></i><span class="menu-item-label">Sync clock</span>
+                  </button>
+                  <button class="menu-item" type="button" :disabled="busy" @click="closeMenus(); runSandboxAction('sandbox:refresh-runtime', sandbox, 'Agent CLIs are current.')">
+                    <i class="menu-item-icon" data-lucide="package-check"></i><span class="menu-item-label">Update agent CLIs</span>
+                  </button>
+                  <button class="menu-item menu-item-danger" type="button" :disabled="busy" @click="closeMenus(); destroySandbox(sandbox)">
+                    <i class="menu-item-icon" data-lucide="trash-2"></i><span class="menu-item-label">Destroy</span>
+                  </button>
+                </div>
+              </span>
+            </div>
+          </div>
+          <div v-if="!sortedSandboxes.length" class="shell-empty">No sandboxes</div>
+        </div>
       </aside>
       <div class="sidebar-resizer" role="separator" title="Resize sidebar" @pointerdown="beginSidebarResize"></div>
 
       <main class="workspace">
-        <section class="detail" v-if="selected">
+        <section class="detail">
           <div class="terminal-surface">
-            <div v-if="selectedTerminals.length || sidebarCollapsed" class="terminal-tabs">
+            <div class="terminal-tabs">
               <button
                 v-if="sidebarCollapsed"
                 class="terminal-sidebar-toggle"
                 type="button"
-                title="Show sandboxes"
+                title="Show shells"
                 aria-pressed="true"
                 @click="toggleSidebar"
               >
                 <i data-lucide="panel-left-open"></i>
               </button>
               <div
-                v-for="term in selectedTerminals"
+                v-for="term in selectedGroupTerminals"
                 :key="term.id"
                 class="terminal-tab"
                 :class="{ active: term.id === activeTerminal.id, 'has-status': terminalStatusLabel(term.status) }"
@@ -1463,29 +1630,43 @@ createApp({
                 @keydown.enter.prevent="focusTerminal(term.id)"
                 @keydown.space.prevent="focusTerminal(term.id)"
               >
-                <span>Term {{ term.number || '?' }}</span>
+                <span>{{ terminalLabel(term) }}</span>
                 <small v-if="terminalStatusLabel(term.status)">{{ terminalStatusLabel(term.status) }}</small>
                 <button class="terminal-tab-close" type="button" title="Close terminal" @click.stop="closeTerminal({ terminalId: term.id })">
                   <i data-lucide="x"></i>
                 </button>
               </div>
-              <button class="terminal-tab-add" type="button" title="New terminal" :disabled="!canOpenTerminal" @click="openTerminal(selected)">
+              <button
+                class="terminal-tab-add"
+                type="button"
+                :title="selectedGroupKind === 'local' ? 'New local terminal' : 'New sandbox terminal'"
+                :disabled="selectedGroupKind === 'local' ? !canOpenLocalTerminal : !canOpenTerminal"
+                @click="selectedGroupKind === 'local' ? openLocalTerminal() : openTerminal(selected)"
+              >
                 <i data-lucide="plus"></i>
               </button>
             </div>
-            <div v-if="terminalVisible" ref="terminalRef" class="terminal-viewport"></div>
-            <div v-else class="terminal-placeholder">
-              <span v-if="selected.last_status === 'running'">Opening terminal...</span>
-              <span v-else>{{ selected.last_status === 'configured' ? 'Sandbox is configured.' : 'Sandbox is stopped.' }}</span>
+            <div v-show="terminalVisible" class="terminal-stack">
+              <div
+                v-for="term in terminals"
+                :key="'terminal-host-' + term.id"
+                :ref="(element) => setTerminalHost(term.id, element)"
+                class="terminal-viewport"
+                :class="{ active: term.id === activeTerminal.id }"
+              ></div>
             </div>
-          </div>
-        </section>
-
-        <section class="detail empty-detail" v-else>
-          <div class="empty-state">
-            <button class="primary-button" type="button" @click="openCreateModal">
-              <i data-lucide="plus"></i><span>Create Sandbox</span>
-            </button>
+            <div v-else class="terminal-placeholder">
+              <div class="terminal-empty">
+                <strong>{{ selectedGroupLabel }}</strong>
+                <small>No shells open in this group.</small>
+                <button v-if="selectedGroupKind === 'local'" class="tool-button" type="button" :disabled="!canOpenLocalTerminal" @click="openLocalTerminal">
+                  <i data-lucide="terminal"></i><span>New Local Shell</span>
+                </button>
+                <button v-else class="tool-button" type="button" :disabled="!canOpenTerminal" @click="openTerminal(selected)">
+                  <i data-lucide="terminal"></i><span>New Sandbox Shell</span>
+                </button>
+              </div>
+            </div>
           </div>
         </section>
       </main>

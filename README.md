@@ -68,34 +68,37 @@ The UI is terminal-first.
   toggle, and a green/red Socket.IO status dot.
 - The hamburger menu contains base-image rebuild, retry after setup errors, and
   base logs.
-- The left pane is a compact sandbox list headed `Sandboxes (n)`. Its boundary
-  is draggable.
-- The left-pane `...` menu opens create, selected-sandbox details, published
-  ports, and sandbox logs.
-- Each sandbox row is one line with status, workspace-root basename, and its
-  own `...` action menu.
-- Sandbox row actions include start, new terminal, stop, details, published
+- The left pane is a compact terminal-group list headed `Terminal Groups`. Its
+  boundary is draggable.
+- Shell groups are where shells run: a `Local` section for host shells, then a
+  `Sandboxes` section with one row per sandbox.
+- Section header `+` buttons create the thing for that section: a local shell
+  under `Local`, or a sandbox under `Sandboxes`.
+- Each sandbox row is one line with status, workspace-root basename, open-shell
+  count, and its own `...` action menu.
+- Sandbox row actions include start, new shell, stop, details, published
   ports, logs, and destroy.
-- The right pane is almost entirely terminal space: terminal tabs at the top,
-  active xterm.js viewport below.
+- The right pane is almost entirely terminal space: tabs for the selected shell
+  group above the active xterm.js viewport.
 - Details, published ports, base logs, sandbox logs, and create are modals.
 - Menus use Lucide icons and dismiss when you click away.
 
 ## Common Flow
 
-1. Choose **Sandboxes (...) -> Create sandbox**.
+1. Click the `+` in the `Sandboxes` header.
 2. Pick or type a workspace root and name the sandbox.
 3. Click **Create + Start**.
 4. If the reusable base image is not ready yet, Hoosegow sets it up
    automatically and creation waits until setup finishes.
-5. Hoosegow creates the sandbox, starts it, opens the first terminal, and focuses
-   that terminal automatically.
-6. Use the sandbox row `...` menu for more terminals, details, ports, logs,
+5. Hoosegow creates the sandbox, starts it, opens the first shell, and focuses
+   that shell automatically.
+6. Use the sandbox row `...` menu for more shells, details, ports, logs,
    agent CLI updates, stop, or destroy.
 
-If you select a running sandbox that has no terminal open in the UI, Hoosegow opens
-and focuses one automatically. Creating a sandbox also implies starting it and
-opening the first terminal.
+Use the `+` in the `Local` header for a host-local shell. Use a running sandbox
+row's `...` menu for a sandbox shell. Additional shells appear as tabs inside
+their selected group, not as separate rows in the left pane. Selecting a sandbox
+does not silently open or replace shells.
 
 ## Workspaces And Sandboxes
 
@@ -114,12 +117,13 @@ you only care about the sandbox disk/home state.
 
 ## Terminals
 
-Terminals are real PTYs inside the sandbox, rendered with xterm.js in the
-browser and bridged through Socket.IO to a token-protected in-sandbox
-`hoosegow-ptyd` controller.
+Terminals are real PTYs rendered with xterm.js in the browser. Local shells run
+as host PTYs owned by the Hoosegow server. Sandbox shells are bridged through
+Socket.IO to a token-protected in-sandbox `hoosegow-ptyd` controller.
 
-- New terminals start directly in the shell at `/workspace`; Hoosegow does not
-  inject auth/setup banner text into the terminal.
+- New sandbox terminals start directly in the shell at `/workspace`; Hoosegow
+  does not inject auth/setup banner text into the terminal.
+- New local terminals start in the Hoosegow launch workspace.
 - Multiple terminals per sandbox are supported. The default limit is 32 per
   sandbox.
 - Terminal tabs persist while the server is running. If the browser reconnects,

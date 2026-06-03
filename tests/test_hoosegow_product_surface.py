@@ -280,7 +280,8 @@ def test_hoosegow_shell_has_theme_toggle_assets():
     assert "toggleTheme" in app_js
     assert "TERMINAL_THEMES" in app_js
     assert "applyTerminalTheme" in app_js
-    assert "terminal.value.options.theme = currentTerminalTheme()" in app_js
+    assert "for (const renderer of terminalRenderers.values())" in app_js
+    assert "renderer.terminal.options.theme = currentTerminalTheme()" in app_js
     assert "theme: currentTerminalTheme()" in app_js
     assert "background: '#f8fafc'" in app_js
     assert "foreground: '#17202a'" in app_js
@@ -313,7 +314,8 @@ def test_hoosegow_shell_has_clear_empty_and_error_states():
     assert "baseStatus.error" in app_js
     assert "No Sandboxes" not in app_js
     assert "Workspace root required" not in app_js
-    assert '<i data-lucide="plus"></i><span>Create Sandbox</span>' in app_js
+    assert '<i data-lucide="terminal"></i><span>New Local Shell</span>' in app_js
+    assert '<i data-lucide="terminal"></i><span>New Sandbox Shell</span>' in app_js
     assert '<span>Workspace root</span>' in app_js
     assert "Publish :{{ portForm.guest_port }}" in app_js
     assert "Sandbox Runtime" not in app_js
@@ -340,7 +342,7 @@ def test_hoosegow_shell_has_clear_empty_and_error_states():
     assert '@click="openSandboxLogs(sandbox)"' in app_js
     assert "toggleSandboxActionMenu" in app_js
     assert "toggleMainMenu" in app_js
-    assert "toggleSandboxMenu" in app_js
+    assert "toggleSandboxMenu" not in app_js
     assert "sandboxActionMenuSlug" in app_js
     assert "loadAuthState" in app_js
     assert "authState.authenticated" in app_js
@@ -356,14 +358,14 @@ def test_hoosegow_shell_has_clear_empty_and_error_states():
     assert "menu-item-icon" in app_js
     assert "menu-item-label" in app_js
     assert app_js.count('<button class="menu-item') == app_js.count('class="menu-item-icon"')
-    assert "New terminal" in app_js
+    assert "New shell" in app_js
     assert "Update agent CLIs" in app_js
     row_menu = app_js[
         app_js.index('<div v-if="sandboxActionMenuSlug === sandbox.slug" class="menu-panel row-action-menu">') :
-        app_js.index('<div v-if="!sortedSandboxes.length" class="empty-list">No sandboxes</div>')
+        app_js.index('<div v-if="!sortedSandboxes.length" class="shell-empty">No sandboxes</div>')
     ]
     expected_row_order = [
-        "New terminal",
+        "New shell",
         "Start",
         "Stop",
         "Details",
@@ -380,64 +382,81 @@ def test_hoosegow_shell_has_clear_empty_and_error_states():
     assert "Refresh runtime dependencies" not in app_js
     assert "sandbox:refresh-runtime" in app_js
     assert 'data-lucide="package-check"' in app_js
-    assert "terminal-tab-add" in app_js
-    assert "terminalStatusLabel" in app_js
+    assert "shell-group-row" in app_js
+    assert "shell-group-header" in app_js
+    assert "terminal:local:open" in app_js
     assert "{{ term.status }}" not in app_js
-    assert "Term {{ term.number || '?' }}" in app_js
+    assert "{{ terminalLabel(term) }}" in app_js
+    assert "return `Term ${term.number || '?'}`;" in app_js
+    assert "term.label && term.label !== 'shell'" in app_js
     assert "Term {{ index + 1 }}" not in app_js
-    assert 'terminalStatusLabel(term.status)' in app_js
-    assert "terminalStatusLabel,\n      terminals," in app_js
-    assert "grid-template-columns: max-content 20px;" in css
-    assert "grid-template-columns: max-content max-content 20px;" in css
-    assert "min-height: 32px;" in css
+    assert "terminalStatusLabel,\n      terminalLabel," in app_js
+    assert "Terminal Groups" in app_js
+    assert "Shells ({{ allTerminalCount }})" not in app_js
+    assert "allTerminalCount" not in app_js
+    assert "shellCountLabel" in app_js
+    assert "No open shells" in app_js
+    assert "0 shells" not in app_js
+    assert "{{ basename(sandbox.canonical_workspace_path) }} / {{ shellCountLabel(terminalsForSandbox(sandbox).length) }}" in app_js
+    assert "grid-template-columns: 12px minmax(0, 1fr);" in css
+    assert "min-height: 30px;" in css
     assert ".terminal-tab > span" in css
     assert "white-space: nowrap;" in css
-    assert ".terminal-tab.has-status" in css
-    assert '.terminal-tab[data-status="error"] small' in css
-    assert ".terminal-tab.has-status .terminal-tab-close" in css
-    assert ':disabled="!canOpenTerminal"' in app_js
-    assert '@click="openTerminal(selected)"' in app_js
+    assert ".shell-group-row.active" in css
+    assert ".terminal-tab.active" in css
+    assert 'title="Close terminal"' in app_js
+    assert "New local terminal" in app_js
+    assert "New sandbox terminal" in app_js
+    assert ':disabled="!canOpenLocalTerminal"' in app_js
+    assert '@click="openLocalTerminal"' in app_js
     assert "Use + to open a terminal." not in app_js
-    assert "Opening terminal..." in app_js
-    assert "shouldAutoReplace" in app_js
-    assert "options.autoReplace !== false" in app_js
-    assert "await openTerminal(selectedSandbox, { manageBusy: false, manageAction: false, silent: true })" in app_js
-    assert "await closeTerminal({ ...options, autoReplace: false, terminalId })" in app_js
-    assert "Sandboxes ({{ sortedSandboxes.length }})" in app_js
+    assert "selectedGroupLabel" in app_js
+    assert "shouldAutoReplace" not in app_js
+    assert "options.autoReplace !== false" not in app_js
+    assert "await openTerminal(selectedSandbox, { manageBusy: false, manageAction: false, silent: true })" not in app_js
+    assert "autoReplace: false" not in app_js
     assert "closeMenusOnOutsideClick" in app_js
     assert "document.addEventListener('click', closeMenusOnOutsideClick)" in app_js
     assert 'title="Main menu" @click.stop="toggleMainMenu"' in app_js
-    assert 'title="Sandbox menu" @click.stop="toggleSandboxMenu"' in app_js
-    assert "if (!focused && sandbox.last_status === 'running')" in app_js
+    assert 'title="Sandbox menu"' not in app_js
+    assert "if (!focused && sandbox.last_status === 'running')" not in app_js
     assert "silent: true" in app_js
-    assert "terminalReplayMuted" in app_js
-    assert "terminalReplayToken" in app_js
+    assert "const terminalHosts = new Map();" in app_js
+    assert "const terminalRenderers = new Map();" in app_js
+    assert "class=\"terminal-stack\"" in app_js
+    assert ".terminal-stack" in css
     assert "terminalBellContext" in app_js
-    assert "terminal.value.onBell(() => synthesizeTerminalBell())" in app_js
+    assert "xterm.onBell(() => synthesizeTerminalBell(record.id))" in app_js
     assert "window.AudioContext || window.webkitAudioContext" in app_js
     assert "oscillator.frequency.setValueAtTime(880, start)" in app_js
     assert "gain.gain.exponentialRampToValueAtTime(0.08, start + 0.012)" in app_js
     assert "unlockTerminalBellAudio();" in app_js
     assert "convertEol: false" in app_js
     assert "terminal.value?._core?._renderService?.dimensions?.css?.cell" in app_js
-    assert "if (terminalReplayMuted.value) return;" in app_js
+    assert "function initialTerminalSize()" in app_js
+    assert "const size = initialTerminalSize();" in app_js
+    assert "cols: size.cols" in app_js
+    assert "rows: size.rows" in app_js
+    assert "cols: 100" not in app_js
+    assert "rows: 30" not in app_js
+    assert "if (renderer.replayMuted) return;" in app_js
     assert "isTerminalQueryResponse(data)" in app_js
     assert "terminal_query_response: true" in app_js
     assert "const csiResponse = /^\\x1b\\[(?:[?>]?[0-9;]*)[cRt]$/;" in app_js
-    assert "await writeTerminalReplay(record.transcript)" in app_js
-    assert "if (terminalReplayToken.value === replayToken) terminalReplayMuted.value = false;" in app_js
+    assert "await writeTerminalReplay(record.id, record.transcript);" in app_js
+    assert "if (renderer.replayToken === replayToken) renderer.replayMuted = false;" in app_js
     assert "connection-dot" in app_js
     assert "Connected" not in app_js
     assert 'title="Refresh"' not in app_js
     assert "Hoosegow sandbox terminal" not in (ROOT / "guest" / "hoosegow-ptyd.py").read_text(encoding="utf-8")
-    assert "terminal-title" not in app_js
-    assert ".terminal-title" not in css
+    assert "terminal-tabs" in app_js
+    assert ".terminal-tabs" in css
     assert "beginSidebarResize" in app_js
     assert "hoosegow-sidebar-collapsed" in app_js
     assert "sidebarCollapsed" in app_js
     assert "toggleSidebar" in app_js
-    assert "Show sandboxes" in app_js
-    assert "Hide sandboxes" in app_js
+    assert "Show shells" in app_js
+    assert "Hide shells" in app_js
     assert "panel-left-open" in app_js
     assert "panel-left-close" in app_js
     assert "sidebar-toggle-button" not in app_js
