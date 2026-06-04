@@ -494,6 +494,7 @@ button:disabled {
 }
 
 .row-add-button {
+  appearance: none;
   display: grid;
   width: 24px;
   height: 24px;
@@ -502,6 +503,7 @@ button:disabled {
   border-radius: 6px;
   background: transparent;
   color: var(--muted);
+  padding: 0;
 }
 
 .row-add-button:hover {
@@ -510,6 +512,7 @@ button:disabled {
 }
 
 .row-add-button svg {
+  display: block;
   width: 14px;
   height: 14px;
 }

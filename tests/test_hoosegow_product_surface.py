@@ -404,6 +404,9 @@ def test_hoosegow_shell_has_clear_empty_and_error_states():
     assert "white-space: nowrap;" in css
     assert ".shell-group-row.active" in css
     assert ".terminal-tab.active" in css
+    assert ".row-add-button {\n  appearance: none;" in css
+    assert "padding: 0;" in css
+    assert ".row-add-button svg {\n  display: block;" in css
     assert 'title="Close terminal"' in app_js
     assert "New local terminal" in app_js
     assert "New sandbox terminal" in app_js
