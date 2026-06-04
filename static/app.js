@@ -51,6 +51,37 @@ const TERMINAL_THEMES = {
   },
 };
 
+const DEFAULT_LOCAL_GROUP_ID = 'local';
+const LOCAL_GROUPS_STORAGE_KEY = 'hoosegow-local-terminal-groups';
+
+function cleanLocalGroupLabel(value) {
+  return String(value || '').trim().slice(0, 80);
+}
+
+function storedLocalGroups() {
+  let groups = [];
+  try {
+    groups = JSON.parse(window.localStorage.getItem(LOCAL_GROUPS_STORAGE_KEY) || '[]');
+  } catch (_error) {
+    groups = [];
+  }
+  const seen = new Set();
+  const normalized = Array.isArray(groups)
+    ? groups.map((group) => ({
+      id: String(group?.id || '').trim(),
+      label: cleanLocalGroupLabel(group?.label),
+    })).filter((group) => {
+      if (!group.id || !group.label || seen.has(group.id)) return false;
+      seen.add(group.id);
+      return true;
+    })
+    : [];
+  if (!normalized.some((group) => group.id === DEFAULT_LOCAL_GROUP_ID)) {
+    normalized.unshift({ id: DEFAULT_LOCAL_GROUP_ID, label: 'Local' });
+  }
+  return normalized;
+}
+
 createApp({
   setup() {
     const socket = io({ transports: ['websocket', 'polling'] });
@@ -62,7 +93,9 @@ createApp({
     let clockCheckTimer = null;
     const selectedSlug = ref('');
     const selectedGroupKind = ref('local');
+    const selectedLocalGroupId = ref(DEFAULT_LOCAL_GROUP_ID);
     const sandboxes = reactive([]);
+    const localGroups = reactive(storedLocalGroups());
     const baseStatus = reactive({
       prepared: false,
       state: 'checking',
@@ -86,6 +119,9 @@ createApp({
       workspace_root: '',
       vcpus: 4,
       memory_mib: 4096,
+    });
+    const localGroupForm = reactive({
+      label: '',
     });
     const portForm = reactive({
       guest_port: 3000,
@@ -133,6 +169,7 @@ createApp({
     const mainMenuOpen = ref(false);
     const sandboxActionMenuSlug = ref('');
     const createModalOpen = ref(false);
+    const localGroupModalOpen = ref(false);
     const detailsModalOpen = ref(false);
     const portsModalOpen = ref(false);
     const storedSidebarWidth = Number(window.localStorage.getItem('hoosegow-sidebar-width') || 308);
@@ -151,8 +188,11 @@ createApp({
     const canOpenLocalTerminal = computed(() => Boolean(connected.value && !busy.value));
     const canOpenTerminal = computed(() => Boolean(selected.value && selected.value.last_status === 'running' && !busy.value));
     const localTerminals = computed(() => terminals.filter((item) => item.kind === 'local'));
+    const selectedLocalGroup = computed(() => (
+      localGroups.find((group) => group.id === selectedLocalGroupId.value) || localGroups[0]
+    ));
     const selectedGroupTerminals = computed(() => (
-      selectedGroupKind.value === 'local' ? localTerminals.value : terminalsForSandbox(selected.value)
+      selectedGroupKind.value === 'local' ? terminalsForLocalGroup(selectedLocalGroup.value) : terminalsForSandbox(selected.value)
     ));
     const terminalVisible = computed(() => Boolean(
       activeTerminal.id
@@ -160,7 +200,9 @@ createApp({
       && selectedGroupTerminals.value.some((item) => item.id === activeTerminal.id)
     ));
     const selectedGroupLabel = computed(() => (
-      selectedGroupKind.value === 'local' ? 'Local' : (selected.value?.name || selected.value?.slug || 'Sandbox')
+      selectedGroupKind.value === 'local'
+        ? (selectedLocalGroup.value?.label || 'Local')
+        : (selected.value?.name || selected.value?.slug || 'Sandbox')
     ));
 
     function setToast(message, tone = 'info') {
@@ -242,6 +284,13 @@ createApp({
       closeMenus();
       if (!form.name.trim()) form.name = nextSandboxName();
       createModalOpen.value = true;
+      refreshIcons();
+    }
+
+    function openLocalGroupModal() {
+      closeMenus();
+      localGroupForm.label = nextLocalGroupLabel();
+      localGroupModalOpen.value = true;
       refreshIcons();
     }
 
@@ -385,18 +434,78 @@ createApp({
       return `sandbox-${Date.now().toString(36).slice(-5)}`;
     }
 
+    function nextLocalGroupLabel() {
+      const used = new Set(localGroups.map((group) => group.label.toLowerCase()));
+      if (!used.has('local')) return 'Local';
+      for (let index = 2; index < 1000; index += 1) {
+        const candidate = `Local ${index}`;
+        if (!used.has(candidate.toLowerCase())) return candidate;
+      }
+      return `Local ${Date.now().toString(36).slice(-5)}`;
+    }
+
+    function nextLocalGroupId() {
+      let id = '';
+      do {
+        id = `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+      } while (localGroups.some((group) => group.id === id));
+      return id;
+    }
+
     function isGeneratedSandboxName(value) {
       return /^sandbox(?:-\d+)?$/.test(String(value || '').trim());
+    }
+
+    function saveLocalGroups() {
+      window.localStorage.setItem(LOCAL_GROUPS_STORAGE_KEY, JSON.stringify(localGroups));
+    }
+
+    function ensureLocalGroup(groupId, label) {
+      const id = String(groupId || DEFAULT_LOCAL_GROUP_ID).trim() || DEFAULT_LOCAL_GROUP_ID;
+      const existing = localGroups.find((group) => group.id === id);
+      if (existing) {
+        const cleanLabel = cleanLocalGroupLabel(label);
+        if (cleanLabel && existing.label !== cleanLabel) {
+          existing.label = cleanLabel;
+          saveLocalGroups();
+        }
+        return existing;
+      }
+      const group = {
+        id,
+        label: cleanLocalGroupLabel(label) || (id === DEFAULT_LOCAL_GROUP_ID ? 'Local' : nextLocalGroupLabel()),
+      };
+      localGroups.push(group);
+      saveLocalGroups();
+      return group;
+    }
+
+    async function createLocalGroup() {
+      const label = cleanLocalGroupLabel(localGroupForm.label) || nextLocalGroupLabel();
+      const group = ensureLocalGroup(nextLocalGroupId(), label);
+      localGroupModalOpen.value = false;
+      selectedGroupKind.value = 'local';
+      selectedLocalGroupId.value = group.id;
+      syncActiveTerminal(terminalsForLocalGroup(group)[0] || null);
+      if (!activeTerminal.id) deactivateTerminal();
+      setToast(`${group.label} created.`, 'success');
+      await nextTick();
+      refreshIcons();
     }
 
     function upsertTerminalRecord(terminalInfo, transcript = '', options = {}) {
       let record = terminals.find((item) => item.id === terminalInfo.id);
       const terminalKind = terminalInfo.kind || (terminalInfo.sandbox_id ? 'sandbox' : 'local');
+      const localGroup = terminalKind === 'local'
+        ? ensureLocalGroup(terminalInfo.local_group_id, terminalInfo.local_group_label)
+        : null;
       if (!record) {
         record = {
           id: terminalInfo.id,
           kind: terminalKind,
           sandbox_id: terminalInfo.sandbox_id || '',
+          local_group_id: localGroup?.id || '',
+          local_group_label: localGroup?.label || '',
           label: terminalInfo.label || 'shell',
           number: terminalInfo.number ?? null,
           cwd: terminalInfo.cwd || (terminalKind === 'local' ? '' : '/workspace'),
@@ -408,6 +517,8 @@ createApp({
       } else {
         record.kind = terminalKind || record.kind || 'sandbox';
         record.sandbox_id = terminalInfo.sandbox_id || record.sandbox_id || '';
+        record.local_group_id = localGroup?.id || record.local_group_id || '';
+        record.local_group_label = localGroup?.label || record.local_group_label || '';
         record.label = terminalInfo.label || record.label || 'shell';
         record.number = terminalInfo.number ?? record.number ?? null;
         record.cwd = terminalInfo.cwd || record.cwd || '/workspace';
@@ -424,6 +535,10 @@ createApp({
 
     function terminalsForSandbox(sandbox) {
       return terminals.filter((item) => item.kind === 'sandbox' && item.sandbox_id === sandbox?.slug);
+    }
+
+    function terminalsForLocalGroup(group) {
+      return localTerminals.value.filter((item) => (item.local_group_id || DEFAULT_LOCAL_GROUP_ID) === group?.id);
     }
 
     function terminalLabel(term) {
@@ -443,9 +558,11 @@ createApp({
       return `${count} open shell${count === 1 ? '' : 's'}`;
     }
 
-    async function selectLocalGroup() {
+    async function selectLocalGroup(group = selectedLocalGroup.value) {
+      const targetGroup = ensureLocalGroup(group?.id, group?.label);
       selectedGroupKind.value = 'local';
-      const first = localTerminals.value[0] || null;
+      selectedLocalGroupId.value = targetGroup.id;
+      const first = terminalsForLocalGroup(targetGroup)[0] || null;
       if (first) {
         await focusTerminal(first.id);
       } else {
@@ -802,8 +919,11 @@ createApp({
       if (options.manageBusy !== false) busy.value = true;
       try {
         await nextTick();
+        const localGroup = ensureLocalGroup(options.localGroup?.id || selectedLocalGroup.value?.id, options.localGroup?.label || selectedLocalGroup.value?.label);
         const size = initialTerminalSize();
         const response = await call('terminal:local:open', {
+          local_group_id: localGroup.id,
+          local_group_label: localGroup.label,
           cols: size.cols,
           rows: size.rows,
         });
@@ -1056,6 +1176,7 @@ createApp({
       if (!record) return;
       if (record.kind === 'local') {
         selectedGroupKind.value = 'local';
+        selectedLocalGroupId.value = record.local_group_id || DEFAULT_LOCAL_GROUP_ID;
       } else {
         selectedGroupKind.value = 'sandbox';
         selectedSlug.value = record.sandbox_id || selectedSlug.value;
@@ -1301,7 +1422,9 @@ createApp({
         for (const record of terminals.filter((item) => item.sandbox_id === payload.id)) {
           disposeTerminal(record.id);
         }
-        syncActiveTerminal(localTerminals.value[0] || null);
+        const nextLocal = localTerminals.value[0] || null;
+        if (nextLocal) selectedLocalGroupId.value = nextLocal.local_group_id || DEFAULT_LOCAL_GROUP_ID;
+        syncActiveTerminal(nextLocal);
       }
       loadSandboxes().catch((error) => setToast(error.message, 'error'));
     });
@@ -1408,6 +1531,7 @@ createApp({
       clockStatusText,
       connected,
       createModalOpen,
+      createLocalGroup,
       createSandbox,
       detailsModalOpen,
       destroySandbox,
@@ -1418,9 +1542,13 @@ createApp({
       loadSandboxes,
       loadSandboxLogs,
       loadTerminalSessions,
+      localGroupForm,
+      localGroupModalOpen,
+      localGroups,
       openTerminal,
       openLocalTerminal,
       openCreateModal,
+      openLocalGroupModal,
       openDetailsModal,
       openBaseLogs,
       openGithub,
@@ -1445,6 +1573,7 @@ createApp({
       selectedGroupKind,
       selectedGroupLabel,
       selectedGroupTerminals,
+      selectedLocalGroupId,
       selectedSlug,
       selectLocalGroup,
       selectSandboxGroup,
@@ -1458,6 +1587,7 @@ createApp({
       shellCountLabel,
       terminals,
       terminalsForSandbox,
+      terminalsForLocalGroup,
       localTerminals,
       terminalVisible,
       theme,
@@ -1530,23 +1660,25 @@ createApp({
         <div class="shell-group">
           <div class="shell-group-header">
             <span>Local</span>
-            <button class="row-add-button" type="button" title="New local shell" :disabled="!canOpenLocalTerminal" @click.stop="openLocalTerminal">
+            <button class="row-add-button" type="button" title="Create local group" @click.stop="openLocalGroupModal">
               <i data-lucide="plus"></i>
             </button>
           </div>
           <div
+            v-for="group in localGroups"
+            :key="group.id"
             class="shell-group-row"
-            :class="{ active: selectedGroupKind === 'local' }"
+            :class="{ active: selectedGroupKind === 'local' && selectedLocalGroupId === group.id }"
             role="button"
             tabindex="0"
-            @click="selectLocalGroup"
-            @keydown.enter.prevent="selectLocalGroup"
-            @keydown.space.prevent="selectLocalGroup"
+            @click="selectLocalGroup(group)"
+            @keydown.enter.prevent="selectLocalGroup(group)"
+            @keydown.space.prevent="selectLocalGroup(group)"
           >
-            <span class="status-dot" :data-status="localTerminals.length ? 'running' : 'closed'"></span>
+            <span class="status-dot" :data-status="terminalsForLocalGroup(group).length ? 'running' : 'closed'"></span>
             <span class="shell-group-main">
-              <strong>Local</strong>
-              <small>{{ shellCountLabel(localTerminals.length) }}</small>
+              <strong>{{ group.label }}</strong>
+              <small>{{ shellCountLabel(terminalsForLocalGroup(group).length) }}</small>
             </span>
           </div>
         </div>
@@ -1681,6 +1813,28 @@ createApp({
           </div>
         </section>
       </main>
+
+      <div v-if="localGroupModalOpen" class="modal-backdrop" @click.self="localGroupModalOpen = false">
+        <section class="modal-panel local-group-modal">
+          <header class="modal-header">
+            <div>
+              <h2>Create Local Group</h2>
+            </div>
+            <button class="icon-button" type="button" title="Close" @click="localGroupModalOpen = false">
+              <i data-lucide="x"></i>
+            </button>
+          </header>
+          <div class="modal-body">
+            <form class="local-group-form" @submit.prevent="createLocalGroup">
+              <label>
+                <span>Label</span>
+                <input v-model="localGroupForm.label" autocomplete="off" placeholder="Local 2">
+              </label>
+              <button class="primary-button" type="submit">Create</button>
+            </form>
+          </div>
+        </section>
+      </div>
 
       <div v-if="createModalOpen" class="modal-backdrop" @click.self="createModalOpen = false">
         <section class="modal-panel create-modal">

@@ -483,6 +483,8 @@ def create_app(
             "id": session_info.get("id"),
             "kind": session_info.get("kind") or "sandbox",
             "sandbox_id": session_info.get("sandbox_id"),
+            "local_group_id": session_info.get("local_group_id"),
+            "local_group_label": session_info.get("local_group_label"),
             "label": session_info.get("label"),
             "number": session_info.get("number"),
             "cwd": session_info.get("cwd") or "/workspace",
@@ -1123,6 +1125,8 @@ def create_app(
             rows = max(5, min(100, int(payload.get("rows") or 30)))
             cwd = os.path.abspath(os.path.expanduser(str(payload.get("cwd") or workspace or os.getcwd())))
             shell = os.path.abspath(os.path.expanduser(str(payload.get("shell") or os.environ.get("SHELL") or "/bin/sh")))
+            local_group_id = str(payload.get("local_group_id") or "local").strip() or "local"
+            local_group_label = str(payload.get("local_group_label") or "Local").strip()[:80] or "Local"
             terminal_id = f"local-{uuid.uuid4().hex[:12]}"
             driver = app.config["hoosegow_local_pty_driver"]
             opened = driver.open(terminal_id, cwd=cwd, shell=shell, cols=cols, rows=rows)
@@ -1133,6 +1137,8 @@ def create_app(
                     "id": terminal_id,
                     "kind": "local",
                     "sandbox_id": None,
+                    "local_group_id": local_group_id,
+                    "local_group_label": local_group_label,
                     "label": payload.get("label") or "shell",
                     "number": terminal_number,
                     "driver": driver,

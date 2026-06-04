@@ -37,24 +37,28 @@ def test_terminal_sidebar_lists_groups_not_individual_tabs():
 
     assert "Terminal Groups" in aside
     assert "Shells (" not in aside
-    assert "<strong>Local</strong>" in aside
-    assert "{{ shellCountLabel(localTerminals.length) }}" in aside
+    assert "v-for=\"group in localGroups\"" in local_section
+    assert "<strong>{{ group.label }}</strong>" in local_section
+    assert "{{ shellCountLabel(terminalsForLocalGroup(group).length) }}" in aside
     assert "No open shells" in app_js
     assert "v-for=\"sandbox in sortedSandboxes\"" in aside
     assert "class=\"sandbox-row\"" in aside
     assert "selectSandboxGroup(sandbox)" in aside
-    assert "New local shell" in aside
+    assert "Create local group" in aside
+    assert "openLocalGroupModal" in aside
     assert "New shell" in aside
     assert "Create sandbox" in aside
     assert "{{ basename(sandbox.canonical_workspace_path) }} / {{ shellCountLabel(terminalsForSandbox(sandbox).length) }}" in aside
     assert "title=\"Sandbox menu\"" not in aside
     assert "toggleSandboxMenu" not in aside
-    assert "title=\"New local shell\"" not in local_row
+    assert "title=\"Create local group\"" not in local_row
 
     assert "v-for=\"term in" not in aside
     assert "terminal-tab" not in aside
     assert "terminalLabel(term)" not in aside
     assert "Term {{ term.number" not in aside
+    assert "Create Local Group" in app_js
+    assert "v-model=\"localGroupForm.label\"" in app_js
 
 
 def test_terminal_tabs_live_inside_selected_group_workspace():
@@ -96,11 +100,16 @@ def test_selected_terminal_group_filters_tabs_by_group_not_flat_workspace():
     app_js = _app_js()
 
     assert "const selectedGroupKind = ref('local');" in app_js
+    assert "const selectedLocalGroupId = ref(DEFAULT_LOCAL_GROUP_ID);" in app_js
     assert "const localTerminals = computed(() => terminals.filter((item) => item.kind === 'local'));" in app_js
     assert (
         "const selectedGroupTerminals = computed(() => (\n"
-        "      selectedGroupKind.value === 'local' ? localTerminals.value : terminalsForSandbox(selected.value)\n"
+        "      selectedGroupKind.value === 'local' ? terminalsForLocalGroup(selectedLocalGroup.value) : terminalsForSandbox(selected.value)\n"
         "    ));"
+    ) in app_js
+    assert "function terminalsForLocalGroup(group)" in app_js
+    assert (
+        "return localTerminals.value.filter((item) => (item.local_group_id || DEFAULT_LOCAL_GROUP_ID) === group?.id);"
     ) in app_js
     assert (
         "return terminals.filter((item) => item.kind === 'sandbox' && item.sandbox_id === sandbox?.slug);"
@@ -108,6 +117,7 @@ def test_selected_terminal_group_filters_tabs_by_group_not_flat_workspace():
 
     focus_body = _function_body(app_js, "focusTerminal")
     assert "selectedGroupKind.value = 'local';" in focus_body
+    assert "selectedLocalGroupId.value = record.local_group_id || DEFAULT_LOCAL_GROUP_ID;" in focus_body
     assert "selectedGroupKind.value = 'sandbox';" in focus_body
     assert "selectedSlug.value = record.sandbox_id || selectedSlug.value;" in focus_body
 
@@ -179,10 +189,11 @@ def test_sidebar_and_tab_commands_keep_separate_semantics():
     aside = _slice_between(app_js, "<aside class=\"sidebar\">", "</aside>")
     main = _slice_between(app_js, "<main class=\"workspace\">", "</main>")
 
-    assert "@click.stop=\"openLocalTerminal\"" in aside
+    assert "@click.stop=\"openLocalGroupModal\"" in aside
     assert "@click=\"closeMenus(); openTerminal(sandbox)\"" in aside
     assert "@click=\"selectedGroupKind === 'local' ? openLocalTerminal() : openTerminal(selected)\"" in main
 
     assert "openCreateModal" in aside
+    assert "openLocalGroupModal" in aside
     assert "openCreateModal" not in main
     assert "Create starts the sandbox and opens the first terminal." in app_js

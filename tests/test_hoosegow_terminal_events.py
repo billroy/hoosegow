@@ -149,10 +149,47 @@ def test_hoosegow_local_terminal_opens_and_lists(tmp_path, monkeypatch):
     assert opened["terminal"]["kind"] == "local"
     assert opened["terminal"]["label"] == "shell"
     assert opened["terminal"]["sandbox_id"] is None
+    assert opened["terminal"]["local_group_id"] == "local"
+    assert opened["terminal"]["local_group_label"] == "Local"
     assert opened["terminal"]["cwd"] == str(tmp_path)
     assert [item["id"] for item in listed["terminals"]] == [opened["terminal"]["id"]]
     assert listed["terminals"][0]["kind"] == "local"
+    assert listed["terminals"][0]["local_group_id"] == "local"
+    assert listed["terminals"][0]["local_group_label"] == "Local"
     assert listed["terminals"][0]["number"] == 1
+
+
+def test_hoosegow_local_terminal_group_metadata_round_trips(tmp_path, monkeypatch):
+    monkeypatch.setattr("server.app.LocalPtyDriver", FakeLocalPtyDriver)
+    app = create_app(
+        str(tmp_path),
+        no_browser=True,
+        global_dir=str(tmp_path / "state"),
+        start_without_project=True,
+    )
+    client = socketio.test_client(app)
+    client.get_received()
+
+    opened = client.emit(
+        "terminal:local:open",
+        {
+            "cols": 80,
+            "rows": 24,
+            "local_group_id": "local-review",
+            "local_group_label": "Local Review",
+        },
+        callback=True,
+    )
+    listed = client.emit("terminal:list", {}, callback=True)
+    joined = client.emit("sandbox:terminal:join", {"terminal_id": opened["terminal"]["id"]}, callback=True)
+
+    assert opened["ok"] is True
+    assert opened["terminal"]["local_group_id"] == "local-review"
+    assert opened["terminal"]["local_group_label"] == "Local Review"
+    assert listed["terminals"][0]["local_group_id"] == "local-review"
+    assert listed["terminals"][0]["local_group_label"] == "Local Review"
+    assert joined["terminal"]["local_group_id"] == "local-review"
+    assert joined["terminal"]["local_group_label"] == "Local Review"
 
 
 def test_hoosegow_local_terminal_numbers_do_not_renumber_after_close(tmp_path, monkeypatch):
