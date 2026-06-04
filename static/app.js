@@ -598,7 +598,7 @@ createApp({
       playTerminalBellTone(context);
     }
 
-    async function ensureTerminalRenderer(record, options = {}) {
+    async function ensureTerminalRenderer(record) {
       if (!record?.id) return null;
       await nextTick();
       const host = terminalHosts.get(record.id);
@@ -657,19 +657,25 @@ createApp({
         });
         renderer.resizeObserver.observe(host);
       }
-      if (options.replay && record.transcript) {
-        await writeTerminalReplay(record.id, record.transcript);
-      }
       return renderer;
     }
 
     async function ensureTerminal(options = {}) {
       const record = currentTerminalRecord();
       if (!record) return;
-      const renderer = await ensureTerminalRenderer(record, { replay: options.replay !== false });
+      await activateTerminalRenderer(record, { replay: options.replay !== false });
+    }
+
+    async function activateTerminalRenderer(record, options = {}) {
+      const rendererExists = Boolean(record?.id && terminalRenderers.has(record.id));
+      const renderer = await ensureTerminalRenderer(record);
       if (!renderer) return;
       terminal.value = renderer.terminal;
+      await nextTick();
       fitTerminal();
+      if (options.replay && !rendererExists && record.transcript) {
+        await writeTerminalReplay(record.id, record.transcript);
+      }
       renderer.terminal.focus();
     }
 

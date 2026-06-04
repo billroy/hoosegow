@@ -135,6 +135,7 @@ def test_terminal_switching_preserves_renderer_instead_of_replaying_transcript()
     focus_body = _function_body(app_js, "focusTerminal")
     ensure_body = _function_body(app_js, "ensureTerminal")
     renderer_body = _function_body(app_js, "ensureTerminalRenderer")
+    activation_body = _function_body(app_js, "activateTerminalRenderer")
     close_body = _function_body(app_js, "closeTerminal")
     output_handler = _slice_between(
         app_js,
@@ -153,8 +154,13 @@ def test_terminal_switching_preserves_renderer_instead_of_replaying_transcript()
     assert "replaceTranscript: true" in join_body
     assert "const existing = terminalRenderers.get(record.id);" in renderer_body
     assert "if (existing) return existing;" in renderer_body
-    assert "if (options.replay && record.transcript)" in renderer_body
-    assert "await writeTerminalReplay(record.id, record.transcript);" in renderer_body
+    assert "writeTerminalReplay" not in renderer_body
+    assert "await activateTerminalRenderer(record, { replay: options.replay !== false });" in ensure_body
+    assert "const rendererExists = Boolean(record?.id && terminalRenderers.has(record.id));" in activation_body
+    assert "fitTerminal();" in activation_body
+    assert "if (options.replay && !rendererExists && record.transcript)" in activation_body
+    assert "await writeTerminalReplay(record.id, record.transcript);" in activation_body
+    assert activation_body.index("fitTerminal();") < activation_body.index("await writeTerminalReplay(record.id, record.transcript);")
 
     assert "disposeTerminal();" not in focus_body
     assert "await ensureTerminal({ replay: false });" in focus_body
