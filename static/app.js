@@ -168,6 +168,7 @@ createApp({
     const terminalTextDecoders = new Map();
     const mainMenuOpen = ref(false);
     const sandboxActionMenuSlug = ref('');
+    const localGroupActionMenuId = ref('');
     const createModalOpen = ref(false);
     const localGroupModalOpen = ref(false);
     const detailsModalOpen = ref(false);
@@ -217,6 +218,7 @@ createApp({
     function closeMenus() {
       mainMenuOpen.value = false;
       sandboxActionMenuSlug.value = '';
+      localGroupActionMenuId.value = '';
     }
 
     function closeMenusOnOutsideClick(event) {
@@ -224,8 +226,16 @@ createApp({
       closeMenus();
     }
 
+    function toggleLocalGroupActionMenu(groupId) {
+      mainMenuOpen.value = false;
+      sandboxActionMenuSlug.value = '';
+      localGroupActionMenuId.value = localGroupActionMenuId.value === groupId ? '' : groupId;
+      refreshIcons();
+    }
+
     function toggleSandboxActionMenu(slug) {
       mainMenuOpen.value = false;
+      localGroupActionMenuId.value = '';
       sandboxActionMenuSlug.value = sandboxActionMenuSlug.value === slug ? '' : slug;
       refreshIcons();
     }
@@ -233,6 +243,7 @@ createApp({
     function toggleMainMenu() {
       mainMenuOpen.value = !mainMenuOpen.value;
       sandboxActionMenuSlug.value = '';
+      localGroupActionMenuId.value = '';
       refreshIcons();
     }
 
@@ -1258,6 +1269,15 @@ createApp({
       }
     }
 
+    async function closeLocalGroupTerminals(groupId, options = {}) {
+      const ids = terminals
+        .filter((item) => item.kind === 'local' && (item.local_group_id || DEFAULT_LOCAL_GROUP_ID) === groupId)
+        .map((item) => item.id);
+      for (const terminalId of ids) {
+        await closeTerminal({ ...options, terminalId });
+      }
+    }
+
     function portUrl(mapping) {
       if (!mapping?.host_port) return '';
       return `http://127.0.0.1:${mapping.host_port}`;
@@ -1379,6 +1399,40 @@ createApp({
         busy.value = false;
         clearAction(sandbox.slug);
       }
+    }
+
+    async function destroyLocalGroup(group) {
+      if (!group?.id || group.id === DEFAULT_LOCAL_GROUP_ID) return;
+      const shellCount = terminalsForLocalGroup(group).length;
+      const confirmed = window.confirm(
+        `Destroy ${group.label}?\n\n`
+        + `Closes ${shellCountLabel(shellCount)} in this local group.`
+      );
+      if (!confirmed) return;
+      closeMenus();
+      await closeLocalGroupTerminals(group.id, { silent: true });
+      if (terminalsForLocalGroup(group).length) {
+        setToast(`${group.label} still has open shells.`, 'info');
+        return;
+      }
+      const index = localGroups.findIndex((item) => item.id === group.id);
+      if (index >= 0) localGroups.splice(index, 1);
+      saveLocalGroups();
+      if (selectedGroupKind.value === 'local' && selectedLocalGroupId.value === group.id) {
+        const nextGroup = localGroups[0] || ensureLocalGroup(DEFAULT_LOCAL_GROUP_ID, 'Local');
+        selectedLocalGroupId.value = nextGroup.id;
+        const nextRecord = terminalsForLocalGroup(nextGroup)[0] || null;
+        syncActiveTerminal(nextRecord);
+        if (nextRecord) {
+          await nextTick();
+          await ensureTerminal();
+        } else {
+          deactivateTerminal();
+        }
+      }
+      setToast(`${group.label} destroyed.`, 'success');
+      await nextTick();
+      refreshIcons();
     }
 
     async function requestBasePrepare(rebuild = false) {
@@ -1544,8 +1598,10 @@ createApp({
       createModalOpen,
       createLocalGroup,
       createSandbox,
+      DEFAULT_LOCAL_GROUP_ID,
       detailsModalOpen,
       destroySandbox,
+      destroyLocalGroup,
       form,
       formatDate,
       loadBaseLogs,
@@ -1553,6 +1609,7 @@ createApp({
       loadSandboxes,
       loadSandboxLogs,
       loadTerminalSessions,
+      localGroupActionMenuId,
       localGroupForm,
       localGroupModalOpen,
       localGroups,
@@ -1605,6 +1662,7 @@ createApp({
       toggleTheme,
       toggleSidebar,
       toggleMainMenu,
+      toggleLocalGroupActionMenu,
       toggleSandboxActionMenu,
       toast,
       logout,
@@ -1680,16 +1738,32 @@ createApp({
             :key="group.id"
             class="shell-group-row"
             :class="{ active: selectedGroupKind === 'local' && selectedLocalGroupId === group.id }"
-            role="button"
-            tabindex="0"
-            @click="selectLocalGroup(group)"
-            @keydown.enter.prevent="selectLocalGroup(group)"
-            @keydown.space.prevent="selectLocalGroup(group)"
           >
-            <span class="status-dot" :data-status="terminalsForLocalGroup(group).length ? 'running' : 'closed'"></span>
-            <span class="shell-group-main">
-              <strong>{{ group.label }}</strong>
-              <small>{{ shellCountLabel(terminalsForLocalGroup(group).length) }}</small>
+            <button
+              type="button"
+              class="shell-group-select"
+              @click="selectLocalGroup(group)"
+              @keydown.enter.prevent="selectLocalGroup(group)"
+              @keydown.space.prevent="selectLocalGroup(group)"
+            >
+              <span class="status-dot" :data-status="terminalsForLocalGroup(group).length ? 'running' : 'closed'"></span>
+              <span class="shell-group-main">
+                <strong>{{ group.label }}</strong>
+                <small>{{ shellCountLabel(terminalsForLocalGroup(group).length) }}</small>
+              </span>
+            </button>
+            <span class="menu-wrap local-group-row-menu">
+              <button class="icon-button tiny" type="button" title="Local group actions" @click.stop="toggleLocalGroupActionMenu(group.id)">
+                <i data-lucide="ellipsis"></i>
+              </button>
+              <div v-if="localGroupActionMenuId === group.id" class="menu-panel row-action-menu">
+                <button class="menu-item" type="button" :disabled="!canOpenLocalTerminal" @click="closeMenus(); openLocalTerminal({ localGroup: group })">
+                  <i class="menu-item-icon" data-lucide="terminal"></i><span class="menu-item-label">New Shell</span>
+                </button>
+                <button class="menu-item menu-item-danger" type="button" :disabled="busy || group.id === DEFAULT_LOCAL_GROUP_ID" @click="destroyLocalGroup(group)">
+                  <i class="menu-item-icon" data-lucide="trash-2"></i><span class="menu-item-label">Destroy</span>
+                </button>
+              </div>
             </span>
           </div>
         </div>

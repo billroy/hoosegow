@@ -47,7 +47,14 @@ def test_terminal_sidebar_lists_groups_not_individual_tabs():
     assert "Create local group" in aside
     assert "openLocalGroupModal" in aside
     assert 'title="Create local group" :disabled="!canOpenLocalTerminal"' in aside
+    assert "Local group actions" in local_section
+    assert "toggleLocalGroupActionMenu(group.id)" in local_section
+    assert "localGroupActionMenuId === group.id" in local_section
+    assert "openLocalTerminal({ localGroup: group })" in local_section
+    assert "destroyLocalGroup(group)" in local_section
+    assert "group.id === DEFAULT_LOCAL_GROUP_ID" in local_section
     assert "New shell" in aside
+    assert "New Shell" in local_section
     assert "Create sandbox" in aside
     assert "{{ basename(sandbox.canonical_workspace_path) }} / {{ shellCountLabel(terminalsForSandbox(sandbox).length) }}" in aside
     assert "title=\"Sandbox menu\"" not in aside
@@ -101,6 +108,7 @@ def test_default_terminal_labels_are_unique_numbered_terms_not_shell_shell_shell
 def test_selected_terminal_group_filters_tabs_by_group_not_flat_workspace():
     app_js = _app_js()
     create_local_group_body = _function_body(app_js, "createLocalGroup")
+    destroy_local_group_body = _function_body(app_js, "destroyLocalGroup")
 
     assert "const selectedGroupKind = ref('local');" in app_js
     assert "const selectedLocalGroupId = ref(DEFAULT_LOCAL_GROUP_ID);" in app_js
@@ -121,6 +129,10 @@ def test_selected_terminal_group_filters_tabs_by_group_not_flat_workspace():
     focus_body = _function_body(app_js, "focusTerminal")
     assert "const record = await openLocalTerminal({ localGroup: group, manageBusy: false, silent: true });" in create_local_group_body
     assert "if (record) setToast(`${group.label} created.`, 'success');" in create_local_group_body
+    assert "if (!group?.id || group.id === DEFAULT_LOCAL_GROUP_ID) return;" in destroy_local_group_body
+    assert "await closeLocalGroupTerminals(group.id, { silent: true });" in destroy_local_group_body
+    assert "localGroups.splice(index, 1);" in destroy_local_group_body
+    assert "saveLocalGroups();" in destroy_local_group_body
     assert "selectedGroupKind.value = 'local';" in focus_body
     assert "selectedLocalGroupId.value = record.local_group_id || DEFAULT_LOCAL_GROUP_ID;" in focus_body
     assert "selectedGroupKind.value = 'sandbox';" in focus_body
@@ -200,5 +212,6 @@ def test_sidebar_and_tab_commands_keep_separate_semantics():
 
     assert "openCreateModal" in aside
     assert "openLocalGroupModal" in aside
+    assert "toggleLocalGroupActionMenu" in aside
     assert "openCreateModal" not in main
     assert "Create starts the sandbox and opens the first terminal." in app_js

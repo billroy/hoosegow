@@ -434,17 +434,16 @@ button:disabled {
 
 .shell-group-row {
   display: grid;
-  grid-template-columns: 12px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 28px;
   align-items: center;
-  gap: 7px;
+  gap: 4px;
   width: 100%;
   min-height: 34px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--panel);
   color: var(--text);
-  cursor: pointer;
-  padding: 3px 4px;
+  padding: 3px;
   text-align: left;
 }
 
@@ -455,6 +454,21 @@ button:disabled {
 .shell-group-row.active {
   border-color: #3d8c84;
   background: #172526;
+}
+
+.shell-group-select {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: 28px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 2px 4px;
+  text-align: left;
 }
 
 .shell-group-main {
@@ -526,7 +540,8 @@ button:disabled {
   background: #1a2829;
 }
 
-.sandbox-row-menu {
+.sandbox-row-menu,
+.local-group-row-menu {
   justify-content: flex-end;
 }
 
