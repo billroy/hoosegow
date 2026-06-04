@@ -481,16 +481,25 @@ createApp({
     }
 
     async function createLocalGroup() {
+      if (!connected.value) {
+        setToast('Socket is not connected.', 'error');
+        return;
+      }
+      if (busy.value) return;
       const label = cleanLocalGroupLabel(localGroupForm.label) || nextLocalGroupLabel();
-      const group = ensureLocalGroup(nextLocalGroupId(), label);
-      localGroupModalOpen.value = false;
-      selectedGroupKind.value = 'local';
-      selectedLocalGroupId.value = group.id;
-      syncActiveTerminal(terminalsForLocalGroup(group)[0] || null);
-      if (!activeTerminal.id) deactivateTerminal();
-      setToast(`${group.label} created.`, 'success');
-      await nextTick();
-      refreshIcons();
+      busy.value = true;
+      try {
+        const group = ensureLocalGroup(nextLocalGroupId(), label);
+        localGroupModalOpen.value = false;
+        selectedGroupKind.value = 'local';
+        selectedLocalGroupId.value = group.id;
+        const record = await openLocalTerminal({ localGroup: group, manageBusy: false, silent: true });
+        if (record) setToast(`${group.label} created.`, 'success');
+      } finally {
+        busy.value = false;
+        await nextTick();
+        refreshIcons();
+      }
     }
 
     function upsertTerminalRecord(terminalInfo, transcript = '', options = {}) {
@@ -914,7 +923,7 @@ createApp({
     async function openLocalTerminal(options = {}) {
       if (!connected.value) {
         setToast('Socket is not connected.', 'error');
-        return;
+        return null;
       }
       if (options.manageBusy !== false) busy.value = true;
       try {
@@ -932,8 +941,10 @@ createApp({
         await nextTick();
         await ensureTerminal();
         if (!options.silent) setToast(`${terminalLabel(record)} opened.`, 'success');
+        return record;
       } catch (error) {
         setToast(error.message, 'error');
+        return null;
       } finally {
         if (options.manageBusy !== false) busy.value = false;
         refreshIcons();
@@ -1660,7 +1671,7 @@ createApp({
         <div class="shell-group">
           <div class="shell-group-header">
             <span>Local</span>
-            <button class="row-add-button" type="button" title="Create local group" @click.stop="openLocalGroupModal">
+            <button class="row-add-button" type="button" title="Create local group" :disabled="!canOpenLocalTerminal" @click.stop="openLocalGroupModal">
               <i data-lucide="plus"></i>
             </button>
           </div>
@@ -1830,7 +1841,7 @@ createApp({
                 <span>Label</span>
                 <input v-model="localGroupForm.label" autocomplete="off" placeholder="Local 2">
               </label>
-              <button class="primary-button" type="submit">Create</button>
+              <button class="primary-button" type="submit" :disabled="!canOpenLocalTerminal">Create</button>
             </form>
           </div>
         </section>

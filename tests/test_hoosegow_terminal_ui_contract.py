@@ -46,6 +46,7 @@ def test_terminal_sidebar_lists_groups_not_individual_tabs():
     assert "selectSandboxGroup(sandbox)" in aside
     assert "Create local group" in aside
     assert "openLocalGroupModal" in aside
+    assert 'title="Create local group" :disabled="!canOpenLocalTerminal"' in aside
     assert "New shell" in aside
     assert "Create sandbox" in aside
     assert "{{ basename(sandbox.canonical_workspace_path) }} / {{ shellCountLabel(terminalsForSandbox(sandbox).length) }}" in aside
@@ -59,6 +60,7 @@ def test_terminal_sidebar_lists_groups_not_individual_tabs():
     assert "Term {{ term.number" not in aside
     assert "Create Local Group" in app_js
     assert "v-model=\"localGroupForm.label\"" in app_js
+    assert 'type="submit" :disabled="!canOpenLocalTerminal"' in app_js
 
 
 def test_terminal_tabs_live_inside_selected_group_workspace():
@@ -98,6 +100,7 @@ def test_default_terminal_labels_are_unique_numbered_terms_not_shell_shell_shell
 
 def test_selected_terminal_group_filters_tabs_by_group_not_flat_workspace():
     app_js = _app_js()
+    create_local_group_body = _function_body(app_js, "createLocalGroup")
 
     assert "const selectedGroupKind = ref('local');" in app_js
     assert "const selectedLocalGroupId = ref(DEFAULT_LOCAL_GROUP_ID);" in app_js
@@ -116,6 +119,8 @@ def test_selected_terminal_group_filters_tabs_by_group_not_flat_workspace():
     ) in app_js
 
     focus_body = _function_body(app_js, "focusTerminal")
+    assert "const record = await openLocalTerminal({ localGroup: group, manageBusy: false, silent: true });" in create_local_group_body
+    assert "if (record) setToast(`${group.label} created.`, 'success');" in create_local_group_body
     assert "selectedGroupKind.value = 'local';" in focus_body
     assert "selectedLocalGroupId.value = record.local_group_id || DEFAULT_LOCAL_GROUP_ID;" in focus_body
     assert "selectedGroupKind.value = 'sandbox';" in focus_body
