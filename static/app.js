@@ -321,6 +321,73 @@ createApp({
       refreshIcons();
     }
 
+    function eventTargetUsesNativeEnter(event) {
+      const target = event?.target;
+      if (!target?.closest?.('.modal-panel')) return false;
+      return Boolean(target.closest('button, input, select, textarea, [contenteditable="true"]'));
+    }
+
+    function closeActiveDialog() {
+      if (sandboxLogViewer.open) {
+        sandboxLogViewer.open = false;
+      } else if (baseLogViewer.open) {
+        baseLogViewer.open = false;
+      } else if (portsModalOpen.value) {
+        portsModalOpen.value = false;
+      } else if (detailsModalOpen.value) {
+        detailsModalOpen.value = false;
+      } else if (createModalOpen.value) {
+        if (picker.open) {
+          picker.open = false;
+        } else {
+          createModalOpen.value = false;
+        }
+      } else if (localGroupModalOpen.value) {
+        localGroupModalOpen.value = false;
+      } else {
+        return false;
+      }
+      refreshIcons();
+      return true;
+    }
+
+    function acceptActiveDialog(event) {
+      if (event?.isComposing || event?.altKey || event?.ctrlKey || event?.metaKey || event?.shiftKey) return false;
+      if (eventTargetUsesNativeEnter(event)) return false;
+      if (sandboxLogViewer.open) {
+        sandboxLogViewer.open = false;
+      } else if (baseLogViewer.open) {
+        baseLogViewer.open = false;
+      } else if (portsModalOpen.value) {
+        portsModalOpen.value = false;
+      } else if (detailsModalOpen.value) {
+        detailsModalOpen.value = false;
+      } else if (createModalOpen.value) {
+        if (picker.open) {
+          if (picker.path && !picker.loading) selectWorkspacePath(picker.path);
+        } else {
+          createSandbox();
+        }
+      } else if (localGroupModalOpen.value) {
+        createLocalGroup();
+      } else {
+        return false;
+      }
+      refreshIcons();
+      return true;
+    }
+
+    function handleDialogKeydown(event) {
+      if (event.defaultPrevented) return;
+      if (event.key === 'Escape' && closeActiveDialog()) {
+        event.preventDefault();
+        event.stopPropagation();
+      } else if (event.key === 'Enter' && acceptActiveDialog(event)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }
+
     function beginSidebarResize(event) {
       if (sidebarCollapsed.value) return;
       sidebarResize.active = true;
@@ -1559,6 +1626,7 @@ createApp({
 
     onMounted(() => {
       document.addEventListener('click', closeMenusOnOutsideClick);
+      document.addEventListener('keydown', handleDialogKeydown);
       window.addEventListener('resize', scheduleTerminalFit);
       clockCheckTimer = window.setInterval(checkRunningClocks, 5 * 60 * 1000);
       loadAuthState();
@@ -1566,6 +1634,7 @@ createApp({
 
     onBeforeUnmount(() => {
       document.removeEventListener('click', closeMenusOnOutsideClick);
+      document.removeEventListener('keydown', handleDialogKeydown);
       window.removeEventListener('resize', scheduleTerminalFit);
       if (clockCheckTimer) window.clearInterval(clockCheckTimer);
       disposeAllTerminals();

@@ -215,3 +215,36 @@ def test_sidebar_and_tab_commands_keep_separate_semantics():
     assert "toggleLocalGroupActionMenu" in aside
     assert "openCreateModal" not in main
     assert "Create starts the sandbox and opens the first terminal." in app_js
+
+
+def test_dialogs_share_enter_accept_and_escape_cancel_keyboard_contract():
+    app_js = _app_js()
+    close_body = _function_body(app_js, "closeActiveDialog")
+    accept_body = _function_body(app_js, "acceptActiveDialog")
+    keydown_body = _function_body(app_js, "handleDialogKeydown")
+
+    assert "document.addEventListener('keydown', handleDialogKeydown)" in app_js
+    assert "document.removeEventListener('keydown', handleDialogKeydown)" in app_js
+    assert "event.key === 'Escape' && closeActiveDialog()" in keydown_body
+    assert "event.key === 'Enter' && acceptActiveDialog(event)" in keydown_body
+    assert "event.preventDefault();" in keydown_body
+    assert "event.stopPropagation();" in keydown_body
+
+    for modal_state in (
+        "sandboxLogViewer.open",
+        "baseLogViewer.open",
+        "portsModalOpen.value",
+        "detailsModalOpen.value",
+        "createModalOpen.value",
+        "localGroupModalOpen.value",
+    ):
+        assert modal_state in close_body
+        assert modal_state in accept_body
+
+    assert "if (picker.open) {" in close_body
+    assert "picker.open = false;" in close_body
+    assert "createSandbox();" in accept_body
+    assert "createLocalGroup();" in accept_body
+    assert "if (picker.path && !picker.loading) selectWorkspacePath(picker.path);" in accept_body
+    assert "eventTargetUsesNativeEnter(event)" in accept_body
+    assert "target.closest('button, input, select, textarea, [contenteditable=\"true\"]')" in app_js
