@@ -1,7 +1,7 @@
 # Hoosegow: Functional Specification
 
 > "Toad in a hole for agents." A small, single-binary web app that runs CLI
-> coding agents (Claude, Codex, Gemini, opencode, ...) inside Microsandbox
+> coding agents (Claude, Codex, Antigravity, opencode, ...) inside Microsandbox
 > microVMs and gives the user PTY-backed web terminals into each sandbox.
 
 ## 1. Goals and Non-Goals
@@ -45,7 +45,7 @@
 | Concept | Definition |
 |---|---|
 | **Workspace root** | A canonical host directory mounted read-write into a sandbox as `/workspace`. This is usually a shared parent directory containing many projects, matching Bullpen Monitor's workspace-root picker, not a single project directory. |
-| **Sandbox** | A named Microsandbox microVM with the Hoosegow base image (Python, Node, git, gh, nano, ripgrep, tmux, Claude/Codex/Gemini/opencode CLIs). Has persistent `/home/agent` storage. |
+| **Sandbox** | A named Microsandbox microVM with the Hoosegow base image (Python, Node, git, gh, nano, ripgrep, tmux, Claude/Codex/Antigravity/opencode CLIs). Has persistent `/home/agent` storage. |
 | **Terminal** | A PTY session running inside a sandbox, bridged to a browser xterm.js tab over Socket.IO. |
 | **PTY controller** | A small in-sandbox process (`hoosegow-ptyd`) that owns PTYs and exposes a token-protected HTTP control/data API to the host Hoosegow server through a Microsandbox-published localhost port. |
 | **Base image** | Reusable Microsandbox snapshot, prepared automatically on first run. Mirrors Bullpen's `deploy-sandbox.py --prepare-base` flow internally. |
@@ -66,7 +66,7 @@ root concurrently; this is expected to be the common local configuration.
    `running`, `stopped`, `error`) and any published dev-server URLs.
 4. Use a sandbox row action menu to open more terminals. A new xterm.js tab
    opens, already `cd`'d into `/workspace`.
-5. Type `claude` (or `codex`, `gemini`, `opencode`) and work normally.
+5. Type `claude` (or `codex`, `antigravity`, `opencode`) and work normally.
 
 There is no step 6.
 
@@ -227,9 +227,9 @@ There are no subcommands and no deployment modes. Environment variables:
 - Built once via a direct port of Bullpen's `deploy-sandbox.py` base-prep
   logic, not a greenfield rewrite. Contents: Python 3, Node 22, bash,
   bubblewrap, ca-certificates, curl, gh, git, iproute2, jq, Python venv
-  support, nano, ripgrep, strace, tmux, `claude`, `codex`, `gemini`, and `opencode` CLIs.
+  support, nano, ripgrep, strace, tmux, `claude`, `codex`, `antigravity`, and `opencode` CLIs.
   Install packages include `@anthropic-ai/claude-code`, `@openai/codex`,
-  `@google/gemini-cli`, and `opencode-ai`.
+  `@google/antigravity-cli`, and `opencode-ai`.
   Agent CLIs are not pre-authenticated; the user authenticates inside the
   running sandbox.
 - Base prep uses Bullpen's prepare-sandbox -> local snapshot -> validation

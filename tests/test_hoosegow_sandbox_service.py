@@ -661,7 +661,7 @@ def test_sandbox_service_refreshes_stopped_sandbox_without_starting_or_rebuildin
         port_pool="63100-63105",
     )
     service.create_manifest({"name": "demo", "workspace_root": str(workspace)})
-    latest = {"claude": "1", "codex": "2", "gemini": "3", "opencode": "4"}
+    latest = {"claude": "1", "codex": "2", "antigravity": "3", "opencode": "4"}
     metadata = hoosegow_base.write_base_metadata(
         service._base_metadata_path(),
         base=service.base,
@@ -716,8 +716,8 @@ def test_sandbox_service_refresh_rebuilds_only_when_versions_change(tmp_path, mo
     manifest = service.store.get("demo")
     manifest.last_status = "running"
     service.store.save(manifest)
-    old_versions = {"claude": "1", "codex": "2", "gemini": "3", "opencode": "4"}
-    latest = {"claude": "1", "codex": "2.1", "gemini": "3", "opencode": "4"}
+    old_versions = {"claude": "1", "codex": "2", "antigravity": "3", "opencode": "4"}
+    latest = {"claude": "1", "codex": "2.1", "antigravity": "3", "opencode": "4"}
     hoosegow_base.write_base_metadata(
         service._base_metadata_path(),
         base=service.base,

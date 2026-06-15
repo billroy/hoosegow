@@ -22,7 +22,7 @@ from server.sandbox_bootstrap import run_sandbox_shell
 AGENT_CLI_PACKAGES = {
     "claude": "@anthropic-ai/claude-code",
     "codex": "@openai/codex",
-    "gemini": "@google/gemini-cli",
+    "antigravity": "@google/antigravity-cli",
     "opencode": "opencode-ai",
 }
 
@@ -288,7 +288,7 @@ PY
             export npm_config_progress=false
             npm install -g --no-audit --no-fund --no-progress --omit=dev @anthropic-ai/claude-code
             npm install -g --no-audit --no-fund --no-progress --omit=dev @openai/codex
-            npm install -g --no-audit --no-fund --no-progress --omit=dev @google/gemini-cli
+            npm install -g --no-audit --no-fund --no-progress --omit=dev @google/antigravity-cli
             npm install -g --no-audit --no-fund --no-progress --omit=dev opencode-ai
             """,
             label="Installing agent CLIs",
@@ -307,7 +307,7 @@ PY
               npm --version
               claude --version
               {codex_cli_integrity_command()}
-              gemini --version
+              antigravity --version
               opencode --version
             }} > "$versions_file"
             cat "$versions_file"

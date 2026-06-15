@@ -72,11 +72,13 @@ def test_prepare_base_runs_bullpen_style_steps_and_cleans_prepare_sandbox(tmp_pa
         if label == "Installing agent CLIs":
             assert "@anthropic-ai/claude-code" in command
             assert "@openai/codex" in command
-            assert "@google/gemini-cli" in command
+            assert "@google/antigravity-cli" in command
+            assert "@google/gemini-cli" not in command
             assert "opencode-ai" in command
         if label == "Verifying prepared base":
             assert "codex --version" in command
-            assert "gemini --version" in command
+            assert "antigravity --version" in command
+            assert "gemini --version" not in command
             assert "opencode --version" in command
         return SimpleNamespace(stdout_text="", stderr_text="", returncode=0)
 
@@ -149,7 +151,7 @@ def test_base_dependency_refresh_detects_missing_or_changed_metadata():
     latest = {
         "claude": "1.0.0",
         "codex": "2.0.0",
-        "gemini": "3.0.0",
+        "antigravity": "3.0.0",
         "opencode": "4.0.0",
     }
 
@@ -178,13 +180,13 @@ def test_latest_agent_cli_versions_queries_npm_packages(tmp_path, monkeypatch):
     assert versions == {
         "claude": "@anthropic-ai/claude-code-version",
         "codex": "@openai/codex-version",
-        "gemini": "@google/gemini-cli-version",
+        "antigravity": "@google/antigravity-cli-version",
         "opencode": "opencode-ai-version",
     }
     assert calls == [
         ["npm", "view", "@anthropic-ai/claude-code", "version"],
         ["npm", "view", "@openai/codex", "version"],
-        ["npm", "view", "@google/gemini-cli", "version"],
+        ["npm", "view", "@google/antigravity-cli", "version"],
         ["npm", "view", "opencode-ai", "version"],
     ]
     assert all(env["npm_config_cache"] == str(cache_dir.resolve()) for env in envs)

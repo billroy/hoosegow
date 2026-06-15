@@ -33,7 +33,7 @@ workarounds in every caller.
 - Avoid requiring the Hoosegow web server, Socket.IO, browser auth, or Hoosegow
   manifests for the first integration.
 - Support non-interactive agent commands such as `claude -p ...`, `codex ...`,
-  `gemini ...`, and `opencode ...`.
+  `antigravity ...`, and `opencode ...`.
 - Support interactive PTY mode when `msb exec -t` is sufficient.
 - Preserve remote exit codes and produce predictable wrapper exit codes.
 - Keep the implementation small enough to test thoroughly.
@@ -317,7 +317,7 @@ cleanup semantics.
 
 ### Phase 0C: Integration Docs And Smokes
 
-- Document common examples for Claude, Codex, Gemini, and opencode.
+- Document common examples for Claude, Codex, Antigravity, and opencode.
 - Document Bullpen invocation shape as a subprocess command, not an embedded
   library API.
 - Add a real smoke test gated by an environment variable, for example:
@@ -362,7 +362,7 @@ Only after Phase 0 is used by Bullpen or another integration:
   module entry point, or both.
 - **Container viability**: test whether Bullpen's actual runtime can invoke
   `msb` against the host Microsandbox runtime.
-- **PTY behavior**: verify `msb exec -t` with Claude, Gemini, Codex, and
+- **PTY behavior**: verify `msb exec -t` with Claude, Antigravity, Codex, and
   opencode auth/chat flows.
 - **Timeout behavior**: confirm how `msb exec --timeout` reports exits and
   whether wrapper-level timeout handling is also needed.

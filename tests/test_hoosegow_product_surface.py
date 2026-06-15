@@ -510,9 +510,11 @@ def test_hoosegow_base_installs_declared_agent_clis():
 
     assert "npm install -g --no-audit --no-fund --no-progress --omit=dev @anthropic-ai/claude-code" in base_py
     assert "npm install -g --no-audit --no-fund --no-progress --omit=dev @openai/codex" in base_py
-    assert "npm install -g --no-audit --no-fund --no-progress --omit=dev @google/gemini-cli" in base_py
+    assert "npm install -g --no-audit --no-fund --no-progress --omit=dev @google/antigravity-cli" in base_py
+    assert "npm install -g --no-audit --no-fund --no-progress --omit=dev @google/gemini-cli" not in base_py
     assert "npm install -g --no-audit --no-fund --no-progress --omit=dev opencode-ai" in base_py
     assert "claude --version" in base_py
     assert "codex --version" in base_py
-    assert "gemini --version" in base_py
+    assert "antigravity --version" in base_py
+    assert "gemini --version" not in base_py
     assert "opencode --version" in base_py

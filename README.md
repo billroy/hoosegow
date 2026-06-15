@@ -10,7 +10,7 @@ workspace-root mounts, automatic base-image setup, sandbox logs, and local publi
 ports for dev servers.
 
 The expected workflow is direct: create a sandbox, get a terminal, type
-`claude`, `codex`, `gemini`, `opencode`, or ordinary shell commands yourself.
+`claude`, `codex`, `antigravity`, `opencode`, or ordinary shell commands yourself.
 Hoosegow does not orchestrate agents, tickets, workers, commits, or PRs.
 
 Hoosegow is derived from Bullpen's proven Flask, Socket.IO, auth, terminal, and
@@ -137,7 +137,7 @@ home where applicable. Run the agent command yourself from the terminal.
 
 ## Agent CLI Updates
 
-Agent CLIs such as Claude, Codex, Gemini, and opencode update frequently. Use a
+Agent CLIs such as Claude, Codex, Antigravity, and opencode update frequently. Use a
 sandbox row `...` menu and choose **Update agent CLIs** to check npm for newer
 CLI versions and apply them to that sandbox only.
 
@@ -207,7 +207,7 @@ The base includes the shared pieces Hoosegow expects inside each sandbox:
 - Python and the Hoosegow PTY controller
 - Node/npm tooling
 - git, gh, nano, ripgrep, tmux, and common CLI dependencies
-- Claude Code, Codex, Gemini, and opencode CLIs installed globally
+- Claude Code, Codex, Antigravity, and opencode CLIs installed globally
 - Bullpen-derived file-descriptor, network-cap, CA, Codex auth, and Claude IPv6
   workarounds
 
