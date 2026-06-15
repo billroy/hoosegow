@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import tempfile
@@ -19,19 +20,16 @@ from server.microsandbox_runtime import (
 from server.sandbox_bootstrap import run_sandbox_shell
 
 
-AGENT_CLI_PACKAGES = {
+AGENT_NPM_CLI_PACKAGES = {
     "claude": "@anthropic-ai/claude-code",
     "codex": "@openai/codex",
-    "antigravity": "@google/antigravity-cli",
     "opencode": "opencode-ai",
 }
 
-OPTIONAL_AGENT_CLIS = {"antigravity"}
-
-
-def _npm_package_not_found(result: subprocess.CompletedProcess[str]) -> bool:
-    output = f"{result.stderr or ''}\n{result.stdout or ''}".lower()
-    return result.returncode != 0 and ("e404" in output or "404 not found" in output)
+ANTIGRAVITY_CLI_INSTALL_URL = "https://antigravity.google/cli/install.sh"
+ANTIGRAVITY_CLI_MANIFEST_URL = (
+    "https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/linux_amd64.json"
+)
 
 
 def base_metadata_path(home: str | Path, base: str = "hoosegow-microsandbox-local") -> Path:
@@ -68,7 +66,7 @@ def write_base_metadata(
 
 
 def latest_agent_cli_versions(cache_dir: str | Path | None = None) -> dict[str, str]:
-    versions = {}
+    versions = {"antigravity": latest_antigravity_cli_version()}
     cache_context = tempfile.TemporaryDirectory(prefix="hoosegow-npm-cache-") if cache_dir is None else None
     try:
         npm_cache = Path(cache_dir or cache_context.name).expanduser().resolve()
@@ -81,7 +79,7 @@ def latest_agent_cli_versions(cache_dir: str | Path | None = None) -> dict[str, 
             "npm_config_progress": "false",
             "npm_config_update_notifier": "false",
         }
-        for name, package in AGENT_CLI_PACKAGES.items():
+        for name, package in AGENT_NPM_CLI_PACKAGES.items():
             try:
                 result = subprocess.run(
                     ["npm", "view", package, "version"],
@@ -94,9 +92,6 @@ def latest_agent_cli_versions(cache_dir: str | Path | None = None) -> dict[str, 
             except (OSError, subprocess.TimeoutExpired) as exc:
                 raise HoosegowRuntimeError(f"Could not check latest {name} package version: {exc}") from exc
             if result.returncode != 0:
-                if name in OPTIONAL_AGENT_CLIS and _npm_package_not_found(result):
-                    print(f"Skipping optional {name} CLI: npm package {package} was not found.", flush=True)
-                    continue
                 detail = (result.stderr or result.stdout or "").strip()
                 raise HoosegowRuntimeError(
                     f"Could not check latest {name} package version with npm view {package}."
@@ -110,6 +105,33 @@ def latest_agent_cli_versions(cache_dir: str | Path | None = None) -> dict[str, 
         if cache_context is not None:
             cache_context.cleanup()
     return versions
+
+
+def latest_antigravity_cli_version(manifest_url: str = ANTIGRAVITY_CLI_MANIFEST_URL) -> str:
+    try:
+        result = subprocess.run(
+            ["curl", "-fsSL", manifest_url],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise HoosegowRuntimeError(f"Could not check latest antigravity CLI version: {exc}") from exc
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        raise HoosegowRuntimeError(
+            "Could not check latest antigravity CLI version with curl."
+            + (f" {detail}" if detail else "")
+        )
+    try:
+        payload = json.loads(result.stdout)
+    except ValueError as exc:
+        raise HoosegowRuntimeError(f"Could not parse latest antigravity CLI manifest: {exc}") from exc
+    version = payload.get("version") if isinstance(payload, dict) else None
+    if not isinstance(version, str) or not version.strip():
+        raise HoosegowRuntimeError("Antigravity CLI manifest returned an empty version.")
+    return version.strip()
 
 
 def base_needs_dependency_refresh(metadata: dict[str, Any] | None, latest_versions: dict[str, str]) -> bool:
@@ -291,23 +313,14 @@ PY
         )
         await run_logged_sandbox_shell(
             sandbox,
-            r"""
+            f"""
             set -euo pipefail
             export npm_config_audit=false
             export npm_config_fund=false
             export npm_config_progress=false
             npm install -g --no-audit --no-fund --no-progress --omit=dev @anthropic-ai/claude-code
             npm install -g --no-audit --no-fund --no-progress --omit=dev @openai/codex
-            antigravity_view="$(mktemp)"
-            if npm view @google/antigravity-cli version >"$antigravity_view" 2>&1; then
-              npm install -g --no-audit --no-fund --no-progress --omit=dev @google/antigravity-cli
-            elif grep -Eq "E404|404 Not Found" "$antigravity_view"; then
-              echo "Skipping optional antigravity CLI: npm package @google/antigravity-cli was not found."
-            else
-              cat "$antigravity_view"
-              exit 1
-            fi
-            rm -f "$antigravity_view"
+            curl -fsSL {ANTIGRAVITY_CLI_INSTALL_URL} | bash -s -- --dir /usr/local/bin
             npm install -g --no-audit --no-fund --no-progress --omit=dev opencode-ai
             """,
             label="Installing agent CLIs",
@@ -326,11 +339,8 @@ PY
               npm --version
               claude --version
               {codex_cli_integrity_command()}
-              if command -v antigravity >/dev/null 2>&1; then
-                antigravity --version
-              else
-                echo "antigravity unavailable"
-              fi
+              command -v agy
+              agy --version
               opencode --version
             }} > "$versions_file"
             cat "$versions_file"

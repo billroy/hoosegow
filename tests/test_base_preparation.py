@@ -72,12 +72,16 @@ def test_prepare_base_runs_bullpen_style_steps_and_cleans_prepare_sandbox(tmp_pa
         if label == "Installing agent CLIs":
             assert "@anthropic-ai/claude-code" in command
             assert "@openai/codex" in command
-            assert "@google/antigravity-cli" in command
+            assert "https://antigravity.google/cli/install.sh" in command
+            assert "bash -s -- --dir /usr/local/bin" in command
+            assert "@google/antigravity-cli" not in command
             assert "@google/gemini-cli" not in command
             assert "opencode-ai" in command
         if label == "Verifying prepared base":
             assert "codex --version" in command
-            assert "antigravity --version" in command
+            assert "command -v agy" in command
+            assert "agy --version" in command
+            assert "antigravity unavailable" not in command
             assert "gemini --version" not in command
             assert "opencode --version" in command
         return SimpleNamespace(stdout_text="", stderr_text="", returncode=0)
@@ -172,6 +176,7 @@ def test_latest_agent_cli_versions_queries_npm_packages(tmp_path, monkeypatch):
         envs.append(kwargs["env"])
         return SimpleNamespace(returncode=0, stdout=f"{argv[2]}-version\n", stderr="")
 
+    monkeypatch.setattr(hoosegow_base, "latest_antigravity_cli_version", lambda: "antigravity-cli-version")
     monkeypatch.setattr(hoosegow_base.subprocess, "run", fake_run)
 
     cache_dir = tmp_path / "npm-cache"
@@ -180,39 +185,59 @@ def test_latest_agent_cli_versions_queries_npm_packages(tmp_path, monkeypatch):
     assert versions == {
         "claude": "@anthropic-ai/claude-code-version",
         "codex": "@openai/codex-version",
-        "antigravity": "@google/antigravity-cli-version",
+        "antigravity": "antigravity-cli-version",
         "opencode": "opencode-ai-version",
     }
     assert calls == [
         ["npm", "view", "@anthropic-ai/claude-code", "version"],
         ["npm", "view", "@openai/codex", "version"],
-        ["npm", "view", "@google/antigravity-cli", "version"],
         ["npm", "view", "opencode-ai", "version"],
     ]
     assert all(env["npm_config_cache"] == str(cache_dir.resolve()) for env in envs)
     assert all(env["npm_config_update_notifier"] == "false" for env in envs)
 
 
-def test_latest_agent_cli_versions_skips_missing_optional_antigravity_package(tmp_path, monkeypatch):
-    def fake_run(argv, **_kwargs):
-        package = argv[2]
-        if package == "@google/antigravity-cli":
-            return SimpleNamespace(
-                returncode=1,
-                stdout="",
-                stderr="npm error code E404\nnpm error 404 Not Found",
-            )
-        return SimpleNamespace(returncode=0, stdout=f"{package}-version\n", stderr="")
+def test_latest_antigravity_cli_version_reads_google_manifest(monkeypatch):
+    def fake_run(argv, **kwargs):
+        assert argv == ["curl", "-fsSL", "https://example.invalid/manifest.json"]
+        assert kwargs["timeout"] == 30
+        assert kwargs["capture_output"] is True
+        assert kwargs["text"] is True
+        return SimpleNamespace(
+            returncode=0,
+            stdout='{"version": "1.0.8", "url": "https://example.invalid/agy.tar.gz"}',
+            stderr="",
+        )
 
     monkeypatch.setattr(hoosegow_base.subprocess, "run", fake_run)
 
-    versions = hoosegow_base.latest_agent_cli_versions(cache_dir=tmp_path / "npm-cache")
+    assert hoosegow_base.latest_antigravity_cli_version("https://example.invalid/manifest.json") == "1.0.8"
 
-    assert versions == {
-        "claude": "@anthropic-ai/claude-code-version",
-        "codex": "@openai/codex-version",
-        "opencode": "opencode-ai-version",
-    }
+
+def test_latest_antigravity_cli_version_rejects_empty_manifest(monkeypatch):
+    monkeypatch.setattr(
+        hoosegow_base.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=0,
+            stdout='{"url": "https://example.invalid/agy.tar.gz"}',
+            stderr="",
+        ),
+    )
+
+    with pytest.raises(HoosegowRuntimeError, match="empty version"):
+        hoosegow_base.latest_antigravity_cli_version("https://example.invalid/manifest.json")
+
+
+def test_latest_antigravity_cli_version_fails_curl_errors(monkeypatch):
+    monkeypatch.setattr(
+        hoosegow_base.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=60, stdout="", stderr="certificate failed"),
+    )
+
+    with pytest.raises(HoosegowRuntimeError, match="with curl.*certificate failed"):
+        hoosegow_base.latest_antigravity_cli_version("https://example.invalid/manifest.json")
 
 
 def test_latest_agent_cli_versions_still_fails_required_package_errors(tmp_path, monkeypatch):
@@ -221,6 +246,7 @@ def test_latest_agent_cli_versions_still_fails_required_package_errors(tmp_path,
             return SimpleNamespace(returncode=1, stdout="", stderr="npm error code E500")
         return SimpleNamespace(returncode=0, stdout=f"{argv[2]}-version\n", stderr="")
 
+    monkeypatch.setattr(hoosegow_base, "latest_antigravity_cli_version", lambda: "antigravity-cli-version")
     monkeypatch.setattr(hoosegow_base.subprocess, "run", fake_run)
 
     with pytest.raises(HoosegowRuntimeError, match="Could not check latest codex package version"):

@@ -33,7 +33,7 @@ workarounds in every caller.
 - Avoid requiring the Hoosegow web server, Socket.IO, browser auth, or Hoosegow
   manifests for the first integration.
 - Support non-interactive agent commands such as `claude -p ...`, `codex ...`,
-  `antigravity ...`, and `opencode ...`.
+  `agy ...`, and `opencode ...`.
 - Support interactive PTY mode when `msb exec -t` is sufficient.
 - Preserve remote exit codes and produce predictable wrapper exit codes.
 - Keep the implementation small enough to test thoroughly.

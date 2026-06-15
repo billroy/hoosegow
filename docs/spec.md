@@ -66,7 +66,7 @@ root concurrently; this is expected to be the common local configuration.
    `running`, `stopped`, `error`) and any published dev-server URLs.
 4. Use a sandbox row action menu to open more terminals. A new xterm.js tab
    opens, already `cd`'d into `/workspace`.
-5. Type `claude` (or `codex`, `antigravity`, `opencode`) and work normally.
+5. Type `claude` (or `codex`, `agy`, `opencode`) and work normally.
 
 There is no step 6.
 
@@ -227,9 +227,10 @@ There are no subcommands and no deployment modes. Environment variables:
 - Built once via a direct port of Bullpen's `deploy-sandbox.py` base-prep
   logic, not a greenfield rewrite. Contents: Python 3, Node 22, bash,
   bubblewrap, ca-certificates, curl, gh, git, iproute2, jq, Python venv
-  support, nano, ripgrep, strace, tmux, `claude`, `codex`, `antigravity`, and `opencode` CLIs.
+  support, nano, ripgrep, strace, tmux, `claude`, `codex`, Antigravity CLI
+  (`agy`), and `opencode` CLIs.
   Install packages include `@anthropic-ai/claude-code`, `@openai/codex`,
-  `@google/antigravity-cli`, and `opencode-ai`.
+  Google's Antigravity CLI installer, and `opencode-ai`.
   Agent CLIs are not pre-authenticated; the user authenticates inside the
   running sandbox.
 - Base prep uses Bullpen's prepare-sandbox -> local snapshot -> validation

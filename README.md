@@ -10,7 +10,7 @@ workspace-root mounts, automatic base-image setup, sandbox logs, and local publi
 ports for dev servers.
 
 The expected workflow is direct: create a sandbox, get a terminal, type
-`claude`, `codex`, `antigravity`, `opencode`, or ordinary shell commands yourself.
+`claude`, `codex`, `agy`, `opencode`, or ordinary shell commands yourself.
 Hoosegow does not orchestrate agents, tickets, workers, commits, or PRs.
 
 Hoosegow is derived from Bullpen's proven Flask, Socket.IO, auth, terminal, and
