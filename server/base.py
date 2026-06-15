@@ -26,6 +26,13 @@ AGENT_CLI_PACKAGES = {
     "opencode": "opencode-ai",
 }
 
+OPTIONAL_AGENT_CLIS = {"antigravity"}
+
+
+def _npm_package_not_found(result: subprocess.CompletedProcess[str]) -> bool:
+    output = f"{result.stderr or ''}\n{result.stdout or ''}".lower()
+    return result.returncode != 0 and ("e404" in output or "404 not found" in output)
+
 
 def base_metadata_path(home: str | Path, base: str = "hoosegow-microsandbox-local") -> Path:
     return Path(home).expanduser().resolve() / "base" / f"{base}-metadata.json"
@@ -87,6 +94,9 @@ def latest_agent_cli_versions(cache_dir: str | Path | None = None) -> dict[str, 
             except (OSError, subprocess.TimeoutExpired) as exc:
                 raise HoosegowRuntimeError(f"Could not check latest {name} package version: {exc}") from exc
             if result.returncode != 0:
+                if name in OPTIONAL_AGENT_CLIS and _npm_package_not_found(result):
+                    print(f"Skipping optional {name} CLI: npm package {package} was not found.", flush=True)
+                    continue
                 detail = (result.stderr or result.stdout or "").strip()
                 raise HoosegowRuntimeError(
                     f"Could not check latest {name} package version with npm view {package}."
@@ -288,7 +298,16 @@ PY
             export npm_config_progress=false
             npm install -g --no-audit --no-fund --no-progress --omit=dev @anthropic-ai/claude-code
             npm install -g --no-audit --no-fund --no-progress --omit=dev @openai/codex
-            npm install -g --no-audit --no-fund --no-progress --omit=dev @google/antigravity-cli
+            antigravity_view="$(mktemp)"
+            if npm view @google/antigravity-cli version >"$antigravity_view" 2>&1; then
+              npm install -g --no-audit --no-fund --no-progress --omit=dev @google/antigravity-cli
+            elif grep -Eq "E404|404 Not Found" "$antigravity_view"; then
+              echo "Skipping optional antigravity CLI: npm package @google/antigravity-cli was not found."
+            else
+              cat "$antigravity_view"
+              exit 1
+            fi
+            rm -f "$antigravity_view"
             npm install -g --no-audit --no-fund --no-progress --omit=dev opencode-ai
             """,
             label="Installing agent CLIs",
@@ -307,7 +326,11 @@ PY
               npm --version
               claude --version
               {codex_cli_integrity_command()}
-              antigravity --version
+              if command -v antigravity >/dev/null 2>&1; then
+                antigravity --version
+              else
+                echo "antigravity unavailable"
+              fi
               opencode --version
             }} > "$versions_file"
             cat "$versions_file"

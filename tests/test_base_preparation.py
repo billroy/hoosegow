@@ -193,6 +193,40 @@ def test_latest_agent_cli_versions_queries_npm_packages(tmp_path, monkeypatch):
     assert all(env["npm_config_update_notifier"] == "false" for env in envs)
 
 
+def test_latest_agent_cli_versions_skips_missing_optional_antigravity_package(tmp_path, monkeypatch):
+    def fake_run(argv, **_kwargs):
+        package = argv[2]
+        if package == "@google/antigravity-cli":
+            return SimpleNamespace(
+                returncode=1,
+                stdout="",
+                stderr="npm error code E404\nnpm error 404 Not Found",
+            )
+        return SimpleNamespace(returncode=0, stdout=f"{package}-version\n", stderr="")
+
+    monkeypatch.setattr(hoosegow_base.subprocess, "run", fake_run)
+
+    versions = hoosegow_base.latest_agent_cli_versions(cache_dir=tmp_path / "npm-cache")
+
+    assert versions == {
+        "claude": "@anthropic-ai/claude-code-version",
+        "codex": "@openai/codex-version",
+        "opencode": "opencode-ai-version",
+    }
+
+
+def test_latest_agent_cli_versions_still_fails_required_package_errors(tmp_path, monkeypatch):
+    def fake_run(argv, **_kwargs):
+        if argv[2] == "@openai/codex":
+            return SimpleNamespace(returncode=1, stdout="", stderr="npm error code E500")
+        return SimpleNamespace(returncode=0, stdout=f"{argv[2]}-version\n", stderr="")
+
+    monkeypatch.setattr(hoosegow_base.subprocess, "run", fake_run)
+
+    with pytest.raises(HoosegowRuntimeError, match="Could not check latest codex package version"):
+        hoosegow_base.latest_agent_cli_versions(cache_dir=tmp_path / "npm-cache")
+
+
 def test_base_status_opens_snapshot_when_path_is_lazy(monkeypatch):
     class Snapshot:
         async def open(self):
