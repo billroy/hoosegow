@@ -142,18 +142,28 @@ def test_selected_terminal_group_filters_tabs_by_group_not_flat_workspace():
 def test_terminal_session_loading_does_not_auto_replace_or_flatten_tabs():
     app_js = _app_js()
     load_body = _function_body(app_js, "loadTerminalSessions")
-    close_body = _function_body(app_js, "closeTerminal")
 
     assert "const response = await call('terminal:list');" in load_body
     assert "await joinTerminal(terminalInfo, { focus: !focused });" in load_body
     assert "await openTerminal(" not in load_body
     assert "await openLocalTerminal(" not in load_body
     assert "shouldAutoReplace" not in app_js
-    assert "autoReplace" not in app_js
 
+
+def test_closing_last_selected_group_tab_opens_replacement_shell():
+    app_js = _app_js()
+    close_body = _function_body(app_js, "closeTerminal")
+
+    assert "const closeContext = selectedGroupContext();" in close_body
+    assert "const closedSelectedGroupTerminal = terminalBelongsToGroup(closedRecord, closeContext);" in close_body
+    assert "if (wasActive || closedSelectedGroupTerminal) {" in close_body
     assert "const nextRecord = selectedGroupTerminals.value[0] || null;" in close_body
-    assert "await openTerminal(" not in close_body
-    assert "await openLocalTerminal(" not in close_body
+    assert "} else if (!options.silent && options.reopenOnEmpty !== false) {" in close_body
+    assert "autoOpeningTerminal.value = true;" in close_body
+    assert "await openLocalTerminal({ localGroup: closeContext.localGroup, manageBusy: false, silent: true });" in close_body
+    assert "await openTerminal(closeContext.sandbox, { manageBusy: false, manageAction: false, silent: true });" in close_body
+    assert "await closeTerminal({ ...options, terminalId });" in app_js
+    assert 'v-if="!terminalVisible && !autoOpeningTerminal"' in app_js
 
 
 def test_terminal_switching_preserves_renderer_instead_of_replaying_transcript():

@@ -166,6 +166,7 @@ createApp({
     const terminalBellContext = ref(null);
     const terminalBellLastAt = ref(0);
     const terminalTextDecoders = new Map();
+    const autoOpeningTerminal = ref(false);
     const mainMenuOpen = ref(false);
     const sandboxActionMenuSlug = ref('');
     const localGroupActionMenuId = ref('');
@@ -626,6 +627,22 @@ createApp({
 
     function terminalsForLocalGroup(group) {
       return localTerminals.value.filter((item) => (item.local_group_id || DEFAULT_LOCAL_GROUP_ID) === group?.id);
+    }
+
+    function terminalBelongsToGroup(record, context) {
+      if (!record || !context?.kind) return false;
+      if (context.kind === 'local') {
+        return record.kind === 'local' && (record.local_group_id || DEFAULT_LOCAL_GROUP_ID) === context.localGroup?.id;
+      }
+      return record.kind === 'sandbox' && record.sandbox_id === context.sandbox?.slug;
+    }
+
+    function selectedGroupContext() {
+      return {
+        kind: selectedGroupKind.value,
+        localGroup: selectedLocalGroup.value,
+        sandbox: selected.value,
+      };
     }
 
     function terminalLabel(term) {
@@ -1293,6 +1310,7 @@ createApp({
 
     async function closeTerminal(options = {}) {
       const terminalId = options.terminalId || activeTerminal.id;
+      const closeContext = selectedGroupContext();
       if (terminalId && options.remote !== false && !options.force) {
         const foreground = await foregroundProcessForTerminal(terminalId);
         if (foreground) {
@@ -1308,17 +1326,35 @@ createApp({
         socket.emit('sandbox:terminal:close', { terminal_id: terminalId });
       }
       const index = terminals.findIndex((item) => item.id === terminalId);
+      const closedRecord = index >= 0 ? terminals[index] : terminals.find((item) => item.id === terminalId);
+      const closedSelectedGroupTerminal = terminalBelongsToGroup(closedRecord, closeContext);
       const wasActive = terminalId === activeTerminal.id;
       disposeTerminal(terminalId);
       if (index >= 0) terminals.splice(index, 1);
       terminalTextDecoders.delete(terminalId);
-      if (wasActive) {
+      if (wasActive || closedSelectedGroupTerminal) {
         const nextRecord = selectedGroupTerminals.value[0] || null;
-        syncActiveTerminal(nextRecord);
         if (nextRecord) {
+          syncActiveTerminal(nextRecord);
           await nextTick();
           await ensureTerminal();
+        } else if (!options.silent && options.reopenOnEmpty !== false) {
+          autoOpeningTerminal.value = true;
+          syncActiveTerminal(null);
+          try {
+            if (closeContext.kind === 'local') {
+              await openLocalTerminal({ localGroup: closeContext.localGroup, manageBusy: false, silent: true });
+            } else if (closeContext.sandbox?.last_status === 'running') {
+              await openTerminal(closeContext.sandbox, { manageBusy: false, manageAction: false, silent: true });
+            }
+          } finally {
+            autoOpeningTerminal.value = false;
+          }
+          if (!activeTerminal.id) {
+            deactivateTerminal();
+          }
         } else {
+          syncActiveTerminal(null);
           deactivateTerminal();
         }
       }
@@ -1645,6 +1681,7 @@ createApp({
 
     return {
       activeTerminal,
+      autoOpeningTerminal,
       actionState,
       authState,
       basename,
@@ -1952,7 +1989,7 @@ createApp({
                 :class="{ active: term.id === activeTerminal.id }"
               ></div>
             </div>
-            <div v-if="!terminalVisible" class="terminal-placeholder">
+            <div v-if="!terminalVisible && !autoOpeningTerminal" class="terminal-placeholder">
               <div class="terminal-empty">
                 <strong>{{ selectedGroupLabel }}</strong>
                 <small>No shells open in this group.</small>
