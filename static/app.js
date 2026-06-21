@@ -92,8 +92,9 @@ createApp({
     const busy = ref(false);
     let clockCheckTimer = null;
     const selectedSlug = ref('');
-    const selectedGroupKind = ref('local');
+    const selectedGroupKind = ref('sandbox');
     const selectedLocalGroupId = ref(DEFAULT_LOCAL_GROUP_ID);
+    const localTerminalsEnabled = ref(false);
     const sandboxes = reactive([]);
     const localGroups = reactive(storedLocalGroups());
     const baseStatus = reactive({
@@ -187,14 +188,16 @@ createApp({
     const sortedSandboxes = computed(() => [...sandboxes].sort((a, b) => a.slug.localeCompare(b.slug)));
     const basePreparing = computed(() => baseStatus.state === 'preparing');
     const canStartSelected = computed(() => Boolean(selected.value && baseStatus.prepared && !busy.value));
-    const canOpenLocalTerminal = computed(() => Boolean(connected.value && !busy.value));
+    const canOpenLocalTerminal = computed(() => Boolean(localTerminalsEnabled.value && connected.value && !busy.value));
     const canOpenTerminal = computed(() => Boolean(selected.value && selected.value.last_status === 'running' && !busy.value));
     const localTerminals = computed(() => terminals.filter((item) => item.kind === 'local'));
     const selectedLocalGroup = computed(() => (
       localGroups.find((group) => group.id === selectedLocalGroupId.value) || localGroups[0]
     ));
     const selectedGroupTerminals = computed(() => (
-      selectedGroupKind.value === 'local' ? terminalsForLocalGroup(selectedLocalGroup.value) : terminalsForSandbox(selected.value)
+      selectedGroupKind.value === 'local' && localTerminalsEnabled.value
+        ? terminalsForLocalGroup(selectedLocalGroup.value)
+        : terminalsForSandbox(selected.value)
     ));
     const terminalVisible = computed(() => Boolean(
       activeTerminal.id
@@ -203,7 +206,7 @@ createApp({
     ));
     const selectedGroupLabel = computed(() => (
       selectedGroupKind.value === 'local'
-        ? (selectedLocalGroup.value?.label || 'Local')
+        ? (localTerminalsEnabled.value ? (selectedLocalGroup.value?.label || 'Local') : 'Sandbox')
         : (selected.value?.name || selected.value?.slug || 'Sandbox')
     ));
 
@@ -228,6 +231,7 @@ createApp({
     }
 
     function toggleLocalGroupActionMenu(groupId) {
+      if (!localTerminalsEnabled.value) return;
       mainMenuOpen.value = false;
       sandboxActionMenuSlug.value = '';
       localGroupActionMenuId.value = localGroupActionMenuId.value === groupId ? '' : groupId;
@@ -300,6 +304,7 @@ createApp({
     }
 
     function openLocalGroupModal() {
+      if (!localTerminalsEnabled.value) return;
       closeMenus();
       localGroupForm.label = nextLocalGroupLabel();
       localGroupModalOpen.value = true;
@@ -560,6 +565,10 @@ createApp({
     }
 
     async function createLocalGroup() {
+      if (!localTerminalsEnabled.value) {
+        setToast('Local terminals are disabled.', 'error');
+        return;
+      }
       if (!connected.value) {
         setToast('Socket is not connected.', 'error');
         return;
@@ -663,6 +672,7 @@ createApp({
     }
 
     async function selectLocalGroup(group = selectedLocalGroup.value) {
+      if (!localTerminalsEnabled.value) return;
       const targetGroup = ensureLocalGroup(group?.id, group?.label);
       selectedGroupKind.value = 'local';
       selectedLocalGroupId.value = targetGroup.id;
@@ -1015,7 +1025,22 @@ createApp({
       }
     }
 
+    async function loadAppConfig() {
+      const response = await call('app:config');
+      localTerminalsEnabled.value = Boolean(response.config?.features?.local_terminals);
+      if (!localTerminalsEnabled.value && selectedGroupKind.value === 'local') {
+        selectedGroupKind.value = 'sandbox';
+      } else if (localTerminalsEnabled.value && !activeTerminal.id && !selectedSlug.value) {
+        selectedGroupKind.value = 'local';
+      }
+      refreshIcons();
+    }
+
     async function openLocalTerminal(options = {}) {
+      if (!localTerminalsEnabled.value) {
+        setToast('Local terminals are disabled.', 'error');
+        return null;
+      }
       if (!connected.value) {
         setToast('Socket is not connected.', 'error');
         return null;
@@ -1343,7 +1368,9 @@ createApp({
           syncActiveTerminal(null);
           try {
             if (closeContext.kind === 'local') {
-              await openLocalTerminal({ localGroup: closeContext.localGroup, manageBusy: false, silent: true });
+              if (localTerminalsEnabled.value) {
+                await openLocalTerminal({ localGroup: closeContext.localGroup, manageBusy: false, silent: true });
+              }
             } else if (closeContext.sandbox?.last_status === 'running') {
               await openTerminal(closeContext.sandbox, { manageBusy: false, manageAction: false, silent: true });
             }
@@ -1505,6 +1532,7 @@ createApp({
     }
 
     async function destroyLocalGroup(group) {
+      if (!localTerminalsEnabled.value) return;
       if (!group?.id || group.id === DEFAULT_LOCAL_GROUP_ID) return;
       const shellCount = terminalsForLocalGroup(group).length;
       const confirmed = window.confirm(
@@ -1564,6 +1592,7 @@ createApp({
     socket.on('connect', async () => {
       connected.value = true;
       try {
+        await loadAppConfig();
         await Promise.all([loadBaseStatus(), loadBaseLogs(), loadSandboxes(), loadWorkspaceDefaults()]);
         checkRunningClocks().catch((error) => setToast(error.message, 'error'));
         await loadTerminalSessions();
@@ -1586,7 +1615,7 @@ createApp({
     socket.on('sandbox:destroyed', (payload) => {
       if (payload?.id === selectedSlug.value) {
         selectedSlug.value = '';
-        selectedGroupKind.value = 'local';
+        selectedGroupKind.value = localTerminalsEnabled.value ? 'local' : 'sandbox';
         for (const record of terminals.filter((item) => item.sandbox_id === payload.id)) {
           disposeTerminal(record.id);
         }
@@ -1763,6 +1792,7 @@ createApp({
       terminalsForSandbox,
       terminalsForLocalGroup,
       localTerminals,
+      localTerminalsEnabled,
       terminalVisible,
       theme,
       toggleTheme,
@@ -1832,7 +1862,7 @@ createApp({
             </button>
           </span>
         </div>
-        <div class="shell-group">
+        <div v-if="localTerminalsEnabled" class="shell-group">
           <div class="shell-group-header">
             <span>Local</span>
             <button class="row-add-button" type="button" title="Create local group" :disabled="!canOpenLocalTerminal" @click.stop="openLocalGroupModal">
@@ -1993,7 +2023,7 @@ createApp({
               <div class="terminal-empty">
                 <strong>{{ selectedGroupLabel }}</strong>
                 <small>No shells open in this group.</small>
-                <button v-if="selectedGroupKind === 'local'" class="tool-button" type="button" :disabled="!canOpenLocalTerminal" @click="openLocalTerminal">
+                <button v-if="selectedGroupKind === 'local' && localTerminalsEnabled" class="tool-button" type="button" :disabled="!canOpenLocalTerminal" @click="openLocalTerminal">
                   <i data-lucide="terminal"></i><span>New Local Shell</span>
                 </button>
                 <button v-else class="tool-button" type="button" :disabled="!canOpenTerminal" @click="openTerminal(selected)">
@@ -2005,7 +2035,7 @@ createApp({
         </section>
       </main>
 
-      <div v-if="localGroupModalOpen" class="modal-backdrop" @click.self="localGroupModalOpen = false">
+      <div v-if="localGroupModalOpen && localTerminalsEnabled" class="modal-backdrop" @click.self="localGroupModalOpen = false">
         <section class="modal-panel local-group-modal">
           <header class="modal-header">
             <div>

@@ -58,6 +58,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-total-vcpus", type=int)
     parser.add_argument("--max-total-memory-mib", type=int)
     parser.add_argument("--terminal-limit", type=int, default=32)
+    parser.add_argument(
+        "--enable-local-terminals",
+        action="store_true",
+        help="Enable host-local terminal groups in the browser UI",
+    )
     parser.add_argument("--port-pool", default="3000-3099")
     parser.add_argument("--host-nofile", type=int, default=12000)
     parser.add_argument("--guest-nofile", type=int, default=65536)
@@ -252,6 +257,7 @@ def run_server(args: argparse.Namespace, home: str) -> int:
         websocket_debug=args.websocket_debug,
         start_without_project=True,
         terminal_limit=args.terminal_limit,
+        enable_local_terminals=args.enable_local_terminals,
     )
 
     if args.shutdown_sandboxes_on_exit:

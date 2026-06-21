@@ -212,6 +212,7 @@ def create_app(
     websocket_debug=False,
     start_without_project=False,
     terminal_limit=None,
+    enable_local_terminals=False,
 ):
     """Create and configure the Flask + SocketIO app."""
     workspace = os.path.abspath(workspace)
@@ -337,7 +338,8 @@ def create_app(
     app.config["terminal_manager"] = None
     app.config["hoosegow_terminals"] = {}
     app.config["hoosegow_terminal_numbers"] = {}
-    app.config["hoosegow_local_pty_driver"] = LocalPtyDriver()
+    app.config["hoosegow_enable_local_terminals"] = bool(enable_local_terminals)
+    app.config["hoosegow_local_pty_driver"] = LocalPtyDriver() if enable_local_terminals else None
     app.config["hoosegow_terminals_lock"] = threading.RLock()
     app.config["hoosegow_terminal_limit"] = max(
         1,
@@ -869,6 +871,17 @@ def create_app(
     def hoosegow_socket_base_logs(_payload=None):
         return {"ok": True, "prepare": _base_prepare_payload(include_logs=True)}
 
+    @socketio.on("app:config")
+    def hoosegow_socket_app_config(_payload=None):
+        return {
+            "ok": True,
+            "config": {
+                "features": {
+                    "local_terminals": bool(app.config.get("hoosegow_enable_local_terminals")),
+                },
+            },
+        }
+
     @socketio.on("base:prepare")
     def hoosegow_socket_base_prepare(payload=None):
         state = app.config["base_prepare"]
@@ -1116,6 +1129,8 @@ def create_app(
     def hoosegow_socket_open_local_terminal(payload):
         payload = payload or {}
         try:
+            if not app.config.get("hoosegow_enable_local_terminals"):
+                raise SandboxServiceError("Local terminals are disabled. Start Hoosegow with --enable-local-terminals to use them.")
             terminal_limit_value = int(app.config.get("hoosegow_terminal_limit") or 32)
             if _hoosegow_local_terminal_count() >= terminal_limit_value:
                 raise SandboxServiceError(
@@ -1129,6 +1144,8 @@ def create_app(
             local_group_label = str(payload.get("local_group_label") or "Local").strip()[:80] or "Local"
             terminal_id = f"local-{uuid.uuid4().hex[:12]}"
             driver = app.config["hoosegow_local_pty_driver"]
+            if driver is None:
+                raise SandboxServiceError("Local terminal driver is not available.")
             opened = driver.open(terminal_id, cwd=cwd, shell=shell, cols=cols, rows=rows)
             with app.config["hoosegow_terminals_lock"]:
                 terminal_number = int(app.config["hoosegow_terminal_numbers"].get("local", 0)) + 1

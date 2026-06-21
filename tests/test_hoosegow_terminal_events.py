@@ -129,11 +129,25 @@ def _running_sandbox(app, tmp_path):
 
 def test_hoosegow_local_terminal_opens_and_lists(tmp_path, monkeypatch):
     monkeypatch.setattr("server.app.LocalPtyDriver", FakeLocalPtyDriver)
+    default_app = create_app(
+        str(tmp_path),
+        no_browser=True,
+        global_dir=str(tmp_path / "default-state"),
+        start_without_project=True,
+    )
+    default_client = socketio.test_client(default_app)
+    disabled = default_client.emit("terminal:local:open", {"cols": 80, "rows": 24}, callback=True)
+    default_client.disconnect()
+    assert disabled["ok"] is False
+    assert "Local terminals are disabled" in disabled["error"]
+    assert default_app.config["hoosegow_local_pty_driver"] is None
+
     app = create_app(
         str(tmp_path),
         no_browser=True,
         global_dir=str(tmp_path / "state"),
         start_without_project=True,
+        enable_local_terminals=True,
     )
     client = socketio.test_client(app)
     client.get_received()
@@ -166,6 +180,7 @@ def test_hoosegow_local_terminal_group_metadata_round_trips(tmp_path, monkeypatc
         no_browser=True,
         global_dir=str(tmp_path / "state"),
         start_without_project=True,
+        enable_local_terminals=True,
     )
     client = socketio.test_client(app)
     client.get_received()
@@ -199,6 +214,7 @@ def test_hoosegow_local_terminal_numbers_do_not_renumber_after_close(tmp_path, m
         no_browser=True,
         global_dir=str(tmp_path / "state"),
         start_without_project=True,
+        enable_local_terminals=True,
     )
     client = socketio.test_client(app)
     client.get_received()
@@ -223,6 +239,7 @@ def test_hoosegow_local_terminal_limit_rejects_extra_sessions_and_close_frees_sl
         global_dir=str(tmp_path / "state"),
         start_without_project=True,
         terminal_limit=1,
+        enable_local_terminals=True,
     )
     client = socketio.test_client(app)
     client.get_received()
@@ -253,6 +270,7 @@ def test_hoosegow_terminal_list_keeps_local_and_sandbox_numbering_separate(tmp_p
         no_browser=True,
         global_dir=str(tmp_path / "state"),
         start_without_project=True,
+        enable_local_terminals=True,
     )
     _running_sandbox(app, tmp_path)
     client = socketio.test_client(app)
@@ -288,6 +306,7 @@ def test_hoosegow_local_terminal_replay_preserves_driver_bytes(tmp_path, monkeyp
         no_browser=True,
         global_dir=str(tmp_path / "state"),
         start_without_project=True,
+        enable_local_terminals=True,
     )
     client = socketio.test_client(app)
     client.get_received()

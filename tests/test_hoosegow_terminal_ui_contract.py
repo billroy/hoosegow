@@ -32,11 +32,12 @@ def _function_body(text, name):
 def test_terminal_sidebar_lists_groups_not_individual_tabs():
     app_js = _app_js()
     aside = _slice_between(app_js, "<aside class=\"sidebar\">", "</aside>")
-    local_section = _slice_between(aside, '<div class="shell-group">', '<div class="shell-group">\n          <div class="shell-group-header">\n            <span>Sandboxes</span>')
+    local_section = _slice_between(aside, '<div v-if="localTerminalsEnabled" class="shell-group">', '<div class="shell-group">\n          <div class="shell-group-header">\n            <span>Sandboxes</span>')
     local_row = _slice_between(local_section, 'class="shell-group-row"', "</div>")
 
     assert "Terminal Groups" in aside
     assert "Shells (" not in aside
+    assert 'v-if="localTerminalsEnabled"' in local_section
     assert "v-for=\"group in localGroups\"" in local_section
     assert "<strong>{{ group.label }}</strong>" in local_section
     assert "{{ shellCountLabel(terminalsForLocalGroup(group).length) }}" in aside
@@ -110,12 +111,14 @@ def test_selected_terminal_group_filters_tabs_by_group_not_flat_workspace():
     create_local_group_body = _function_body(app_js, "createLocalGroup")
     destroy_local_group_body = _function_body(app_js, "destroyLocalGroup")
 
-    assert "const selectedGroupKind = ref('local');" in app_js
+    assert "const selectedGroupKind = ref('sandbox');" in app_js
     assert "const selectedLocalGroupId = ref(DEFAULT_LOCAL_GROUP_ID);" in app_js
     assert "const localTerminals = computed(() => terminals.filter((item) => item.kind === 'local'));" in app_js
     assert (
         "const selectedGroupTerminals = computed(() => (\n"
-        "      selectedGroupKind.value === 'local' ? terminalsForLocalGroup(selectedLocalGroup.value) : terminalsForSandbox(selected.value)\n"
+        "      selectedGroupKind.value === 'local' && localTerminalsEnabled.value\n"
+        "        ? terminalsForLocalGroup(selectedLocalGroup.value)\n"
+        "        : terminalsForSandbox(selected.value)\n"
         "    ));"
     ) in app_js
     assert "function terminalsForLocalGroup(group)" in app_js
@@ -161,6 +164,7 @@ def test_closing_last_selected_group_tab_opens_replacement_shell():
     assert "} else if (!options.silent && options.reopenOnEmpty !== false) {" in close_body
     assert "autoOpeningTerminal.value = true;" in close_body
     assert "await openLocalTerminal({ localGroup: closeContext.localGroup, manageBusy: false, silent: true });" in close_body
+    assert "if (localTerminalsEnabled.value)" in close_body
     assert "await openTerminal(closeContext.sandbox, { manageBusy: false, manageAction: false, silent: true });" in close_body
     assert "await closeTerminal({ ...options, terminalId });" in app_js
     assert 'v-if="!terminalVisible && !autoOpeningTerminal"' in app_js
@@ -217,6 +221,7 @@ def test_sidebar_and_tab_commands_keep_separate_semantics():
     main = _slice_between(app_js, "<main class=\"workspace\">", "</main>")
 
     assert "@click.stop=\"openLocalGroupModal\"" in aside
+    assert "localTerminalsEnabled" in aside
     assert "@click=\"closeMenus(); openTerminal(sandbox)\"" in aside
     assert "@click=\"selectedGroupKind === 'local' ? openLocalTerminal() : openTerminal(selected)\"" in main
 

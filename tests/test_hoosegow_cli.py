@@ -16,6 +16,7 @@ def test_default_port_is_browser_safe():
 
     assert args.port == 6060
     assert args.port not in hoosegow.BROWSER_BLOCKED_PORTS
+    assert args.enable_local_terminals is False
 
 
 def test_run_server_rejects_browser_blocked_port_when_opening_browser(tmp_path, capsys):
@@ -89,3 +90,33 @@ def test_run_server_registers_shutdown_sandboxes_hook(tmp_path, monkeypatch):
 
     assert hoosegow.run_server(args, str(tmp_path / "state")) == 0
     assert len(registered) == 1
+
+
+def test_run_server_passes_local_terminal_switch_to_app_factory(tmp_path, monkeypatch):
+    captured = {}
+
+    class FakeApp:
+        config = {"hoosegow_sandboxes": None}
+
+    class FakeSocketIO:
+        def run(self, *_args, **_kwargs):
+            return None
+
+    def fake_create_app(*_args, **kwargs):
+        captured.update(kwargs)
+        return FakeApp()
+
+    monkeypatch.setattr(hoosegow, "require_auth_for_network_bind", lambda _host, _home: None)
+    monkeypatch.setattr("server.app.create_app", fake_create_app)
+    monkeypatch.setattr("server.app.socketio", FakeSocketIO())
+    args = hoosegow.parse_args([
+        "--workspace",
+        str(tmp_path),
+        "--home",
+        str(tmp_path / "state"),
+        "--no-browser",
+        "--enable-local-terminals",
+    ])
+
+    assert hoosegow.run_server(args, str(tmp_path / "state")) == 0
+    assert captured["enable_local_terminals"] is True

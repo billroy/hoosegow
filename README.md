@@ -244,6 +244,7 @@ fails, the menu exposes a retry action.
 | `--max-total-vcpus N` | detected cores | Host-wide admitted vCPU cap. |
 | `--max-total-memory-mib N` | 75% host RAM | Host-wide admitted RAM cap. |
 | `--terminal-limit N` | `32` | Maximum terminals per sandbox. |
+| `--enable-local-terminals` | off | Enable host-local terminal groups. Disabled by default so Hoosegow can run without exposing host PTYs. |
 | `--port-pool RANGE` | `3000-3099` | Host ports used for published sandbox dev servers. |
 | `--host-nofile N` | `12000` | Target host file-descriptor soft limit before Microsandbox operations. |
 | `--guest-nofile N` | `65536` | Target in-sandbox `agent` user file-descriptor limit. |
