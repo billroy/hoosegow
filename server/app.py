@@ -1,6 +1,7 @@
 """Flask + socket.io app factory."""
 
 import atexit
+import asyncio
 import os
 import re
 import subprocess

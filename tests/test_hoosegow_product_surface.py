@@ -462,6 +462,7 @@ def test_hoosegow_shell_has_clear_empty_and_error_states():
     assert "Hide shells" in app_js
     assert "panel-left-open" in app_js
     assert "panel-left-close" in app_js
+    assert "header-sidebar-restore" in app_js
     assert "sidebar-toggle-button" not in app_js
     assert "pane-toggle-button" in app_js
     assert "terminal-sidebar-toggle" in app_js
@@ -480,6 +481,12 @@ def test_hoosegow_shell_has_clear_empty_and_error_states():
     assert ".sidebar-resizer" in css
     assert ".pane-toggle-button" in css
     assert ".terminal-sidebar-toggle" in css
+    assert "grid-template-columns: var(--sidebar-width, 308px) 8px minmax(0, 1fr);" in css
+    assert "grid-template-rows: 34px auto minmax(0, 1fr);" in css
+    assert "touch-action: none;" in css
+    assert "user-select: none;" in css
+    assert "max-height: 48vh;" in css
+    assert "width: min(86vw, 360px);" not in css
     assert ".menu-panel .menu-item-icon" in css
     assert ".menu-panel .menu-item-label" in css
     assert ".menu-divider" in css

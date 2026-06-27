@@ -1826,6 +1826,9 @@ createApp({
               <button class="menu-item" type="button" @click="openBaseLogs">
                 <i class="menu-item-icon" data-lucide="scroll-text"></i><span class="menu-item-label">Base logs</span>
               </button>
+              <button class="menu-item" type="button" @click="openCreateModal">
+                <i class="menu-item-icon" data-lucide="plus"></i><span class="menu-item-label">Create sandbox</span>
+              </button>
               <div class="menu-divider" aria-hidden="true"></div>
               <button class="menu-item" type="button" @click="openGithub">
                 <i class="menu-item-icon" data-lucide="external-link"></i><span class="menu-item-label">Hoosegow on GitHub</span>
@@ -1840,6 +1843,16 @@ createApp({
           </div>
         </div>
         <div class="topbar-actions">
+          <button
+            v-if="sidebarCollapsed"
+            class="icon-button header-icon-button header-sidebar-restore"
+            type="button"
+            title="Show shells"
+            aria-pressed="true"
+            @click="toggleSidebar"
+          >
+            <i data-lucide="panel-left-open"></i>
+          </button>
           <button class="icon-button header-icon-button" type="button" title="Toggle theme" @click="toggleTheme">
             <i :data-lucide="theme === 'dark' ? 'sun' : 'moon'"></i>
           </button>

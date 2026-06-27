@@ -185,8 +185,17 @@ if [ "$actual_uid" != "$uid" ]; then
 fi
 mkdir -p /workspace /home/agent/logs /home/agent/bin /home/agent/.codex /var/lib/hoosegow
 chown agent:"$group_name" /workspace /home/agent /home/agent/logs /home/agent/bin /home/agent/.codex
+chown -R agent:"$group_name" /home/agent
 chown -R agent:"$group_name" /var/lib/hoosegow
 chmod 700 /var/lib/hoosegow 2>/dev/null || true
+touch /home/agent/.bashrc
+if ! grep -Fq '/home/agent/.npm-global/bin' /home/agent/.bashrc; then
+  printf '\nexport PATH="/home/agent/.npm-global/bin:/home/agent/bin:$PATH"\n' >> /home/agent/.bashrc
+fi
+if [ ! -e /home/agent/.bash_profile ]; then
+  printf 'if [ -f ~/.bashrc ]; then\n  . ~/.bashrc\nfi\n' > /home/agent/.bash_profile
+fi
+chown agent:"$group_name" /home/agent/.bashrc /home/agent/.bash_profile
 mkdir -p /etc/security/limits.d
 cat > /etc/security/limits.d/hoosegow-fd.conf <<'LIMITS_EOF'
 agent soft nofile __GUEST_NOFILE__
@@ -269,6 +278,7 @@ su -s /bin/bash agent -c 'test -x "$HOOSEGOW_CODEX_PATH" && test -w /home/agent/
 async def start_pty_controller(sandbox: Any, spec: HoosegowSandboxSpec) -> None:
     command = (
         "set -e; "
+        "ulimit -Sn \"$(ulimit -Hn)\" 2>/dev/null || true; "
         "mkdir -p /home/agent/logs /var/lib/hoosegow; "
         ": > /home/agent/logs/hoosegow-ptyd.log; "
         "cd /app; "

@@ -87,6 +87,9 @@ def test_prepare_runtime_dirs_writes_guest_fd_limit(tmp_path, monkeypatch):
     assert captured["spec"] is spec
     assert captured["label"] == "prepare Microsandbox runtime user"
     assert 'chown agent:"$group_name" /workspace /home/agent /home/agent/logs' in captured["command"]
+    assert 'chown -R agent:"$group_name" /home/agent' in captured["command"]
+    assert 'export PATH="/home/agent/.npm-global/bin:/home/agent/bin:$PATH"' in captured["command"]
+    assert ".bash_profile" in captured["command"]
     assert "agent soft nofile 7777" in captured["command"]
     assert "agent hard nofile 7777" in captured["command"]
     assert "pam_limits may not be enforcing" in captured["command"]
@@ -109,6 +112,7 @@ def test_start_pty_controller_uses_env_token_reference_not_raw_secret(tmp_path, 
     assert captured["spec"] is spec
     assert captured["label"] == "start PTY controller"
     assert "/app/guest/hoosegow-ptyd.py" in captured["command"]
+    assert 'ulimit -Sn "$(ulimit -Hn)"' in captured["command"]
     assert '--token "$HOOSEGOW_PTYD_TOKEN"' in captured["command"]
     assert "raw-controller-token" not in captured["command"]
 
