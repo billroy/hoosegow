@@ -22,14 +22,15 @@ except ImportError:  # pragma: no cover - unsupported host path.
     resource = None
 
 
-BASE_DEFAULT = "hoosegow-microsandbox-local"
+BASE_DEFAULT = "hoosegow-microsandbox-0.6"
 SOURCE_IMAGE_DEFAULT = "node:22-bookworm"
-MICROSANDBOX_MIN_VERSION = "0.5.2"
+MICROSANDBOX_MIN_VERSION = "0.6.16"
 VCPUS_DEFAULT = 4
 MEMORY_MIB_DEFAULT = 4096
 HOST_NOFILE_DEFAULT = 12000
 GUEST_NOFILE_DEFAULT = 65536
-NETWORK_MAX_CONNECTIONS_DEFAULT = 8192
+NETWORK_MAX_CONNECTIONS_DEFAULT = 4096
+NETWORK_MAX_CONNECTIONS_LIMIT = 4096
 
 
 class HoosegowRuntimeError(RuntimeError):
@@ -89,8 +90,8 @@ def validate_microsandbox_version(version: str) -> None:
         )
     if comparable_version(version) < comparable_version(MICROSANDBOX_MIN_VERSION):
         raise HoosegowRuntimeError(
-            f"Hoosegow requires microsandbox >= {MICROSANDBOX_MIN_VERSION} because older releases "
-            "are missing the published-port TCP stall fix. "
+            f"Hoosegow requires microsandbox >= {MICROSANDBOX_MIN_VERSION} because its runtime adapter "
+            "uses the 0.6 snapshot API and depends on later published-port and lifecycle fixes. "
             f"Installed version: {version}. Upgrade with: python3 -m pip install -r requirements.txt"
         )
 
@@ -169,6 +170,11 @@ def mark_open_fds_close_on_exec(exclude: set[int] | tuple[int, ...] = (0, 1, 2))
 
 
 def network_with_max_connections(network: Any, max_connections: int) -> Any:
+    if max_connections < 1 or max_connections > NETWORK_MAX_CONNECTIONS_LIMIT:
+        raise HoosegowRuntimeError(
+            "Microsandbox 0.6 requires network max_connections to be between "
+            f"1 and {NETWORK_MAX_CONNECTIONS_LIMIT}; received {max_connections}."
+        )
     if hasattr(network, "max_connections"):
         try:
             return dataclass_replace(network, max_connections=max_connections)
@@ -372,7 +378,7 @@ class MicrosandboxRuntime:
         network = network_with_max_connections(self.Network.allow_all(), spec.network_max_connections)
         result = self.Sandbox.create(
             spec.sandbox_name,
-            snapshot=prepared_base,
+            from_snapshot=prepared_base,
             detached=True,
             replace=bool(spec.replace),
             cpus=spec.vcpus,
@@ -407,7 +413,7 @@ class MicrosandboxRuntime:
         network = network_with_max_connections(self.Network.allow_all(), spec.network_max_connections)
         result = self.Sandbox.create(
             name,
-            snapshot=prepared_base,
+            from_snapshot=prepared_base,
             detached=True,
             replace=True,
             cpus=1,
@@ -420,8 +426,8 @@ class MicrosandboxRuntime:
 
     async def create_snapshot(self, sandbox_name: str, base: str) -> None:
         result = self.Snapshot.create(
-            sandbox_name,
-            name=base,
+            base,
+            from_sandbox=sandbox_name,
             force=True,
             labels={"app": "hoosegow", "kind": "microsandbox-base"},
         )

@@ -12,6 +12,7 @@ from typing import Any
 
 from server.persistence import read_json, write_json
 from server.microsandbox_runtime import (
+    BASE_DEFAULT,
     SOURCE_IMAGE_DEFAULT,
     MicrosandboxRuntime,
     HoosegowRuntimeError,
@@ -32,7 +33,7 @@ ANTIGRAVITY_CLI_MANIFEST_URL = (
 )
 
 
-def base_metadata_path(home: str | Path, base: str = "hoosegow-microsandbox-local") -> Path:
+def base_metadata_path(home: str | Path, base: str = BASE_DEFAULT) -> Path:
     return Path(home).expanduser().resolve() / "base" / f"{base}-metadata.json"
 
 
@@ -141,7 +142,7 @@ def base_needs_dependency_refresh(metadata: dict[str, Any] | None, latest_versio
     return any(current_versions.get(name) != version for name, version in latest_versions.items())
 
 
-async def base_status(base: str = "hoosegow-microsandbox-local") -> dict[str, Any]:
+async def base_status(base: str = BASE_DEFAULT) -> dict[str, Any]:
     """Return prepared-base availability without creating sandboxes."""
     try:
         runtime = MicrosandboxRuntime()

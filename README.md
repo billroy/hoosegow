@@ -33,10 +33,10 @@ base-prep path. It is intentionally not a Bullpen worker/ticket UI.
 Known constraints for this release:
 
 - Hoosegow is a local single-user developer tool.
-- Hoosegow pins `microsandbox==0.5.3`. Older Microsandbox releases are missing the
-  published-port TCP stall fix Hoosegow depends on.
+- Hoosegow pins `microsandbox==0.6.16`. Older releases do not provide the
+  snapshot API contract and later published-port/lifecycle fixes Hoosegow uses.
 - Real Microsandbox behavior depends on the pinned host Microsandbox runtime
-  and the prepared `hoosegow-microsandbox-local` base.
+  and the prepared `hoosegow-microsandbox-0.6` base.
 - Running sandboxes remain alive when Hoosegow exits unless you pass
   `--shutdown-sandboxes-on-exit`.
 
@@ -51,7 +51,7 @@ python3 hoosegow.py --workspace-root /path/to/work
 
 If you installed Hoosegow dependencies before this release, rerun
 `pip install -r requirements.txt` so the host `microsandbox` package is upgraded
-to the pinned `0.5.3` release.
+to the pinned `0.6.16` release.
 
 Open `http://127.0.0.1:6060/` if the browser does not open automatically.
 
@@ -200,7 +200,7 @@ on sandbox restart, depending on current sandbox state.
 ## Base Image
 
 The reusable base image is prepared automatically from `node:22-bookworm` by
-default and is named `hoosegow-microsandbox-local`.
+default and is named `hoosegow-microsandbox-0.6`.
 
 The base includes the shared pieces Hoosegow expects inside each sandbox:
 
@@ -215,6 +215,13 @@ Normal users do not need to prepare it manually. On first launch, the UI asks
 for base status, the server notices a missing snapshot, and setup starts in the
 background. While that happens, sandbox creation shows a short setup delay and
 base logs are available from the hamburger menu.
+
+The 0.6 base has a versioned name so it can be built alongside the former
+`hoosegow-microsandbox-local` snapshot. For a rollback-safe upgrade, stop all
+sandboxes, keep the old Python environment and `~/.microsandbox` directory, and
+first validate 0.6.16 with `MSB_HOME` pointing at a separate runtime directory.
+Persistent Hoosegow sandbox homes are host bind mounts and are not part of the
+prepared snapshot.
 
 Manual setup and rebuild commands remain available for diagnostics:
 
@@ -248,7 +255,7 @@ fails, the menu exposes a retry action.
 | `--port-pool RANGE` | `3000-3099` | Host ports used for published sandbox dev servers. |
 | `--host-nofile N` | `12000` | Target host file-descriptor soft limit before Microsandbox operations. |
 | `--guest-nofile N` | `65536` | Target in-sandbox `agent` user file-descriptor limit. |
-| `--network-max-connections N` | `8192` | Microsandbox guest network connection cap. |
+| `--network-max-connections N` | `4096` | Microsandbox guest network connection cap (the 0.6 runtime maximum). |
 | `--shutdown-sandboxes-on-exit` | off | Stop running sandboxes when Hoosegow exits. |
 | `--websocket-debug` / `--no-websocket-debug` | off | Enable or disable Socket.IO and Engine.IO logging. |
 | `--set-password [USERNAME]` | off | Set or update local login credentials, then exit. Repeatable. |
@@ -322,8 +329,8 @@ pytest -q tests/test_hoosegow_sandbox_service.py \
 node --check static/app.js
 ```
 
-Real Microsandbox smokes use the prepared base `hoosegow-microsandbox-local` by
-default and require `microsandbox==0.5.3` or newer on the host:
+Real Microsandbox smokes use the prepared base `hoosegow-microsandbox-0.6` by
+default and require `microsandbox==0.6.16` on the host:
 
 ```bash
 python3 scripts/microsandbox_port_smoke.py

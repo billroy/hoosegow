@@ -66,7 +66,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--port-pool", default="3000-3099")
     parser.add_argument("--host-nofile", type=int, default=12000)
     parser.add_argument("--guest-nofile", type=int, default=65536)
-    parser.add_argument("--network-max-connections", type=int, default=8192)
+    parser.add_argument("--network-max-connections", type=int, default=4096)
     parser.add_argument("--shutdown-sandboxes-on-exit", action="store_true")
     parser.add_argument(
         "--websocket-debug",

@@ -4,14 +4,15 @@
 
 - CLI version: `python3 hoosegow.py --version` reports `hoosegow 0.1.0`.
 - Host Microsandbox dependency is pinned in `requirements.txt` as
-  `microsandbox==0.5.3`; this includes the published-port TCP stall fix needed
-  by Hoosegow.
-- Focused Hoosegow/auth suite passes: latest run `99 passed in 6.83s`.
+  `microsandbox==0.6.16`; this provides the snapshot API and published-port and
+  lifecycle fixes needed by Hoosegow.
+- Full Hoosegow suite passes with Microsandbox 0.6.16 injected: latest run
+  `208 passed, 2 skipped`.
 - Frontend syntax check passes: `node --check static/app.js`.
 - Local health smoke passes: `http://127.0.0.1:5855/health` returns
   `{"ok":true}`.
-- Opt-in real Microsandbox pytest passes on the target dev machine:
-  `2 passed, 1090 deselected`.
+- Opt-in real Microsandbox pytest passes against isolated 0.6.16 state on the
+  target dev machine: `2 passed, 208 deselected`.
 - Browser smoke passes against `http://127.0.0.1:5855/`, including the
   minimized hamburger runtime menu, compact header theme toggle, Sandboxes count,
   hydrated icons in all menus, click-away menu dismissal, per-sandbox action
@@ -21,7 +22,9 @@
 - Hoosegow mode does not register legacy Bullpen product REST routes.
 - Hoosegow mode does not serve legacy Bullpen product static assets.
 - Hoosegow mode does not eagerly import legacy Bullpen product modules.
-- Prepared base `hoosegow-microsandbox-local` exists locally.
+- Prepared base `hoosegow-microsandbox-0.6` was built and validated in an
+  isolated `MSB_HOME`; each upgraded host must build it in its active runtime
+  state before creating sandboxes.
 
 ## Ready For Tag
 

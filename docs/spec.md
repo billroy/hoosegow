@@ -204,7 +204,7 @@ Single CLI: `hoosegow.py`.
 | `--workspace-root` | cwd and `$HOME` | Repeatable canonical browse root for the picker. |
 | `--host-nofile` | `12000` | Target host `RLIMIT_NOFILE` before creating Microsandbox runtimes. |
 | `--guest-nofile` | `65536` | Target in-sandbox `agent` user `RLIMIT_NOFILE`. |
-| `--network-max-connections` | `8192` | Microsandbox network max concurrent guest connections. |
+| `--network-max-connections` | `4096` | Microsandbox network max concurrent guest connections. |
 | `--shutdown-sandboxes-on-exit` | off | Stop sandboxes when Hoosegow exits. |
 | `--set-password [USERNAME]` | off | Bullpen-style interactive set/update of login user(s), then exit. Repeatable. |
 | `--delete-user USERNAME` | off | Delete configured login user(s), then exit. Repeatable. |
@@ -322,7 +322,7 @@ Required inherited pieces:
   `su -s /bin/bash agent -c 'ulimit -Sn; ulimit -Hn'`. This preserves Bullpen's
   fix for FD pressure surfacing as misleading TLS, DNS, and filesystem errors.
 - **Network cap mitigation**: set `Network.max_connections` to
-  `--network-max-connections` (default 8192) instead of accepting the SDK
+  `--network-max-connections` (default 4096) instead of accepting the SDK
   default. If the installed SDK does not expose `max_connections`, fail with an
   actionable Microsandbox upgrade error.
 - **Runtime user creation**: create an `agent` user/group inside the sandbox
@@ -649,7 +649,7 @@ Verification gate:
   TCP failure mode and is expected to fail until Microsandbox behavior changes.
 - `python3 scripts/pty_controller_microsandbox_smoke.py --verbose`
 
-The real Microsandbox scripts default to `hoosegow-microsandbox-local`; use
+The real Microsandbox scripts default to `hoosegow-microsandbox-0.6`; use
 `HOOSEGOW_MICROSANDBOX_BASE` or `--snapshot` to target another prepared base.
 
 ### P0 - Bullpen Excavation Baseline (0.5-1 day)
@@ -726,7 +726,7 @@ Tasks:
   `/home/bullpen` -> `/home/agent`, `/var/lib/bullpen` -> `/var/lib/hoosegow`,
   `/opt/bullpen-venv` -> `/opt/hoosegow-venv`.
 - Preserve defaults: host nofile 12000, guest nofile 65536,
-  network max connections 8192, source image `node:22-bookworm`.
+  network max connections 4096, source image `node:22-bookworm`.
 - Keep deploy-time secret redaction and labeled sandbox command errors.
 - Keep the localhost callback bridge helper even if not exposed in the v1 UI.
 

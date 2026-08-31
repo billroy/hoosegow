@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from dataclasses import replace as dataclass_replace
 import inspect
 import os
 import secrets
@@ -21,7 +22,7 @@ from pty_controller_smoke import reserve_loopback_port
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SNAPSHOT_DEFAULT = "hoosegow-microsandbox-local"
+SNAPSHOT_DEFAULT = "hoosegow-microsandbox-0.6"
 
 
 async def maybe(value: Any) -> Any:
@@ -72,13 +73,13 @@ async def run(args: argparse.Namespace) -> int:
         network = microsandbox.Network.allow_all()
         if hasattr(network, "max_connections"):
             try:
-                network.max_connections = 8192
+                network = dataclass_replace(network, max_connections=4096)
             except Exception:
-                pass
+                network.max_connections = 4096
         sandbox = await maybe(
             microsandbox.Sandbox.create(
                 sandbox_name,
-                snapshot=snapshot_path,
+                from_snapshot=snapshot_path,
                 detached=True,
                 replace=True,
                 cpus=2,

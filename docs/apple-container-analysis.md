@@ -40,7 +40,7 @@ Hoosegow's runtime adapter lives primarily in:
 The effective Microsandbox contract is:
 
 - Create one named sandbox per Hoosegow sandbox.
-- Start from a prepared snapshot, defaulting to `hoosegow-microsandbox-local`.
+- Start from a prepared snapshot, defaulting to `hoosegow-microsandbox-0.6`.
 - Mount exactly three host paths:
   - `/app` -> project source root, read-only.
   - `/workspace` -> selected workspace root, writable.
@@ -61,12 +61,12 @@ Microsandbox API use: the port set is assembled before `Sandbox.create`.
 
 Microsandbox's Python SDK exposes the primitives Hoosegow currently uses:
 
-- `Sandbox.create(name, snapshot=..., detached=True, cpus=..., memory=...,
+- `Sandbox.create(name, from_snapshot=..., detached=True, cpus=..., memory=...,
   ports=..., volumes=..., network=..., env=...)`
 - `Volume.bind(path, readonly=False, noexec=False)`
 - `Network.allow_all()` plus `max_connections`
 - `Sandbox.exec`/`shell` and lifecycle calls
-- `Snapshot.create/get/open`
+- `Snapshot.create(name, from_sandbox=...)/get/open`
 
 This is a small API surface, which is good for Hoosegow's current shape.
 
@@ -400,7 +400,7 @@ host loopback.
 
 1. Add a backend interface without changing UI behavior.
 2. Add Apple host detection and read-only diagnostics.
-3. Build a Hoosegow OCI base image equivalent to `hoosegow-microsandbox-local`.
+3. Build a Hoosegow OCI base image equivalent to `hoosegow-microsandbox-0.6`.
 4. Implement Apple `create` by shelling out to `container create/run` with JSON
    inspect/list parsing.
 5. Map mounts explicitly:

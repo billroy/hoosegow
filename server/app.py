@@ -714,7 +714,7 @@ def create_app(
             socketio.emit("base:log", {"line": line}, to="authenticated")
 
         _emit_base_status({
-            "name": "hoosegow-microsandbox-local",
+            "name": hoosegow_base.BASE_DEFAULT,
             "prepared": False,
             "state": "preparing",
             "message": _base_prepare_status_message(rebuild=rebuild, automatic=automatic),

@@ -20,7 +20,7 @@ import microsandbox
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SNAPSHOT_DEFAULT = "hoosegow-microsandbox-local"
+SNAPSHOT_DEFAULT = "hoosegow-microsandbox-0.6"
 
 
 async def maybe(value: Any) -> Any:
@@ -86,7 +86,7 @@ async def run(args: argparse.Namespace) -> int:
         sandbox = await maybe(
             microsandbox.Sandbox.create(
                 sandbox_name,
-                snapshot=await snapshot_path(args.snapshot),
+                from_snapshot=await snapshot_path(args.snapshot),
                 detached=True,
                 replace=True,
                 cpus=1,

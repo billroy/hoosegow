@@ -15,7 +15,7 @@ from server.microsandbox_runtime import (
 )
 
 
-MICROSANDBOX_OK_VERSION = "0.5.2"
+MICROSANDBOX_OK_VERSION = "0.6.16"
 
 
 @dataclass
@@ -52,6 +52,12 @@ def test_network_with_max_connections_mutates_non_dataclass_object():
 def test_network_with_max_connections_requires_sdk_support():
     with pytest.raises(HoosegowRuntimeError, match="does not expose max_connections"):
         network_with_max_connections(object(), 20)
+
+
+@pytest.mark.parametrize("value", [0, 4097])
+def test_network_with_max_connections_enforces_microsandbox_06_limit(value):
+    with pytest.raises(HoosegowRuntimeError, match="between 1 and 4096"):
+        network_with_max_connections(DataNetwork(max_connections=10), value)
 
 
 def test_create_time_env_keeps_sandbox_create_environment_small(tmp_path):
@@ -134,7 +140,8 @@ def test_runtime_create_uses_prepared_snapshot_bullpen_volumes_and_small_env(tmp
 
     assert result.name == "demo"
     assert captured["name"] == "demo"
-    assert captured["kwargs"]["snapshot"] == "/snapshots/hoosegow-base"
+    assert captured["kwargs"]["from_snapshot"] == "/snapshots/hoosegow-base"
+    assert "snapshot" not in captured["kwargs"]
     assert captured["kwargs"]["detached"] is True
     assert captured["kwargs"]["replace"] is True
     assert captured["kwargs"]["ports"] == {61234: 5859}
@@ -148,6 +155,36 @@ def test_runtime_create_uses_prepared_snapshot_bullpen_volumes_and_small_env(tmp
         "HOME": "/home/agent",
         "USER": "agent",
         "LOGNAME": "agent",
+    }
+
+
+def test_create_snapshot_uses_microsandbox_06_contract(monkeypatch):
+    captured = {}
+
+    class FakeSnapshot:
+        @staticmethod
+        async def create(name, **kwargs):
+            captured["name"] = name
+            captured["kwargs"] = kwargs
+
+    module = SimpleNamespace(
+        Sandbox=object,
+        Snapshot=FakeSnapshot,
+        Volume=object,
+        Network=object,
+    )
+    monkeypatch.setattr(importlib, "import_module", lambda name: module)
+    allow_supported_microsandbox_version(monkeypatch)
+
+    asyncio.run(MicrosandboxRuntime().create_snapshot("hoosegow-base-prepare", "hoosegow-base"))
+
+    assert captured == {
+        "name": "hoosegow-base",
+        "kwargs": {
+            "from_sandbox": "hoosegow-base-prepare",
+            "force": True,
+            "labels": {"app": "hoosegow", "kind": "microsandbox-base"},
+        },
     }
 
 
@@ -250,5 +287,5 @@ def test_runtime_init_rejects_stale_microsandbox_distribution(monkeypatch):
         lambda module=None: "0.4.4",
     )
 
-    with pytest.raises(HoosegowRuntimeError, match="published-port TCP stall fix"):
+    with pytest.raises(HoosegowRuntimeError, match=r"requires microsandbox >= 0\.6\.16"):
         MicrosandboxRuntime()

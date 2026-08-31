@@ -1,5 +1,32 @@
 # Release Smoke Notes
 
+## 2026-08-31 — Microsandbox 0.6.16 migration
+
+Host: local Apple Silicon development machine.
+
+Validation used isolated state so the existing Microsandbox 0.5 catalog and
+prepared base were not modified:
+
+- `MSB_HOME=/tmp/hoosegow-msb-06-state`
+- Hoosegow home: `/tmp/hoosegow-msb-06-hoosegow-home`
+- Prepared base: `hoosegow-microsandbox-0.6`
+
+Results:
+
+- Fresh base construction and snapshot creation passed.
+- Base validation passed after lowering `network.max_connections` from 8192 to
+  the Microsandbox 0.6 hard maximum of 4096.
+- Full test suite passed with the 0.6.16 SDK injected.
+- Real published-HTTP and PTY-controller pytest smokes passed.
+- Detach, reconnect, stop, restart, destroy, and workspace/home bind persistence
+  passed in an isolated lifecycle smoke.
+- The raw-TCP diagnostic still receives an empty response even though the guest
+  echo server is listening. Hoosegow continues to use its HTTP PTY bridge.
+
+The isolated state is disposable and does not constitute migration of the
+host's active `~/.microsandbox` catalog. On upgrade, install the pinned SDK and
+allow Hoosegow to prepare the new versioned base in the active runtime state.
+
 ## 2026-05-28
 
 Host: local Apple Silicon development machine.
