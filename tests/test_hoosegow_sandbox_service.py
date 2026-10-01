@@ -803,6 +803,29 @@ def test_sandbox_service_destroy_retries_remove_while_stopping(tmp_path, monkeyp
     assert service.get("demo") is None
 
 
+def test_sandbox_service_destroy_removes_orphaned_manifest_when_runtime_is_missing(tmp_path, monkeypatch):
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    service = SandboxService(home=str(tmp_path / "state"), browse_roots=[str(tmp_path)])
+    created = service.create_manifest({"name": "demo", "workspace_root": str(workspace)})
+    sandbox_dir = Path(created["home_path"]).parent
+
+    class FakeRuntime:
+        async def stop(self, _name):
+            return None
+
+        async def remove(self, _name):
+            raise RuntimeError("sandbox not found: demo")
+
+    monkeypatch.setattr("server.sandboxes.MicrosandboxRuntime", FakeRuntime)
+
+    deleted = asyncio.run(service.destroy("demo", purge_home=True))
+
+    assert deleted is True
+    assert service.get("demo") is None
+    assert not sandbox_dir.exists()
+
+
 def test_sandbox_service_stop_running_stops_only_active_manifests(tmp_path, monkeypatch):
     first_workspace = tmp_path / "first"
     second_workspace = tmp_path / "second"
