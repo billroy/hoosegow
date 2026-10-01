@@ -9,6 +9,7 @@ from server.microsandbox_runtime import (
     MicrosandboxRuntime,
     HoosegowRuntimeError,
     HoosegowSandboxSpec,
+    configure_matching_microsandbox_runtime,
     validate_network_max_connections,
 )
 
@@ -242,3 +243,53 @@ def test_runtime_init_rejects_stale_microsandbox_distribution(monkeypatch):
 
     with pytest.raises(HoosegowRuntimeError, match=r"requires microsandbox >= 0\.7\.5"):
         MicrosandboxRuntime()
+
+
+def test_runtime_uses_matching_bundled_pair_when_default_home_drifted(tmp_path, monkeypatch):
+    package = tmp_path / "microsandbox"
+    module_file = package / "__init__.py"
+    bundled_msb = package / "_bundled" / "bin" / "msb"
+    bundled_lib = package / "_bundled" / "lib" / "libkrunfw.5.dylib"
+    home_msb = tmp_path / "home" / "bin" / "msb"
+    for path in (module_file, bundled_msb, bundled_lib, home_msb):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()
+
+    module = SimpleNamespace(__file__=str(module_file))
+
+    def resolve_runtime():
+        selected = microsandbox_runtime.os.environ.get("MSB_PATH", str(home_msb))
+        origin = "configuration" if "MSB_PATH" in microsandbox_runtime.os.environ else "home"
+        return SimpleNamespace(msb_path=selected, origin=origin)
+
+    module.resolve_runtime = resolve_runtime
+    monkeypatch.delenv("MSB_PATH", raising=False)
+    monkeypatch.delenv("MSB_LIBKRUNFW_PATH", raising=False)
+    monkeypatch.delenv("MSB_HOME", raising=False)
+    monkeypatch.setattr(
+        microsandbox_runtime,
+        "microsandbox_runtime_version",
+        lambda path: "0.7.5" if path == str(bundled_msb) else "0.7.6",
+    )
+
+    configure_matching_microsandbox_runtime(module, "0.7.5")
+
+    assert microsandbox_runtime.os.environ["MSB_PATH"] == str(bundled_msb)
+    assert microsandbox_runtime.os.environ["MSB_LIBKRUNFW_PATH"] == str(bundled_lib)
+
+
+def test_runtime_rejects_mismatched_explicit_override(tmp_path, monkeypatch):
+    runtime_path = tmp_path / "msb"
+    monkeypatch.setenv("MSB_PATH", str(runtime_path))
+    monkeypatch.delenv("MSB_LIBKRUNFW_PATH", raising=False)
+    monkeypatch.delenv("MSB_HOME", raising=False)
+    module = SimpleNamespace(
+        resolve_runtime=lambda: SimpleNamespace(msb_path=str(runtime_path), origin="environment"),
+    )
+    monkeypatch.setattr(microsandbox_runtime, "microsandbox_runtime_version", lambda path: "0.7.6")
+
+    with pytest.raises(
+        HoosegowRuntimeError,
+        match=r"SDK/runtime version mismatch.*SDK 0\.7\.5, runtime 0\.7\.6",
+    ):
+        configure_matching_microsandbox_runtime(module, "0.7.5")

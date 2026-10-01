@@ -6,6 +6,7 @@ import importlib
 import inspect
 import os
 import platform
+import re
 import shutil
 import socket
 import subprocess
@@ -94,6 +95,82 @@ def validate_microsandbox_version(version: str) -> None:
             "uses grouped snapshots, restore-based startup, and later published-port fixes. "
             f"Installed version: {version}. Upgrade with: python3 -m pip install -r requirements.txt"
         )
+
+
+def microsandbox_runtime_version(msb_path: str) -> str:
+    try:
+        result = subprocess.run(
+            [msb_path, "--version"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise HoosegowRuntimeError(f"Could not inspect Microsandbox runtime {msb_path}: {exc}") from exc
+    output = (result.stdout or result.stderr or "").strip()
+    match = re.search(r"\b(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)\b", output)
+    if result.returncode != 0 or match is None:
+        raise HoosegowRuntimeError(
+            f"Could not determine the Microsandbox runtime version from {msb_path}. "
+            f"Command output: {output or '(empty)'}"
+        )
+    return match.group(1)
+
+
+def bundled_microsandbox_runtime(module: Any) -> tuple[Path, Path] | None:
+    module_file = getattr(module, "__file__", None)
+    if not module_file:
+        return None
+    bundled = Path(module_file).resolve().parent / "_bundled"
+    msb_name = "msb.exe" if os.name == "nt" else "msb"
+    msb_path = bundled / "bin" / msb_name
+    libraries = sorted((bundled / "lib").glob("libkrunfw*"))
+    if not msb_path.is_file() or not libraries:
+        return None
+    return msb_path, libraries[0]
+
+
+def configure_matching_microsandbox_runtime(module: Any, sdk_version: str) -> None:
+    """Keep the SDK and launcher on the same tested patch-level contract."""
+    resolve_runtime = getattr(module, "resolve_runtime", None)
+    if not callable(resolve_runtime):
+        return
+    try:
+        resolved = resolve_runtime()
+    except Exception as exc:
+        raise HoosegowRuntimeError(f"Could not resolve the Microsandbox runtime: {exc}") from exc
+    runtime_version = microsandbox_runtime_version(str(resolved.msb_path))
+    if comparable_version(runtime_version) == comparable_version(sdk_version):
+        return
+
+    explicit_override = any(
+        os.environ.get(name) for name in ("MSB_PATH", "MSB_LIBKRUNFW_PATH", "MSB_HOME")
+    )
+    bundled = bundled_microsandbox_runtime(module)
+    resolved_origin = str(getattr(resolved, "origin", ""))
+    if not explicit_override and resolved_origin in {"home", "installed"} and bundled is not None:
+        bundled_msb, bundled_libkrunfw = bundled
+        bundled_version = microsandbox_runtime_version(str(bundled_msb))
+        if comparable_version(bundled_version) == comparable_version(sdk_version):
+            os.environ["MSB_PATH"] = str(bundled_msb)
+            os.environ["MSB_LIBKRUNFW_PATH"] = str(bundled_libkrunfw)
+            selected = resolve_runtime()
+            selected_version = microsandbox_runtime_version(str(selected.msb_path))
+            if comparable_version(selected_version) == comparable_version(sdk_version):
+                return
+
+    override_hint = (
+        " Remove or correct MSB_PATH, MSB_LIBKRUNFW_PATH, and MSB_HOME."
+        if explicit_override
+        else " Reinstall the pinned Python package from requirements.txt."
+    )
+    raise HoosegowRuntimeError(
+        "Microsandbox SDK/runtime version mismatch: "
+        f"Python SDK {sdk_version}, runtime {runtime_version} at {resolved.msb_path}. "
+        "Microsandbox launch contracts require a matching SDK/runtime release."
+        + override_hint
+    )
 
 
 def detect_supported_host() -> bool:
@@ -244,7 +321,9 @@ class MicrosandboxRuntime:
                 "The microsandbox Python package is required. Install it with: "
                 "python3 -m pip install -r requirements.txt"
             ) from exc
-        validate_microsandbox_version(microsandbox_distribution_version(self.module))
+        sdk_version = microsandbox_distribution_version(self.module)
+        validate_microsandbox_version(sdk_version)
+        configure_matching_microsandbox_runtime(self.module, sdk_version)
 
         try:
             self.Sandbox = getattr(self.module, "Sandbox")

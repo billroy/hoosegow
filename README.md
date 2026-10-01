@@ -223,6 +223,13 @@ first validate 0.7.5 with `MSB_HOME` pointing at a separate runtime directory.
 Persistent Hoosegow sandbox homes are host bind mounts and are not part of the
 prepared snapshot.
 
+Hoosegow keeps the Python SDK and `msb` launcher on the same patch release. If
+the default runtime in `~/.microsandbox` has moved ahead of the pinned SDK, it
+uses the matching launcher bundled in the Python wheel. Explicit `MSB_PATH`,
+`MSB_LIBKRUNFW_PATH`, or `MSB_HOME` overrides are never replaced; a mismatched
+override fails early with both detected versions instead of failing during VM
+launch.
+
 Manual setup and rebuild commands remain available for diagnostics:
 
 ```bash
