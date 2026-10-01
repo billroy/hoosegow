@@ -1,5 +1,33 @@
 # Release Smoke Notes
 
+## 2026-10-01 — Microsandbox 0.7.5 migration
+
+Host: local Apple Silicon development machine.
+
+Validation used isolated state so the active Microsandbox catalog and prepared
+bases were not modified:
+
+- `MSB_HOME=/tmp/hoosegow-msb-075-full-state`
+- Hoosegow home: `/tmp/hoosegow-msb-075-full-home`
+- Prepared base: `hoosegow-microsandbox-0.7`
+
+Results:
+
+- Fresh base construction, grouped snapshot creation, and restore-based base
+  validation passed.
+- Full test suite passed with the 0.7.5 SDK injected: `205 passed, 2 skipped`.
+- Real published-HTTP and PTY-controller pytest smokes passed:
+  `2 passed, 205 deselected`.
+- An isolated adapter lifecycle smoke passed snapshot restore, source/workspace/
+  home bind mounts, catalog reconnect, and a published HTTP port.
+- The raw-TCP diagnostic still receives an empty response even though the guest
+  echo server is listening. Hoosegow continues to use its HTTP PTY bridge.
+
+Microsandbox 0.7 requires prepared snapshots to use group-qualified names and
+restores them with `Sandbox.restore()`. Hoosegow stores its base as
+`hoosegow-microsandbox-0.7:hoosegow-microsandbox-0.7`, removes that member
+explicitly during rebuilds, and applies separate TCP and UDP connection caps.
+
 ## 2026-08-31 — Microsandbox 0.6.16 migration
 
 Host: local Apple Silicon development machine.

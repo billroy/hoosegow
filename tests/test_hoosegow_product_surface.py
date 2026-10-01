@@ -240,7 +240,7 @@ def test_base_logs_are_available_after_reconnect(tmp_path):
 def test_base_status_auto_starts_missing_base_setup(tmp_path, monkeypatch):
     async def fake_base_status():
         return {
-            "name": "hoosegow-microsandbox-0.6",
+            "name": "hoosegow-microsandbox-0.7",
             "prepared": False,
             "state": "missing",
             "message": "missing",
@@ -507,7 +507,7 @@ def test_real_microsandbox_smokes_default_to_hoosegow_base():
         "scripts/pty_controller_microsandbox_smoke.py",
     ):
         text = (ROOT / relative).read_text(encoding="utf-8")
-        assert 'SNAPSHOT_DEFAULT = "hoosegow-microsandbox-0.6"' in text
+        assert 'SNAPSHOT_DEFAULT = "hoosegow-microsandbox-0.7"' in text
         assert "HOOSEGOW_MICROSANDBOX_BASE" in text
         assert "bullpen-microsandbox-local" not in text
 

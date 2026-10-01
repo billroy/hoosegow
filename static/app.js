@@ -100,7 +100,7 @@ createApp({
     const baseStatus = reactive({
       prepared: false,
       state: 'checking',
-      name: 'hoosegow-microsandbox-0.6',
+      name: 'hoosegow-microsandbox-0.7',
       message: 'Checking base image...',
     });
     const baseLogs = reactive([]);

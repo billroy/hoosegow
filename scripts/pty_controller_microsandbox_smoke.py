@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from dataclasses import replace as dataclass_replace
 import inspect
 import os
 import secrets
@@ -22,7 +21,7 @@ from pty_controller_smoke import reserve_loopback_port
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SNAPSHOT_DEFAULT = "hoosegow-microsandbox-0.6"
+SNAPSHOT_DEFAULT = "hoosegow-microsandbox-0.7"
 
 
 async def maybe(value: Any) -> Any:
@@ -55,14 +54,8 @@ async def run(args: argparse.Namespace) -> int:
     base_url = f"http://127.0.0.1:{host_port}"
 
     snapshot_name = args.snapshot
-    snapshot = await maybe(microsandbox.Snapshot.get(snapshot_name))
-    snapshot_path = getattr(snapshot, "path", None)
-    if not snapshot_path:
-        opened = getattr(snapshot, "open", None)
-        if callable(opened):
-            snapshot_path = getattr(await maybe(opened()), "path", None)
-    if not snapshot_path:
-        raise RuntimeError(f"snapshot {snapshot_name!r} has no path")
+    qualified_name = snapshot_name if ":" in snapshot_name else f"{snapshot_name}:{snapshot_name}"
+    snapshot = await maybe(microsandbox.Snapshot.get(qualified_name))
 
     with tempfile.TemporaryDirectory(prefix="hoosegow-msb-home-", dir="/private/tmp") as home:
         await stop_remove(sandbox_name)
@@ -70,24 +63,17 @@ async def run(args: argparse.Namespace) -> int:
             "/app": microsandbox.Volume.bind(str(ROOT), readonly=True),
             "/home/agent": microsandbox.Volume.bind(home),
         }
-        network = microsandbox.Network.allow_all()
-        if hasattr(network, "max_connections"):
-            try:
-                network = dataclass_replace(network, max_connections=4096)
-            except Exception:
-                network.max_connections = 4096
         sandbox = await maybe(
-            microsandbox.Sandbox.create(
-                sandbox_name,
-                from_snapshot=snapshot_path,
-                detached=True,
-                replace=True,
+            microsandbox.Sandbox.restore(
+                snapshot,
+                name=sandbox_name,
                 cpus=2,
                 memory=2048,
                 ports={host_port: host_port},
                 volumes=volumes,
-                network=network,
-                env={"HOME": "/home/agent", "USER": "agent", "LOGNAME": "agent"},
+                network_policy=microsandbox.Network.allow_all().policy,
+                max_tcp_connections=4096,
+                max_udp_connections=4096,
             )
         )
         try:

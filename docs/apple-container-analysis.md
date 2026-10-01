@@ -40,7 +40,7 @@ Hoosegow's runtime adapter lives primarily in:
 The effective Microsandbox contract is:
 
 - Create one named sandbox per Hoosegow sandbox.
-- Start from a prepared snapshot, defaulting to `hoosegow-microsandbox-0.6`.
+- Start from a prepared snapshot, defaulting to `hoosegow-microsandbox-0.7`.
 - Mount exactly three host paths:
   - `/app` -> project source root, read-only.
   - `/workspace` -> selected workspace root, writable.
@@ -57,14 +57,15 @@ The adapter is intentionally conservative. It preflights host port availability,
 records mappings in the sandbox manifest, marks conflicts with `lsof` owner
 details when available, and delays publish/unpublish/reassign changes for
 running sandboxes until restart. That restart-bound behavior fits the current
-Microsandbox API use: the port set is assembled before `Sandbox.create`.
+Microsandbox API use: the port set is assembled before `Sandbox.restore`.
 
 Microsandbox's Python SDK exposes the primitives Hoosegow currently uses:
 
-- `Sandbox.create(name, from_snapshot=..., detached=True, cpus=..., memory=...,
-  ports=..., volumes=..., network=..., env=...)`
+- `Sandbox.restore(snapshot, name=..., cpus=..., memory=..., ports=...,
+  volumes=..., network_policy=..., max_tcp_connections=...,
+  max_udp_connections=...)`
 - `Volume.bind(path, readonly=False, noexec=False)`
-- `Network.allow_all()` plus `max_connections`
+- `Network.allow_all()` plus separate TCP and UDP connection limits
 - `Sandbox.exec`/`shell` and lifecycle calls
 - `Snapshot.create(name, from_sandbox=...)/get/open`
 
@@ -400,7 +401,7 @@ host loopback.
 
 1. Add a backend interface without changing UI behavior.
 2. Add Apple host detection and read-only diagnostics.
-3. Build a Hoosegow OCI base image equivalent to `hoosegow-microsandbox-0.6`.
+3. Build a Hoosegow OCI base image equivalent to `hoosegow-microsandbox-0.7`.
 4. Implement Apple `create` by shelling out to `container create/run` with JSON
    inspect/list parsing.
 5. Map mounts explicitly:

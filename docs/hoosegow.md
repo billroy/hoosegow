@@ -30,7 +30,7 @@ Current inventory from a case-insensitive search:
 - Microsandbox helper script: `scripts/hoosegow-msb`
 - State home default: `~/.hoosegow`
 - Environment variable prefix: `HOOSEGOW_`
-- Prepared base default: `hoosegow-microsandbox-0.6`
+- Prepared base default: `hoosegow-microsandbox-0.7`
 - Internal app config prefix: `hoosegow_`
 - Validation helper module: `server/hoosegow_validation.py`
 - CSS/localStorage prefix: `hoosegow`

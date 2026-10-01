@@ -11,7 +11,7 @@ import socket
 import subprocess
 import sys
 import time
-from dataclasses import dataclass, field, replace as dataclass_replace
+from dataclasses import dataclass, field
 from importlib import metadata
 from pathlib import Path
 from typing import Any
@@ -22,9 +22,9 @@ except ImportError:  # pragma: no cover - unsupported host path.
     resource = None
 
 
-BASE_DEFAULT = "hoosegow-microsandbox-0.6"
+BASE_DEFAULT = "hoosegow-microsandbox-0.7"
 SOURCE_IMAGE_DEFAULT = "node:22-bookworm"
-MICROSANDBOX_MIN_VERSION = "0.6.16"
+MICROSANDBOX_MIN_VERSION = "0.7.5"
 VCPUS_DEFAULT = 4
 MEMORY_MIB_DEFAULT = 4096
 HOST_NOFILE_DEFAULT = 12000
@@ -91,7 +91,7 @@ def validate_microsandbox_version(version: str) -> None:
     if comparable_version(version) < comparable_version(MICROSANDBOX_MIN_VERSION):
         raise HoosegowRuntimeError(
             f"Hoosegow requires microsandbox >= {MICROSANDBOX_MIN_VERSION} because its runtime adapter "
-            "uses the 0.6 snapshot API and depends on later published-port and lifecycle fixes. "
+            "uses grouped snapshots, restore-based startup, and later published-port fixes. "
             f"Installed version: {version}. Upgrade with: python3 -m pip install -r requirements.txt"
         )
 
@@ -169,22 +169,13 @@ def mark_open_fds_close_on_exec(exclude: set[int] | tuple[int, ...] = (0, 1, 2))
     return marked
 
 
-def network_with_max_connections(network: Any, max_connections: int) -> Any:
+def validate_network_max_connections(max_connections: int) -> int:
     if max_connections < 1 or max_connections > NETWORK_MAX_CONNECTIONS_LIMIT:
         raise HoosegowRuntimeError(
-            "Microsandbox 0.6 requires network max_connections to be between "
+            "Microsandbox requires network max_connections to be between "
             f"1 and {NETWORK_MAX_CONNECTIONS_LIMIT}; received {max_connections}."
         )
-    if hasattr(network, "max_connections"):
-        try:
-            return dataclass_replace(network, max_connections=max_connections)
-        except TypeError:
-            setattr(network, "max_connections", max_connections)
-            return network
-    raise HoosegowRuntimeError(
-        "The installed microsandbox SDK Network object does not expose max_connections; "
-        "upgrade microsandbox before using Hoosegow's Microsandbox runtime."
-    )
+    return max_connections
 
 
 def host_port_in_use(port: int) -> bool:
@@ -240,15 +231,6 @@ def wait_for_host_ports_available(ports: list[int] | tuple[int, ...] | set[int],
             return
         time.sleep(0.5)
     ensure_host_ports_available(ports)
-
-
-def create_time_env(spec: HoosegowSandboxSpec) -> dict[str, str]:
-    """Keep Sandbox.create env small; commands export the full runtime env later."""
-    return {
-        key: str(spec.runtime_env[key])
-        for key in ("HOME", "USER", "LOGNAME")
-        if key in spec.runtime_env
-    }
 
 
 class MicrosandboxRuntime:
@@ -339,32 +321,29 @@ class MicrosandboxRuntime:
         if not callable(get):
             return None
         try:
-            return await maybe(get(base))
+            return await maybe(get(self.prepared_base_snapshot_name(base)))
         except Exception:
             return None
+
+    @staticmethod
+    def prepared_base_snapshot_name(base: str) -> str:
+        """Return the Microsandbox 0.7 group-qualified prepared-base name."""
+        return f"{base}:{base}"
 
     async def prepared_base_exists(self, base: str) -> bool:
         return await self.get_prepared_base(base) is not None
 
-    async def prepared_base_snapshot_path(self, base: str) -> str:
+    async def prepared_base_snapshot(self, base: str) -> Any:
         snapshot = await self.get_prepared_base(base)
         if snapshot is None:
             raise HoosegowRuntimeError(
                 f"Prepared Microsandbox base '{base}' was not found. "
                 "Run: python3 hoosegow.py --prepare-base"
             )
-        path = getattr(snapshot, "path", None)
-        if path is None:
-            open_snapshot = getattr(snapshot, "open", None)
-            if callable(open_snapshot):
-                opened = await maybe(open_snapshot())
-                path = getattr(opened, "path", None)
-        if not path:
-            raise HoosegowRuntimeError(f"Prepared Microsandbox base '{base}' has no local snapshot path.")
-        return str(path)
+        return snapshot
 
     async def create(self, spec: HoosegowSandboxSpec) -> Any:
-        prepared_base = await self.prepared_base_snapshot_path(spec.base)
+        prepared_base = await self.prepared_base_snapshot(spec.base)
         try:
             spec.sandbox_home.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
@@ -375,18 +354,24 @@ class MicrosandboxRuntime:
             "/home/agent": self.Volume.bind(str(spec.sandbox_home)),
         }
         ensure_host_nofile(spec.host_nofile)
-        network = network_with_max_connections(self.Network.allow_all(), spec.network_max_connections)
-        result = self.Sandbox.create(
-            spec.sandbox_name,
-            from_snapshot=prepared_base,
-            detached=True,
-            replace=bool(spec.replace),
+        network = self.Network.allow_all()
+        max_connections = validate_network_max_connections(spec.network_max_connections)
+        if spec.replace:
+            await self.stop(spec.sandbox_name)
+            try:
+                await self.remove(spec.sandbox_name)
+            except Exception:
+                pass
+        result = self.Sandbox.restore(
+            prepared_base,
+            name=spec.sandbox_name,
             cpus=spec.vcpus,
             memory=spec.memory_mib,
             ports=dict(spec.ports),
             volumes=volumes,
-            network=network,
-            env=create_time_env(spec),
+            network_policy=network.policy,
+            max_tcp_connections=max_connections,
+            max_udp_connections=max_connections,
         )
         return await maybe(result)
 
@@ -403,32 +388,39 @@ class MicrosandboxRuntime:
         return await maybe(result)
 
     async def create_base_validation_sandbox(self, name: str, base: str, spec: HoosegowSandboxSpec) -> Any:
-        prepared_base = await self.prepared_base_snapshot_path(base)
+        prepared_base = await self.prepared_base_snapshot(base)
         await self.stop(name)
         try:
             await self.remove(name)
         except Exception:
             pass
         ensure_host_nofile(spec.host_nofile)
-        network = network_with_max_connections(self.Network.allow_all(), spec.network_max_connections)
-        result = self.Sandbox.create(
-            name,
-            from_snapshot=prepared_base,
-            detached=True,
-            replace=True,
+        network = self.Network.allow_all()
+        max_connections = validate_network_max_connections(spec.network_max_connections)
+        result = self.Sandbox.restore(
+            prepared_base,
+            name=name,
             cpus=1,
             memory=1024,
             ports={},
-            network=network,
-            env={"HOME": "/root", "USER": "root", "LOGNAME": "root"},
+            network_policy=network.policy,
+            max_tcp_connections=max_connections,
+            max_udp_connections=max_connections,
         )
         return await maybe(result)
 
     async def create_snapshot(self, sandbox_name: str, base: str) -> None:
+        snapshot_name = self.prepared_base_snapshot_name(base)
+        remove = getattr(self.Snapshot, "remove", None)
+        if callable(remove):
+            try:
+                await maybe(remove(snapshot_name, force=True))
+            except Exception:
+                pass
         result = self.Snapshot.create(
             base,
             from_sandbox=sandbox_name,
-            force=True,
+            group=base,
             labels={"app": "hoosegow", "kind": "microsandbox-base"},
         )
         await maybe(result)

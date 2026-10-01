@@ -20,7 +20,7 @@ from pty_controller_smoke import reserve_loopback_port
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SNAPSHOT_DEFAULT = "hoosegow-microsandbox-0.6"
+SNAPSHOT_DEFAULT = "hoosegow-microsandbox-0.7"
 
 
 async def maybe(value: Any) -> Any:
@@ -45,16 +45,9 @@ async def stop_remove(name: str) -> None:
         pass
 
 
-async def snapshot_path(snapshot_name: str) -> str:
-    snapshot = await maybe(microsandbox.Snapshot.get(snapshot_name))
-    path = getattr(snapshot, "path", None)
-    if not path:
-        opened = getattr(snapshot, "open", None)
-        if callable(opened):
-            path = getattr(await maybe(opened()), "path", None)
-    if not path:
-        raise RuntimeError(f"snapshot {snapshot_name!r} has no path")
-    return str(path)
+async def prepared_snapshot(snapshot_name: str) -> Any:
+    qualified_name = snapshot_name if ":" in snapshot_name else f"{snapshot_name}:{snapshot_name}"
+    return await maybe(microsandbox.Snapshot.get(qualified_name))
 
 
 def wait_for_echo(port: int, timeout: float = 20.0) -> bytes:
@@ -79,11 +72,9 @@ async def run(args: argparse.Namespace) -> int:
     with tempfile.TemporaryDirectory(prefix="hoosegow-msb-raw-", dir="/private/tmp") as home:
         await stop_remove(sandbox_name)
         sandbox = await maybe(
-            microsandbox.Sandbox.create(
-                sandbox_name,
-                from_snapshot=await snapshot_path(args.snapshot),
-                detached=True,
-                replace=True,
+            microsandbox.Sandbox.restore(
+                await prepared_snapshot(args.snapshot),
+                name=sandbox_name,
                 cpus=1,
                 memory=1024,
                 ports={host_port: host_port},
@@ -91,8 +82,9 @@ async def run(args: argparse.Namespace) -> int:
                     "/app": microsandbox.Volume.bind(str(ROOT), readonly=True),
                     "/home/agent": microsandbox.Volume.bind(home),
                 },
-                network=microsandbox.Network.allow_all(),
-                env={"HOME": "/home/agent", "USER": "agent", "LOGNAME": "agent"},
+                network_policy=microsandbox.Network.allow_all().policy,
+                max_tcp_connections=4096,
+                max_udp_connections=4096,
             )
         )
         try:

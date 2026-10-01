@@ -1,6 +1,5 @@
 import asyncio
 import importlib
-from dataclasses import dataclass
 from types import SimpleNamespace
 
 import pytest
@@ -10,17 +9,11 @@ from server.microsandbox_runtime import (
     MicrosandboxRuntime,
     HoosegowRuntimeError,
     HoosegowSandboxSpec,
-    create_time_env,
-    network_with_max_connections,
+    validate_network_max_connections,
 )
 
 
-MICROSANDBOX_OK_VERSION = "0.6.16"
-
-
-@dataclass
-class DataNetwork:
-    max_connections: int
+MICROSANDBOX_OK_VERSION = "0.7.5"
 
 
 def allow_supported_microsandbox_version(monkeypatch):
@@ -31,57 +24,17 @@ def allow_supported_microsandbox_version(monkeypatch):
     )
 
 
-def test_network_with_max_connections_preserves_dataclass_type():
-    network = DataNetwork(max_connections=10)
-
-    updated = network_with_max_connections(network, 20)
-
-    assert updated == DataNetwork(max_connections=20)
-    assert updated is not network
-
-
-def test_network_with_max_connections_mutates_non_dataclass_object():
-    network = SimpleNamespace(max_connections=10)
-
-    updated = network_with_max_connections(network, 20)
-
-    assert updated is network
-    assert network.max_connections == 20
-
-
-def test_network_with_max_connections_requires_sdk_support():
-    with pytest.raises(HoosegowRuntimeError, match="does not expose max_connections"):
-        network_with_max_connections(object(), 20)
+def test_validate_network_max_connections_returns_supported_value():
+    assert validate_network_max_connections(20) == 20
 
 
 @pytest.mark.parametrize("value", [0, 4097])
-def test_network_with_max_connections_enforces_microsandbox_06_limit(value):
+def test_validate_network_max_connections_enforces_limit(value):
     with pytest.raises(HoosegowRuntimeError, match="between 1 and 4096"):
-        network_with_max_connections(DataNetwork(max_connections=10), value)
+        validate_network_max_connections(value)
 
 
-def test_create_time_env_keeps_sandbox_create_environment_small(tmp_path):
-    spec = HoosegowSandboxSpec(
-        sandbox_name="demo",
-        workspace=tmp_path / "workspace",
-        source_root=tmp_path / "source",
-        sandbox_home=tmp_path / "home",
-    )
-    spec.runtime_env.update({
-        "HOME": "/home/agent",
-        "USER": "agent",
-        "LOGNAME": "agent",
-        "OPENAI_API_KEY": "secret",
-    })
-
-    assert create_time_env(spec) == {
-        "HOME": "/home/agent",
-        "USER": "agent",
-        "LOGNAME": "agent",
-    }
-
-
-def test_runtime_create_uses_prepared_snapshot_bullpen_volumes_and_small_env(tmp_path, monkeypatch):
+def test_runtime_create_restores_prepared_snapshot_with_bullpen_volumes(tmp_path, monkeypatch):
     captured = {}
 
     class FakeVolume:
@@ -92,16 +45,18 @@ def test_runtime_create_uses_prepared_snapshot_bullpen_volumes_and_small_env(tmp
     class FakeNetwork:
         @staticmethod
         def allow_all():
-            return DataNetwork(max_connections=1)
+            return SimpleNamespace(policy="allow-all")
 
     class FakeSnapshot:
         @staticmethod
-        async def get(_base):
-            return SimpleNamespace(path="/snapshots/hoosegow-base")
+        async def get(name):
+            assert name == "hoosegow-microsandbox-0.7:hoosegow-microsandbox-0.7"
+            return SimpleNamespace(reference="snapshot-reference")
 
     class FakeSandbox:
         @staticmethod
-        def create(name, **kwargs):
+        def restore(snapshot, *, name, **kwargs):
+            captured["snapshot"] = snapshot
             captured["name"] = name
             captured["kwargs"] = kwargs
             return SimpleNamespace(name=name)
@@ -140,28 +95,26 @@ def test_runtime_create_uses_prepared_snapshot_bullpen_volumes_and_small_env(tmp
 
     assert result.name == "demo"
     assert captured["name"] == "demo"
-    assert captured["kwargs"]["from_snapshot"] == "/snapshots/hoosegow-base"
-    assert "snapshot" not in captured["kwargs"]
-    assert captured["kwargs"]["detached"] is True
-    assert captured["kwargs"]["replace"] is True
+    assert captured["snapshot"].reference == "snapshot-reference"
     assert captured["kwargs"]["ports"] == {61234: 5859}
     assert captured["kwargs"]["volumes"] == {
         "/app": {"path": str(source), "readonly": True},
         "/workspace": {"path": str(workspace), "readonly": False},
         "/home/agent": {"path": str(home), "readonly": False},
     }
-    assert captured["kwargs"]["network"] == DataNetwork(max_connections=3333)
-    assert captured["kwargs"]["env"] == {
-        "HOME": "/home/agent",
-        "USER": "agent",
-        "LOGNAME": "agent",
-    }
+    assert captured["kwargs"]["network_policy"] == "allow-all"
+    assert captured["kwargs"]["max_tcp_connections"] == 3333
+    assert captured["kwargs"]["max_udp_connections"] == 3333
 
 
-def test_create_snapshot_uses_microsandbox_06_contract(monkeypatch):
+def test_create_snapshot_uses_microsandbox_07_grouped_contract(monkeypatch):
     captured = {}
 
     class FakeSnapshot:
+        @staticmethod
+        async def remove(name, **kwargs):
+            captured["removed"] = (name, kwargs)
+
         @staticmethod
         async def create(name, **kwargs):
             captured["name"] = name
@@ -179,24 +132,23 @@ def test_create_snapshot_uses_microsandbox_06_contract(monkeypatch):
     asyncio.run(MicrosandboxRuntime().create_snapshot("hoosegow-base-prepare", "hoosegow-base"))
 
     assert captured == {
+        "removed": ("hoosegow-base:hoosegow-base", {"force": True}),
         "name": "hoosegow-base",
         "kwargs": {
             "from_sandbox": "hoosegow-base-prepare",
-            "force": True,
+            "group": "hoosegow-base",
             "labels": {"app": "hoosegow", "kind": "microsandbox-base"},
         },
     }
 
 
-def test_prepared_base_snapshot_path_opens_lazy_snapshot(monkeypatch):
-    class Snapshot:
-        async def open(self):
-            return SimpleNamespace(path="/lazy/snapshot")
-
+def test_prepared_base_snapshot_uses_group_qualified_name(monkeypatch):
+    captured = {}
     class FakeSnapshot:
         @staticmethod
-        def get(_base):
-            return Snapshot()
+        def get(name):
+            captured["name"] = name
+            return SimpleNamespace(reference="snapshot-reference")
 
     module = SimpleNamespace(
         Sandbox=object,
@@ -207,9 +159,10 @@ def test_prepared_base_snapshot_path_opens_lazy_snapshot(monkeypatch):
     monkeypatch.setattr(importlib, "import_module", lambda name: module)
     allow_supported_microsandbox_version(monkeypatch)
 
-    path = asyncio.run(MicrosandboxRuntime().prepared_base_snapshot_path("base"))
+    snapshot = asyncio.run(MicrosandboxRuntime().prepared_base_snapshot("base"))
 
-    assert path == "/lazy/snapshot"
+    assert captured["name"] == "base:base"
+    assert snapshot.reference == "snapshot-reference"
 
 
 def test_runtime_connect_uses_handle_connect(monkeypatch):
@@ -287,5 +240,5 @@ def test_runtime_init_rejects_stale_microsandbox_distribution(monkeypatch):
         lambda module=None: "0.4.4",
     )
 
-    with pytest.raises(HoosegowRuntimeError, match=r"requires microsandbox >= 0\.6\.16"):
+    with pytest.raises(HoosegowRuntimeError, match=r"requires microsandbox >= 0\.7\.5"):
         MicrosandboxRuntime()

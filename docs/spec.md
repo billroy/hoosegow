@@ -649,7 +649,7 @@ Verification gate:
   TCP failure mode and is expected to fail until Microsandbox behavior changes.
 - `python3 scripts/pty_controller_microsandbox_smoke.py --verbose`
 
-The real Microsandbox scripts default to `hoosegow-microsandbox-0.6`; use
+The real Microsandbox scripts default to `hoosegow-microsandbox-0.7`; use
 `HOOSEGOW_MICROSANDBOX_BASE` or `--snapshot` to target another prepared base.
 
 ### P0 - Bullpen Excavation Baseline (0.5-1 day)
