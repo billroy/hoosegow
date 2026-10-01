@@ -314,8 +314,8 @@ def test_hoosegow_shell_has_clear_empty_and_error_states():
     assert "baseStatus.error" in app_js
     assert "No Sandboxes" not in app_js
     assert "Workspace root required" not in app_js
-    assert '<i data-lucide="terminal"></i><span>New Local Shell</span>' in app_js
-    assert '<i data-lucide="terminal"></i><span>New Sandbox Shell</span>' in app_js
+    assert '<span>New Local Shell</span>' not in app_js
+    assert '<span>New Sandbox Shell</span>' not in app_js
     assert '<span>Workspace root</span>' in app_js
     assert "Publish :{{ portForm.guest_port }}" in app_js
     assert "Sandbox Runtime" not in app_js
@@ -411,12 +411,16 @@ def test_hoosegow_shell_has_clear_empty_and_error_states():
     assert "New local terminal" in app_js
     assert "New sandbox terminal" in app_js
     assert ':disabled="!canOpenLocalTerminal"' in app_js
-    assert '@click="openLocalTerminal"' in app_js
+    assert "selectedGroupKind === 'local' ? openLocalTerminal() : openTerminal(selected)" in app_js
     assert "Use + to open a terminal." not in app_js
-    assert "selectedGroupLabel" in app_js
+    assert "selectedGroupLabel" not in app_js
+    assert "terminal-placeholder" not in app_js
+    assert "terminal-empty" not in app_js
+    assert "terminal-placeholder" not in css
+    assert "terminal-empty" not in css
     assert "shouldAutoReplace" not in app_js
     assert "options.autoReplace !== false" not in app_js
-    assert "await openTerminal(selectedSandbox, { manageBusy: false, manageAction: false, silent: true })" not in app_js
+    assert "async function ensureSelectedGroupTerminal(options = {})" in app_js
     assert "autoReplace: false" not in app_js
     assert "closeMenusOnOutsideClick" in app_js
     assert "document.addEventListener('click', closeMenusOnOutsideClick)" in app_js

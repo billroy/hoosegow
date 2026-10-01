@@ -97,8 +97,10 @@ The UI is terminal-first.
 
 Use the `+` in the `Local` header for a host-local shell. Use a running sandbox
 row's `...` menu for a sandbox shell. Additional shells appear as tabs inside
-their selected group, not as separate rows in the left pane. Selecting a sandbox
-does not silently open or replace shells.
+their selected group, not as separate rows in the left pane. A selected shell
+group is never allowed to remain empty: selection, startup, reconnect, and
+remote-close reconciliation open and focus a shell automatically. Closing the
+last tab opens its replacement before closing the old PTY.
 
 ## Workspaces And Sandboxes
 
@@ -130,6 +132,8 @@ Socket.IO to a token-protected in-sandbox `hoosegow-ptyd` controller.
   Hoosegow lists active PTYs, rejoins them, and replays bounded scrollback.
 - Closing a terminal checks for a foreground process when possible and asks for
   confirmation before closing a busy PTY.
+- Closing the last terminal in a selected runnable group automatically opens a
+  replacement; there is no zero-terminal onboarding screen.
 - Stopping or destroying a sandbox closes its terminals.
 
 Agent CLI authentication is provided by the prepared base and persisted sandbox

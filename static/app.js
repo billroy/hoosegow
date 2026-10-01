@@ -167,7 +167,7 @@ createApp({
     const terminalBellContext = ref(null);
     const terminalBellLastAt = ref(0);
     const terminalTextDecoders = new Map();
-    const autoOpeningTerminal = ref(false);
+    let terminalInvariantPromise = null;
     const mainMenuOpen = ref(false);
     const sandboxActionMenuSlug = ref('');
     const localGroupActionMenuId = ref('');
@@ -204,12 +204,6 @@ createApp({
       && activeTerminal.status !== 'closed'
       && selectedGroupTerminals.value.some((item) => item.id === activeTerminal.id)
     ));
-    const selectedGroupLabel = computed(() => (
-      selectedGroupKind.value === 'local'
-        ? (localTerminalsEnabled.value ? (selectedLocalGroup.value?.label || 'Local') : 'Sandbox')
-        : (selected.value?.name || selected.value?.slug || 'Sandbox')
-    ));
-
     function setToast(message, tone = 'info') {
       toast.message = message;
       toast.tone = tone;
@@ -674,28 +668,27 @@ createApp({
     async function selectLocalGroup(group = selectedLocalGroup.value) {
       if (!localTerminalsEnabled.value) return;
       const targetGroup = ensureLocalGroup(group?.id, group?.label);
-      selectedGroupKind.value = 'local';
-      selectedLocalGroupId.value = targetGroup.id;
       const first = terminalsForLocalGroup(targetGroup)[0] || null;
       if (first) {
         await focusTerminal(first.id);
       } else {
-        deactivateTerminal();
-        syncActiveTerminal(null);
+        await ensureSelectedGroupTerminal({
+          context: { kind: 'local', localGroup: targetGroup, sandbox: null },
+        });
       }
       refreshIcons();
     }
 
     async function selectSandboxGroup(sandbox) {
       if (!sandbox?.slug) return;
-      selectedGroupKind.value = 'sandbox';
-      selectedSlug.value = sandbox.slug;
       const first = terminalsForSandbox(sandbox)[0] || null;
       if (first) {
         await focusTerminal(first.id);
       } else {
-        deactivateTerminal();
-        syncActiveTerminal(null);
+        await ensureSelectedGroupTerminal({
+          context: { kind: 'sandbox', localGroup: null, sandbox },
+          startSandbox: true,
+        });
       }
       refreshIcons();
     }
@@ -968,7 +961,11 @@ createApp({
       if (!selectedSlug.value && sandboxes.length) selectedSlug.value = sandboxes[0].slug;
       if (selectedSlug.value && !sandboxes.some((sandbox) => sandbox.slug === selectedSlug.value)) {
         selectedSlug.value = sandboxes[0]?.slug || '';
-        if (!selectedSlug.value || selectedGroupKind.value === 'sandbox') selectedGroupKind.value = 'local';
+        if (selectedSlug.value) {
+          selectedGroupKind.value = 'sandbox';
+        } else if (localTerminalsEnabled.value) {
+          selectedGroupKind.value = 'local';
+        }
       }
       refreshIcons();
     }
@@ -1003,7 +1000,7 @@ createApp({
       return record;
     }
 
-    async function loadTerminalSessions() {
+    async function loadTerminalSessions(options = {}) {
       if (!connected.value) return;
       const response = await call('terminal:list');
       const liveIds = new Set((response.terminals || []).map((item) => item.id));
@@ -1023,6 +1020,7 @@ createApp({
         syncActiveTerminal(null);
         deactivateTerminal();
       }
+      await ensureSelectedGroupTerminal({ startSandbox: options.startSandbox !== false });
     }
 
     async function loadAppConfig() {
@@ -1150,7 +1148,9 @@ createApp({
         const started = await call('sandbox:start', { id: response.sandbox.slug });
         await loadSandboxes();
         setAction(`Opening terminal for ${response.sandbox.slug}...`, response.sandbox.slug, 'Create opens the first terminal automatically.');
-        await openTerminal(started.sandbox, { manageBusy: false, manageAction: false });
+        await ensureSelectedGroupTerminal({
+          context: { kind: 'sandbox', localGroup: null, sandbox: started.sandbox },
+        });
         createModalOpen.value = false;
         picker.open = false;
         setToast(`Created ${response.sandbox.slug} and opened a terminal.`, 'success');
@@ -1225,13 +1225,17 @@ createApp({
         await loadSandboxes();
         if (event === 'sandbox:start' && response?.sandbox?.last_status === 'running') {
           setAction(`Opening terminal for ${sandbox.slug}...`, sandbox.slug);
-          await openTerminal(response.sandbox, { manageBusy: false, manageAction: false });
+          await ensureSelectedGroupTerminal({
+            context: { kind: 'sandbox', localGroup: null, sandbox: response.sandbox },
+          });
           setToast('Started and opened a terminal.', 'success');
           return;
         }
         if (event === 'sandbox:refresh-runtime' && response?.sandbox?.last_status === 'running') {
           setAction(`Opening terminal for ${sandbox.slug}...`, sandbox.slug);
-          await openTerminal(response.sandbox, { manageBusy: false, manageAction: false });
+          await ensureSelectedGroupTerminal({
+            context: { kind: 'sandbox', localGroup: null, sandbox: response.sandbox },
+          });
           setToast(response.message || 'Agent CLIs updated and terminal reopened.', 'success');
           return;
         }
@@ -1274,7 +1278,7 @@ createApp({
     async function openTerminal(sandbox, options = {}) {
       if (!sandbox || sandbox.last_status !== 'running') {
         setToast('Start the sandbox before opening a terminal.', 'error');
-        return;
+        return null;
       }
       if (options.manageBusy !== false) busy.value = true;
       try {
@@ -1293,11 +1297,63 @@ createApp({
         if (!options.silent) {
           setToast(`${terminalLabel(record)} opened for ${sandbox.slug}.`, 'success');
         }
+        return record;
       } catch (error) {
         setToast(error.message, 'error');
+        return null;
       } finally {
         if (options.manageBusy !== false) busy.value = false;
         if (options.manageAction !== false) clearAction(sandbox.slug);
+        refreshIcons();
+      }
+    }
+
+    async function ensureSelectedGroupTerminal(options = {}) {
+      if (!connected.value) return null;
+      const context = options.context || selectedGroupContext();
+      const ignoredId = options.ignoreTerminalId || '';
+      const groupTerminals = context.kind === 'local'
+        ? terminalsForLocalGroup(context.localGroup)
+        : terminalsForSandbox(context.sandbox);
+      const existing = groupTerminals.find((record) => record.id !== ignoredId) || null;
+      if (existing) {
+        if (activeTerminal.id !== existing.id) await focusTerminal(existing.id);
+        return existing;
+      }
+      if (terminalInvariantPromise) return terminalInvariantPromise;
+
+      terminalInvariantPromise = (async () => {
+        if (context.kind === 'local') {
+          if (!localTerminalsEnabled.value) return null;
+          return await openLocalTerminal({
+            localGroup: context.localGroup,
+            manageBusy: false,
+            silent: true,
+          });
+        }
+
+        let sandbox = sandboxes.find((item) => item.slug === context.sandbox?.slug) || context.sandbox;
+        if (!sandbox?.slug) return null;
+        if (sandbox.last_status !== 'running' && options.startSandbox) {
+          if (!baseStatus.prepared) return null;
+          const response = await call('sandbox:start', { id: sandbox.slug });
+          sandbox = response.sandbox;
+          await loadSandboxes();
+        }
+        if (sandbox.last_status !== 'running') return null;
+        return await openTerminal(sandbox, {
+          manageBusy: false,
+          manageAction: false,
+          silent: true,
+        });
+      })();
+      try {
+        return await terminalInvariantPromise;
+      } catch (error) {
+        setToast(error.message, 'error');
+        return null;
+      } finally {
+        terminalInvariantPromise = null;
         refreshIcons();
       }
     }
@@ -1347,11 +1403,23 @@ createApp({
           if (!confirmed) return;
         }
       }
+      const closingRecord = terminals.find((item) => item.id === terminalId) || null;
+      const closingSelectedGroupTerminal = terminalBelongsToGroup(closingRecord, closeContext);
+      if (terminalId && closingSelectedGroupTerminal && options.maintainGroup !== false) {
+        const replacement = await ensureSelectedGroupTerminal({
+          context: closeContext,
+          ignoreTerminalId: terminalId,
+        });
+        if (!replacement) {
+          if (!options.silent) setToast('Could not open a replacement terminal.', 'error');
+          return;
+        }
+      }
       if (terminalId && options.remote !== false) {
         socket.emit('sandbox:terminal:close', { terminal_id: terminalId });
       }
       const index = terminals.findIndex((item) => item.id === terminalId);
-      const closedRecord = index >= 0 ? terminals[index] : terminals.find((item) => item.id === terminalId);
+      const closedRecord = index >= 0 ? terminals[index] : closingRecord;
       const closedSelectedGroupTerminal = terminalBelongsToGroup(closedRecord, closeContext);
       const wasActive = terminalId === activeTerminal.id;
       disposeTerminal(terminalId);
@@ -1363,23 +1431,6 @@ createApp({
           syncActiveTerminal(nextRecord);
           await nextTick();
           await ensureTerminal();
-        } else if (!options.silent && options.reopenOnEmpty !== false) {
-          autoOpeningTerminal.value = true;
-          syncActiveTerminal(null);
-          try {
-            if (closeContext.kind === 'local') {
-              if (localTerminalsEnabled.value) {
-                await openLocalTerminal({ localGroup: closeContext.localGroup, manageBusy: false, silent: true });
-              }
-            } else if (closeContext.sandbox?.last_status === 'running') {
-              await openTerminal(closeContext.sandbox, { manageBusy: false, manageAction: false, silent: true });
-            }
-          } finally {
-            autoOpeningTerminal.value = false;
-          }
-          if (!activeTerminal.id) {
-            deactivateTerminal();
-          }
         } else {
           syncActiveTerminal(null);
           deactivateTerminal();
@@ -1395,7 +1446,7 @@ createApp({
         .filter((item) => item.sandbox_id === sandboxId)
         .map((item) => item.id);
       for (const terminalId of ids) {
-        await closeTerminal({ ...options, terminalId });
+        await closeTerminal({ ...options, maintainGroup: false, terminalId });
       }
     }
 
@@ -1404,7 +1455,7 @@ createApp({
         .filter((item) => item.kind === 'local' && (item.local_group_id || DEFAULT_LOCAL_GROUP_ID) === groupId)
         .map((item) => item.id);
       for (const terminalId of ids) {
-        await closeTerminal({ ...options, terminalId });
+        await closeTerminal({ ...options, maintainGroup: false, terminalId });
       }
     }
 
@@ -1522,6 +1573,7 @@ createApp({
         setAction(`Destroying ${sandbox.slug}...`, sandbox.slug);
         await call('sandbox:destroy', { id: sandbox.slug, purge: true });
         await loadSandboxes();
+        await loadTerminalSessions();
         setToast(`Destroyed ${sandbox.slug}.`, 'success');
       } catch (error) {
         setToast(error.message, 'error');
@@ -1558,7 +1610,9 @@ createApp({
           await nextTick();
           await ensureTerminal();
         } else {
-          deactivateTerminal();
+          await ensureSelectedGroupTerminal({
+            context: { kind: 'local', localGroup: nextGroup, sandbox: null },
+          });
         }
       }
       setToast(`${group.label} destroyed.`, 'success');
@@ -1603,16 +1657,26 @@ createApp({
     socket.on('disconnect', () => {
       connected.value = false;
     });
-    socket.on('sandboxes:updated', (payload) => {
+    socket.on('sandboxes:updated', async (payload) => {
       replaceSandboxes(payload?.sandboxes || []);
+      try {
+        await loadTerminalSessions({ startSandbox: false });
+      } catch (error) {
+        setToast(error.message, 'error');
+      }
     });
     socket.on('sandbox:error', (payload) => {
       setToast(payload?.error || 'Sandbox error', 'error');
     });
-    socket.on('sandbox:status', () => {
-      loadSandboxes().catch((error) => setToast(error.message, 'error'));
+    socket.on('sandbox:status', async () => {
+      try {
+        await loadSandboxes();
+        await loadTerminalSessions({ startSandbox: false });
+      } catch (error) {
+        setToast(error.message, 'error');
+      }
     });
-    socket.on('sandbox:destroyed', (payload) => {
+    socket.on('sandbox:destroyed', async (payload) => {
       if (payload?.id === selectedSlug.value) {
         selectedSlug.value = '';
         selectedGroupKind.value = localTerminalsEnabled.value ? 'local' : 'sandbox';
@@ -1623,7 +1687,12 @@ createApp({
         if (nextLocal) selectedLocalGroupId.value = nextLocal.local_group_id || DEFAULT_LOCAL_GROUP_ID;
         syncActiveTerminal(nextLocal);
       }
-      loadSandboxes().catch((error) => setToast(error.message, 'error'));
+      try {
+        await loadSandboxes();
+        await loadTerminalSessions();
+      } catch (error) {
+        setToast(error.message, 'error');
+      }
     });
     socket.on('sandbox:terminal:output', (payload) => {
       const record = terminals.find((item) => item.id === payload?.terminal_id);
@@ -1684,9 +1753,9 @@ createApp({
       if (baseLogs.length > 300) baseLogs.splice(0, baseLogs.length - 300);
     });
 
-    watch(selectedSlug, () => {
+    watch([selectedGroupKind, selectedLocalGroupId, selectedSlug], () => {
       if (!connected.value) return;
-      loadTerminalSessions().catch((error) => setToast(error.message, 'error'));
+      loadTerminalSessions({ startSandbox: false }).catch((error) => setToast(error.message, 'error'));
     });
 
     onMounted(() => {
@@ -1710,7 +1779,6 @@ createApp({
 
     return {
       activeTerminal,
-      autoOpeningTerminal,
       actionState,
       authState,
       basename,
@@ -1774,7 +1842,6 @@ createApp({
       sidebarCollapsed,
       selected,
       selectedGroupKind,
-      selectedGroupLabel,
       selectedGroupTerminals,
       selectedLocalGroupId,
       selectedSlug,
@@ -2031,18 +2098,6 @@ createApp({
                 class="terminal-viewport"
                 :class="{ active: term.id === activeTerminal.id }"
               ></div>
-            </div>
-            <div v-if="!terminalVisible && !autoOpeningTerminal" class="terminal-placeholder">
-              <div class="terminal-empty">
-                <strong>{{ selectedGroupLabel }}</strong>
-                <small>No shells open in this group.</small>
-                <button v-if="selectedGroupKind === 'local' && localTerminalsEnabled" class="tool-button" type="button" :disabled="!canOpenLocalTerminal" @click="openLocalTerminal">
-                  <i data-lucide="terminal"></i><span>New Local Shell</span>
-                </button>
-                <button v-else class="tool-button" type="button" :disabled="!canOpenTerminal" @click="openTerminal(selected)">
-                  <i data-lucide="terminal"></i><span>New Sandbox Shell</span>
-                </button>
-              </div>
             </div>
           </div>
         </section>

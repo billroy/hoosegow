@@ -142,32 +142,77 @@ def test_selected_terminal_group_filters_tabs_by_group_not_flat_workspace():
     assert "selectedSlug.value = record.sandbox_id || selectedSlug.value;" in focus_body
 
 
-def test_terminal_session_loading_does_not_auto_replace_or_flatten_tabs():
+def test_terminal_session_loading_enforces_nonempty_selected_group_without_flattening_tabs():
     app_js = _app_js()
     load_body = _function_body(app_js, "loadTerminalSessions")
+    invariant_body = _function_body(app_js, "ensureSelectedGroupTerminal")
 
     assert "const response = await call('terminal:list');" in load_body
     assert "await joinTerminal(terminalInfo, { focus: !focused });" in load_body
-    assert "await openTerminal(" not in load_body
-    assert "await openLocalTerminal(" not in load_body
+    assert "await ensureSelectedGroupTerminal({ startSandbox: options.startSandbox !== false });" in load_body
+    assert "return await openLocalTerminal({" in invariant_body
+    assert "const response = await call('sandbox:start', { id: sandbox.slug });" in invariant_body
+    assert "return await openTerminal(sandbox, {" in invariant_body
     assert "shouldAutoReplace" not in app_js
 
 
 def test_closing_last_selected_group_tab_opens_replacement_shell():
     app_js = _app_js()
     close_body = _function_body(app_js, "closeTerminal")
+    invariant_body = _function_body(app_js, "ensureSelectedGroupTerminal")
 
     assert "const closeContext = selectedGroupContext();" in close_body
     assert "const closedSelectedGroupTerminal = terminalBelongsToGroup(closedRecord, closeContext);" in close_body
     assert "if (wasActive || closedSelectedGroupTerminal) {" in close_body
     assert "const nextRecord = selectedGroupTerminals.value[0] || null;" in close_body
-    assert "} else if (!options.silent && options.reopenOnEmpty !== false) {" in close_body
-    assert "autoOpeningTerminal.value = true;" in close_body
-    assert "await openLocalTerminal({ localGroup: closeContext.localGroup, manageBusy: false, silent: true });" in close_body
-    assert "if (localTerminalsEnabled.value)" in close_body
-    assert "await openTerminal(closeContext.sandbox, { manageBusy: false, manageAction: false, silent: true });" in close_body
-    assert "await closeTerminal({ ...options, terminalId });" in app_js
-    assert 'v-if="!terminalVisible && !autoOpeningTerminal"' in app_js
+    assert "options.maintainGroup !== false" in close_body
+    assert "const replacement = await ensureSelectedGroupTerminal({" in close_body
+    assert "ignoreTerminalId: terminalId" in close_body
+    assert "if (!replacement)" in close_body
+    assert close_body.index("const replacement = await ensureSelectedGroupTerminal({") < close_body.index("socket.emit('sandbox:terminal:close'")
+    assert "if (terminalInvariantPromise) return terminalInvariantPromise;" in invariant_body
+    assert "terminalInvariantPromise = (async () => {" in invariant_body
+    assert "terminalInvariantPromise = null;" in invariant_body
+    assert "await closeTerminal({ ...options, maintainGroup: false, terminalId });" in app_js
+    assert 'v-if="!terminalVisible && !autoOpeningTerminal"' not in app_js
+    assert "No shells open in this group." not in app_js
+
+
+def test_selecting_empty_groups_opens_a_terminal_instead_of_showing_empty_state():
+    app_js = _app_js()
+    local_body = _function_body(app_js, "selectLocalGroup")
+    sandbox_body = _function_body(app_js, "selectSandboxGroup")
+
+    assert "await ensureSelectedGroupTerminal({" in local_body
+    assert "context: { kind: 'local', localGroup: targetGroup, sandbox: null }" in local_body
+    assert "await ensureSelectedGroupTerminal({" in sandbox_body
+    assert "context: { kind: 'sandbox', localGroup: null, sandbox }" in sandbox_body
+    assert "startSandbox: true" in sandbox_body
+    assert "terminal-placeholder" not in app_js
+    assert "terminal-empty" not in app_js
+
+
+def test_lifecycle_reconciliation_uses_single_terminal_invariant_without_duplicate_starts():
+    app_js = _app_js()
+    create_body = _function_body(app_js, "createSandbox")
+    action_body = _function_body(app_js, "runSandboxAction")
+    sandboxes_updated = _slice_between(
+        app_js,
+        "socket.on('sandboxes:updated', async (payload) => {",
+        "socket.on('sandbox:error', (payload) => {",
+    )
+    sandbox_status = _slice_between(
+        app_js,
+        "socket.on('sandbox:status', async () => {",
+        "socket.on('sandbox:destroyed', async (payload) => {",
+    )
+
+    assert "await ensureSelectedGroupTerminal({" in create_body
+    assert create_body.count("await openTerminal(") == 0
+    assert action_body.count("await ensureSelectedGroupTerminal({") == 2
+    assert action_body.count("await openTerminal(") == 0
+    assert "await loadTerminalSessions({ startSandbox: false });" in sandboxes_updated
+    assert "await loadTerminalSessions({ startSandbox: false });" in sandbox_status
 
 
 def test_terminal_switching_preserves_renderer_instead_of_replaying_transcript():
