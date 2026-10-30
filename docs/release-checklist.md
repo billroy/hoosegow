@@ -4,15 +4,15 @@
 
 - CLI version: `python3 hoosegow.py --version` reports `hoosegow 0.1.0`.
 - Host Microsandbox dependency is pinned in `requirements.txt` as
-  `microsandbox==0.7.5`; this provides the grouped snapshot, restore, and
-  published-port contracts needed by Hoosegow.
-- Full Hoosegow suite passes with Microsandbox 0.7.5 injected: latest run
-  `205 passed, 2 skipped`.
+  `microsandbox==0.7.11`; this is the validated baseline for Hoosegow's grouped
+  snapshot, restore, and published-port contracts.
+- Full Hoosegow suite passes with Microsandbox 0.7.11 installed: latest run
+  `210 passed, 2 skipped`.
 - Frontend syntax check passes: `node --check static/app.js`.
 - Local health smoke passes: `http://127.0.0.1:5855/health` returns
   `{"ok":true}`.
-- Opt-in real Microsandbox pytest passes against isolated 0.7.5 state on the
-  target dev machine: `2 passed, 205 deselected`.
+- Opt-in real Microsandbox pytest passes against the active 0.7.11 state on the
+  target dev machine: `2 passed, 210 deselected`.
 - Browser smoke passes against `http://127.0.0.1:5855/`, including the
   minimized hamburger runtime menu, compact header theme toggle, Sandboxes count,
   hydrated icons in all menus, click-away menu dismissal, per-sandbox action

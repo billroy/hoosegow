@@ -14,7 +14,7 @@ from server.microsandbox_runtime import (
 )
 
 
-MICROSANDBOX_OK_VERSION = "0.7.5"
+MICROSANDBOX_OK_VERSION = "0.7.11"
 
 
 def allow_supported_microsandbox_version(monkeypatch):
@@ -241,7 +241,7 @@ def test_runtime_init_rejects_stale_microsandbox_distribution(monkeypatch):
         lambda module=None: "0.4.4",
     )
 
-    with pytest.raises(HoosegowRuntimeError, match=r"requires microsandbox >= 0\.7\.5"):
+    with pytest.raises(HoosegowRuntimeError, match=r"requires microsandbox >= 0\.7\.11"):
         MicrosandboxRuntime()
 
 
@@ -269,10 +269,10 @@ def test_runtime_uses_matching_bundled_pair_when_default_home_drifted(tmp_path, 
     monkeypatch.setattr(
         microsandbox_runtime,
         "microsandbox_runtime_version",
-        lambda path: "0.7.5" if path == str(bundled_msb) else "0.7.6",
+        lambda path: "0.7.11" if path == str(bundled_msb) else "0.7.10",
     )
 
-    configure_matching_microsandbox_runtime(module, "0.7.5")
+    configure_matching_microsandbox_runtime(module, "0.7.11")
 
     assert microsandbox_runtime.os.environ["MSB_PATH"] == str(bundled_msb)
     assert microsandbox_runtime.os.environ["MSB_LIBKRUNFW_PATH"] == str(bundled_lib)
@@ -286,10 +286,10 @@ def test_runtime_rejects_mismatched_explicit_override(tmp_path, monkeypatch):
     module = SimpleNamespace(
         resolve_runtime=lambda: SimpleNamespace(msb_path=str(runtime_path), origin="environment"),
     )
-    monkeypatch.setattr(microsandbox_runtime, "microsandbox_runtime_version", lambda path: "0.7.6")
+    monkeypatch.setattr(microsandbox_runtime, "microsandbox_runtime_version", lambda path: "0.7.10")
 
     with pytest.raises(
         HoosegowRuntimeError,
-        match=r"SDK/runtime version mismatch.*SDK 0\.7\.5, runtime 0\.7\.6",
+        match=r"SDK/runtime version mismatch.*SDK 0\.7\.11, runtime 0\.7\.10",
     ):
-        configure_matching_microsandbox_runtime(module, "0.7.5")
+        configure_matching_microsandbox_runtime(module, "0.7.11")

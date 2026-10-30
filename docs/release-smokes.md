@@ -1,5 +1,25 @@
 # Release Smoke Notes
 
+## 2026-10-30 — Microsandbox 0.7.11 upgrade
+
+Host: local Apple Silicon development machine.
+
+Validation used the active Microsandbox catalog and existing prepared base:
+
+- SDK: `microsandbox==0.7.11`
+- Runtime: `msb 0.7.11`
+- Prepared base: `hoosegow-microsandbox-0.7`
+
+Results:
+
+- The SDK and selected runtime resolved to the same 0.7.11 patch release.
+- Full test suite passed: `210 passed, 2 skipped`.
+- Frontend syntax check passed: `node --check static/app.js`.
+- Real published-HTTP and PTY-controller pytest smokes passed:
+  `2 passed, 210 deselected`.
+- The existing prepared 0.7 snapshot restored successfully, so this patch
+  upgrade did not require a base rebuild or snapshot migration.
+
 ## 2026-10-01 — Microsandbox 0.7.5 migration
 
 Host: local Apple Silicon development machine.

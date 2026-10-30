@@ -33,8 +33,8 @@ base-prep path. It is intentionally not a Bullpen worker/ticket UI.
 Known constraints for this release:
 
 - Hoosegow is a local single-user developer tool.
-- Hoosegow pins `microsandbox==0.7.5`. Older releases do not provide the
-  grouped-snapshot, restore, and published-port contracts Hoosegow uses.
+- Hoosegow pins `microsandbox==0.7.11` as its validated runtime baseline and
+  keeps the Python SDK and launcher on that same patch release.
 - Real Microsandbox behavior depends on the pinned host Microsandbox runtime
   and the prepared `hoosegow-microsandbox-0.7` base.
 - Running sandboxes remain alive when Hoosegow exits unless you pass
@@ -51,7 +51,7 @@ python3 hoosegow.py --workspace-root /path/to/work
 
 If you installed Hoosegow dependencies before this release, rerun
 `pip install -r requirements.txt` so the host `microsandbox` package is upgraded
-to the pinned `0.7.5` release.
+to the pinned `0.7.11` release.
 
 Open `http://127.0.0.1:6060/` if the browser does not open automatically.
 
@@ -223,7 +223,7 @@ base logs are available from the hamburger menu.
 The 0.7 base has a versioned name so it can be built alongside the former
 `hoosegow-microsandbox-local` snapshot. For a rollback-safe upgrade, stop all
 sandboxes, keep the old Python environment and `~/.microsandbox` directory, and
-first validate 0.7.5 with `MSB_HOME` pointing at a separate runtime directory.
+first validate 0.7.11 with `MSB_HOME` pointing at a separate runtime directory.
 Persistent Hoosegow sandbox homes are host bind mounts and are not part of the
 prepared snapshot.
 
@@ -341,7 +341,7 @@ node --check static/app.js
 ```
 
 Real Microsandbox smokes use the prepared base `hoosegow-microsandbox-0.7` by
-default and require `microsandbox==0.7.5` on the host:
+default and require `microsandbox==0.7.11` on the host:
 
 ```bash
 python3 scripts/microsandbox_port_smoke.py

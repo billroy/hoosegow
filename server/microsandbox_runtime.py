@@ -25,7 +25,7 @@ except ImportError:  # pragma: no cover - unsupported host path.
 
 BASE_DEFAULT = "hoosegow-microsandbox-0.7"
 SOURCE_IMAGE_DEFAULT = "node:22-bookworm"
-MICROSANDBOX_MIN_VERSION = "0.7.5"
+MICROSANDBOX_MIN_VERSION = "0.7.11"
 VCPUS_DEFAULT = 4
 MEMORY_MIB_DEFAULT = 4096
 HOST_NOFILE_DEFAULT = 12000
@@ -91,8 +91,8 @@ def validate_microsandbox_version(version: str) -> None:
         )
     if comparable_version(version) < comparable_version(MICROSANDBOX_MIN_VERSION):
         raise HoosegowRuntimeError(
-            f"Hoosegow requires microsandbox >= {MICROSANDBOX_MIN_VERSION} because its runtime adapter "
-            "uses grouped snapshots, restore-based startup, and later published-port fixes. "
+            f"Hoosegow requires microsandbox >= {MICROSANDBOX_MIN_VERSION} as its validated runtime baseline. "
+            "Its adapter uses grouped snapshots, restore-based startup, and current published-port fixes. "
             f"Installed version: {version}. Upgrade with: python3 -m pip install -r requirements.txt"
         )
 
