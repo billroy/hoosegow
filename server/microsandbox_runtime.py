@@ -476,12 +476,16 @@ class MicrosandboxRuntime:
         ensure_host_nofile(spec.host_nofile)
         network = self.Network.allow_all()
         max_connections = validate_network_max_connections(spec.network_max_connections)
+        volumes = {
+            "/app": self.Volume.bind(str(spec.source_root), readonly=True),
+        }
         result = self.Sandbox.restore(
             prepared_base,
             name=name,
             cpus=1,
             memory=1024,
             ports={},
+            volumes=volumes,
             network_policy=network.policy,
             max_tcp_connections=max_connections,
             max_udp_connections=max_connections,

@@ -143,6 +143,74 @@ def test_create_snapshot_uses_microsandbox_07_grouped_contract(monkeypatch):
     }
 
 
+def test_base_validation_restore_rebinds_snapshot_source_mount(tmp_path, monkeypatch):
+    captured = {}
+
+    class FakeVolume:
+        @staticmethod
+        def bind(path, readonly=False):
+            return {"path": path, "readonly": readonly}
+
+    class FakeNetwork:
+        @staticmethod
+        def allow_all():
+            return SimpleNamespace(policy="allow-all")
+
+    class FakeSnapshot:
+        @staticmethod
+        async def get(_name):
+            return SimpleNamespace(reference="snapshot-reference")
+
+    class FakeSandbox:
+        @staticmethod
+        async def get(_name):
+            return None
+
+        @staticmethod
+        async def remove(_name):
+            return None
+
+        @staticmethod
+        def restore(snapshot, *, name, **kwargs):
+            captured["snapshot"] = snapshot
+            captured["name"] = name
+            captured["kwargs"] = kwargs
+            return SimpleNamespace(name=name)
+
+    module = SimpleNamespace(
+        Sandbox=FakeSandbox,
+        Snapshot=FakeSnapshot,
+        Volume=FakeVolume,
+        Network=FakeNetwork,
+    )
+    monkeypatch.setattr(importlib, "import_module", lambda name: module)
+    allow_supported_microsandbox_version(monkeypatch)
+    monkeypatch.setattr(microsandbox_runtime, "ensure_host_nofile", lambda target: (target, target))
+
+    source = tmp_path / "source"
+    source.mkdir()
+    spec = HoosegowSandboxSpec(
+        sandbox_name="demo",
+        workspace=tmp_path,
+        source_root=source,
+        sandbox_home=tmp_path / "home",
+    )
+
+    result = asyncio.run(
+        MicrosandboxRuntime().create_base_validation_sandbox(
+            "hoosegow-microsandbox-0.7-v",
+            "hoosegow-microsandbox-0.7",
+            spec,
+        )
+    )
+
+    assert result.name == "hoosegow-microsandbox-0.7-v"
+    assert captured["snapshot"].reference == "snapshot-reference"
+    assert captured["kwargs"]["volumes"] == {
+        "/app": {"path": str(source), "readonly": True},
+    }
+
+
 def test_prepared_base_snapshot_uses_group_qualified_name(monkeypatch):
     captured = {}
     class FakeSnapshot:
